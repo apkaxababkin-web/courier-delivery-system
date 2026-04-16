@@ -1,11 +1,23 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import {
+  couriers,
+  tasks,
+  taskStatusHistory,
+  users,
+  type Courier,
+  type InsertCourier,
+  type InsertTask,
+  type InsertTaskStatusHistory,
+  type InsertUser,
+  type Task,
+} from "../drizzle/schema";
 import { ENV } from "./_core/env";
+
+// ─── DB connection ─────────────────────────────────────────────────────────────
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -18,26 +30,18 @@ export async function getDb() {
   return _db;
 }
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
+// ─── User helpers (OAuth users) ───────────────────────────────────────────────
 
+export async function upsertUser(user: InsertUser): Promise<void> {
+  if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
+  if (!db) { console.warn("[Database] Cannot upsert user: database not available"); return; }
 
   try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
+    const values: InsertUser = { openId: user.openId };
     const updateSet: Record<string, unknown> = {};
-
     const textFields = ["name", "email", "loginMethod"] as const;
     type TextField = (typeof textFields)[number];
-
     const assignNullable = (field: TextField) => {
       const value = user[field];
       if (value === undefined) return;
@@ -45,32 +49,13 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       values[field] = normalized;
       updateSet[field] = normalized;
     };
-
     textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
-      updateSet.role = "admin";
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
+    if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
+    else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
+    if (!values.lastSignedIn) values.lastSignedIn = new Date();
+    if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -79,40 +64,24 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
+  if (!db) { console.warn("[Database] Cannot get user: database not available"); return undefined; }
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
-
 // ─── Courier helpers ──────────────────────────────────────────────────────────
 
-import { and, desc, inArray } from "drizzle-orm";
-import {
-  couriers,
-  tasks,
-  taskStatusHistory,
-  type Courier,
-  type InsertCourier,
-  type InsertTask,
-  type InsertTaskStatusHistory,
-  type Task,
-} from "../drizzle/schema";
-
-export async function getCourierByUserId(userId: number): Promise<Courier | null> {
+export async function getCourierByUsername(username: string): Promise<Courier | null> {
   const db = await getDb();
   if (!db) return null;
-  const rows = await db
-    .select()
-    .from(couriers)
-    .where(eq(couriers.userId, userId))
-    .limit(1);
+  const rows = await db.select().from(couriers).where(eq(couriers.username, username)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCourierById(id: number): Promise<Courier | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(couriers).where(eq(couriers.id, id)).limit(1);
   return rows[0] ?? null;
 }
 
@@ -123,13 +92,16 @@ export async function createCourier(data: InsertCourier): Promise<number> {
   return result[0].insertId;
 }
 
-export async function getAllCouriersWithUsers() {
+export async function updateCourier(id: number, data: Partial<InsertCourier>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(couriers).set(data).where(eq(couriers.id, id));
+}
+
+export async function getAllCouriers(): Promise<Courier[]> {
   const db = await getDb();
   if (!db) return [];
-  return db
-    .select({ courier: couriers, user: users })
-    .from(couriers)
-    .leftJoin(users, eq(couriers.userId, users.id));
+  return db.select().from(couriers);
 }
 
 // ─── Task helpers ─────────────────────────────────────────────────────────────
@@ -140,12 +112,10 @@ export async function getActiveTasksForCourier(courierId: number): Promise<Task[
   return db
     .select()
     .from(tasks)
-    .where(
-      and(
-        eq(tasks.courierId, courierId),
-        inArray(tasks.status, ["assigned", "accepted", "in_progress"])
-      )
-    )
+    .where(and(
+      eq(tasks.courierId, courierId),
+      inArray(tasks.status, ["assigned", "accepted", "in_progress"])
+    ))
     .orderBy(desc(tasks.createdAt));
 }
 
@@ -155,12 +125,10 @@ export async function getTaskHistoryForCourier(courierId: number): Promise<Task[
   return db
     .select()
     .from(tasks)
-    .where(
-      and(
-        eq(tasks.courierId, courierId),
-        inArray(tasks.status, ["completed", "rejected"])
-      )
-    )
+    .where(and(
+      eq(tasks.courierId, courierId),
+      inArray(tasks.status, ["completed", "rejected"])
+    ))
     .orderBy(desc(tasks.updatedAt));
 }
 
@@ -191,19 +159,13 @@ export async function updateTaskStatus(
 ): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db
-    .update(tasks)
-    .set({ status, ...extra })
-    .where(eq(tasks.id, taskId));
+  await db.update(tasks).set({ status, ...extra }).where(eq(tasks.id, taskId));
 }
 
 export async function assignTaskToCourier(taskId: number, courierId: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db
-    .update(tasks)
-    .set({ courierId, status: "assigned" })
-    .where(eq(tasks.id, taskId));
+  await db.update(tasks).set({ courierId, status: "assigned" }).where(eq(tasks.id, taskId));
 }
 
 // ─── Task status history ──────────────────────────────────────────────────────

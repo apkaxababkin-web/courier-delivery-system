@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,11 +10,13 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { skipToken } from "@tanstack/react-query";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { StatusBadge } from "@/components/status-badge";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
+import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { PACKAGE_TYPE_LABELS, type PackageType, type TaskStatus } from "@/shared/types";
 
@@ -26,9 +27,12 @@ export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const colors = useColors();
+  const { token } = useCourierAuth();
   const taskId = parseInt(id ?? "0", 10);
 
-  const { data: task, isLoading, refetch } = trpc.tasks.byId.useQuery({ id: taskId });
+  const { data: task, isLoading, refetch } = trpc.tasks.byId.useQuery(
+    token ? { token, id: taskId } : skipToken
+  );
 
   const acceptMutation = trpc.tasks.accept.useMutation({
     onSuccess: () => {
@@ -61,22 +65,21 @@ export default function TaskDetailScreen() {
   });
 
   const handleAccept = () => {
+    if (!token) return;
     Alert.alert("Принять задание?", "Вы подтверждаете принятие этого задания?", [
       { text: "Отмена", style: "cancel" },
-      {
-        text: "Принять",
-        onPress: () => acceptMutation.mutate({ taskId }),
-      },
+      { text: "Принять", onPress: () => acceptMutation.mutate({ token, taskId }) },
     ]);
   };
 
   const handleReject = () => {
+    if (!token) return;
     Alert.alert("Отклонить задание?", "Вы уверены, что хотите отклонить это задание?", [
       { text: "Отмена", style: "cancel" },
       {
         text: "Отклонить",
         style: "destructive",
-        onPress: () => rejectMutation.mutate({ taskId, reason: "Курьер отклонил задание" }),
+        onPress: () => rejectMutation.mutate({ token, taskId, reason: "Курьер отклонил задание" }),
       },
     ]);
   };
@@ -115,7 +118,7 @@ export default function TaskDetailScreen() {
   const canReject = status === "assigned" || status === "accepted";
   const canStart = status === "accepted";
   const canComplete = status === "in_progress";
-  const isLoading2 =
+  const isMutating =
     acceptMutation.isPending ||
     rejectMutation.isPending ||
     startMutation.isPending ||
@@ -135,7 +138,7 @@ export default function TaskDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Recipient card */}
+        {/* Recipient */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.muted }]}>ПОЛУЧАТЕЛЬ</Text>
           <Text style={[styles.recipientName, { color: colors.foreground }]}>
@@ -151,7 +154,7 @@ export default function TaskDetailScreen() {
           ) : null}
         </View>
 
-        {/* Address card */}
+        {/* Address */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.muted }]}>АДРЕС ДОСТАВКИ</Text>
           <View style={styles.addressRow}>
@@ -171,13 +174,13 @@ export default function TaskDetailScreen() {
           ) : null}
         </View>
 
-        {/* Package card */}
+        {/* Package */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.muted }]}>ПОСЫЛКА</Text>
           <View style={styles.packageRow}>
             <IconSymbol name={icon("shippingbox.fill")} size={16} color={colors.primary} />
             <Text style={[styles.packageType, { color: colors.foreground }]}>
-              {PACKAGE_TYPE_LABELS[task.packageType as PackageType] ?? task.packageType}
+              {task.packageType ? (PACKAGE_TYPE_LABELS[task.packageType as PackageType] ?? task.packageType) : ""}
             </Text>
           </View>
           {task.packageDescription ? (
@@ -216,9 +219,9 @@ export default function TaskDetailScreen() {
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: colors.success }]}
               onPress={handleAccept}
-              disabled={isLoading2}
+              disabled={isMutating}
             >
-              {isLoading2 ? (
+              {isMutating ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.actionBtnText}>✓ Принять задание</Text>
@@ -229,10 +232,10 @@ export default function TaskDetailScreen() {
           {canStart && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-              onPress={() => startMutation.mutate({ taskId })}
-              disabled={isLoading2}
+              onPress={() => token && startMutation.mutate({ token, taskId })}
+              disabled={isMutating}
             >
-              {isLoading2 ? (
+              {isMutating ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.actionBtnText}>🚀 Забрал посылку — в путь!</Text>
@@ -243,10 +246,10 @@ export default function TaskDetailScreen() {
           {canComplete && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: colors.success }]}
-              onPress={() => completeMutation.mutate({ taskId })}
-              disabled={isLoading2}
+              onPress={() => token && completeMutation.mutate({ token, taskId })}
+              disabled={isMutating}
             >
-              {isLoading2 ? (
+              {isMutating ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.actionBtnText}>✓ Подтвердить доставку</Text>
@@ -258,7 +261,7 @@ export default function TaskDetailScreen() {
             <TouchableOpacity
               style={[styles.actionBtnOutline, { borderColor: colors.error }]}
               onPress={handleReject}
-              disabled={isLoading2}
+              disabled={isMutating}
             >
               <Text style={[styles.actionBtnOutlineText, { color: colors.error }]}>
                 ✕ Отклонить задание
@@ -272,142 +275,35 @@ export default function TaskDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   navHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-    gap: 12,
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 0.5, gap: 12,
   },
-  backBtn: {
-    padding: 4,
-  },
-  navTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "600",
-    lineHeight: 24,
-  },
-  scrollContent: {
-    padding: 16,
-    gap: 12,
-  },
-  card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-    gap: 8,
-  },
-  warningCard: {
-    backgroundColor: "#FFFBEB",
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    lineHeight: 16,
-  },
-  recipientName: {
-    fontSize: 20,
-    fontWeight: "700",
-    lineHeight: 26,
-  },
-  phoneRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 4,
-  },
-  phone: {
-    fontSize: 16,
-    fontWeight: "500",
-    lineHeight: 22,
-  },
-  addressRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-  },
-  address: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  estimateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 4,
-  },
-  estimate: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  packageRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  packageType: {
-    fontSize: 16,
-    fontWeight: "600",
-    lineHeight: 22,
-  },
-  packageDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  warningHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  instructions: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  actions: {
-    gap: 10,
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  actionBtn: {
-    height: 52,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionBtnText: {
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: "700",
-    lineHeight: 22,
-  },
-  actionBtnOutline: {
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionBtnOutlineText: {
-    fontSize: 17,
-    fontWeight: "600",
-    lineHeight: 22,
-  },
-  errorText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  backLink: {
-    fontSize: 15,
-    fontWeight: "500",
-  },
+  backBtn: { padding: 4 },
+  navTitle: { flex: 1, fontSize: 18, fontWeight: "600", lineHeight: 24 },
+  scrollContent: { padding: 16, gap: 12 },
+  card: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 8 },
+  warningCard: { backgroundColor: "#FFFBEB" },
+  sectionTitle: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8, lineHeight: 16 },
+  recipientName: { fontSize: 20, fontWeight: "700", lineHeight: 26 },
+  phoneRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  phone: { fontSize: 16, fontWeight: "500", lineHeight: 22 },
+  addressRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  address: { flex: 1, fontSize: 16, lineHeight: 22 },
+  estimateRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  estimate: { fontSize: 13, lineHeight: 18 },
+  packageRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  packageType: { fontSize: 16, fontWeight: "600", lineHeight: 22 },
+  packageDesc: { fontSize: 14, lineHeight: 20 },
+  warningHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  instructions: { fontSize: 14, lineHeight: 20 },
+  actions: { gap: 10, marginTop: 8, marginBottom: 24 },
+  actionBtn: { height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  actionBtnText: { color: "#fff", fontSize: 17, fontWeight: "700", lineHeight: 22 },
+  actionBtnOutline: { height: 52, borderRadius: 14, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  actionBtnOutlineText: { fontSize: 17, fontWeight: "600", lineHeight: 22 },
+  errorText: { fontSize: 16, fontWeight: "600" },
+  backLink: { fontSize: 15, fontWeight: "500" },
 });

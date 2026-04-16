@@ -1,9 +1,20 @@
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { useAuth } from "@/hooks/use-auth";
-import { startOAuthLogin } from "@/constants/oauth";
+import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 
 function StatCard({ value, label, color }: { value: string | number; label: string; color: string }) {
@@ -16,24 +27,107 @@ function StatCard({ value, label, color }: { value: string | number; label: stri
   );
 }
 
+function LoginForm() {
+  const colors = useColors();
+  const { setSession } = useCourierAuth();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  const loginMutation = trpc.courierAuth.login.useMutation({
+    onSuccess: async (data) => {
+      await setSession(data.token, data.courier);
+    },
+    onError: (error) => {
+      Alert.alert("Ошибка входа", error.message);
+    },
+  });
+
+  const handleLogin = () => {
+    if (!username.trim() || !password.trim()) {
+      Alert.alert("Ошибка", "Введите логин и пароль");
+      return;
+    }
+    loginMutation.mutate({ username: username.trim(), password });
+  };
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <View style={styles.loginContainer}>
+        <Text style={styles.loginIcon}>🚴</Text>
+        <Text style={[styles.loginTitle, { color: colors.foreground }]}>
+          Вход в КурьерПро
+        </Text>
+        <Text style={[styles.loginSubtitle, { color: colors.muted }]}>
+          Введите логин и пароль, выданные менеджером
+        </Text>
+
+        <View style={styles.formContainer}>
+          {/* Username */}
+          <View style={[styles.inputWrapper, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+            <Text style={[styles.inputLabel, { color: colors.muted }]}>Логин</Text>
+            <TextInput
+              style={[styles.input, { color: colors.foreground }]}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Введите логин"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* Password */}
+          <View style={[styles.inputWrapper, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+            <Text style={[styles.inputLabel, { color: colors.muted }]}>Пароль</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.input, styles.passwordInput, { color: colors.foreground }]}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Введите пароль"
+                placeholderTextColor={colors.muted}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeBtn}
+              >
+                <Text style={{ color: colors.muted, fontSize: 18 }}>
+                  {showPassword ? "🙈" : "👁"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.loginBtn, { backgroundColor: colors.primary }, loginMutation.isPending && { opacity: 0.7 }]}
+            onPress={handleLogin}
+            disabled={loginMutation.isPending}
+          >
+            {loginMutation.isPending ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginBtnText}>Войти</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
 export default function ProfileScreen() {
   const colors = useColors();
-  const { user, isAuthenticated, loading, logout } = useAuth();
-
-  const { data: courier } = trpc.courier.me.useQuery(undefined, {
-    enabled: isAuthenticated,
-  });
-
-  const { data: activeTasks } = trpc.tasks.myActive.useQuery(undefined, {
-    enabled: isAuthenticated,
-  });
-
-  const { data: historyTasks } = trpc.tasks.myHistory.useQuery(undefined, {
-    enabled: isAuthenticated,
-  });
-
-  const completedCount = (historyTasks ?? []).filter((t) => t.status === "completed").length;
-  const activeCount = (activeTasks ?? []).length;
+  const { courier, isAuthenticated, loading, logout } = useCourierAuth();
 
   if (loading) {
     return (
@@ -45,36 +139,22 @@ export default function ProfileScreen() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !courier) {
     return (
-      <ScreenContainer className="p-6">
-        <View style={styles.header}>
+      <ScreenContainer>
+        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Профиль</Text>
         </View>
-        <View style={styles.loginContainer}>
-          <Text style={styles.loginIcon}>🚴</Text>
-          <Text style={[styles.loginTitle, { color: colors.foreground }]}>
-            Добро пожаловать в КурьерПро
-          </Text>
-          <Text style={[styles.loginSubtitle, { color: colors.muted }]}>
-            Войдите в аккаунт, чтобы получать и выполнять задания доставки
-          </Text>
-          <TouchableOpacity
-            style={[styles.loginBtn, { backgroundColor: colors.primary }]}
-            onPress={startOAuthLogin}
-          >
-            <Text style={styles.loginBtnText}>Войти в аккаунт</Text>
-          </TouchableOpacity>
-        </View>
+        <LoginForm />
       </ScreenContainer>
     );
   }
 
   const VEHICLE_LABELS: Record<string, string> = {
-    bicycle: "Велосипед",
-    scooter: "Скутер",
-    car: "Автомобиль",
-    foot: "Пешком",
+    bicycle: "🚲 Велосипед",
+    scooter: "🛵 Скутер",
+    car: "🚗 Автомобиль",
+    foot: "🚶 Пешком",
   };
 
   return (
@@ -88,19 +168,19 @@ export default function ProfileScreen() {
         <View style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
             <Text style={styles.avatarText}>
-              {(user?.name ?? "К").charAt(0).toUpperCase()}
+              {(courier.name ?? "К").charAt(0).toUpperCase()}
             </Text>
           </View>
           <View style={styles.profileInfo}>
             <Text style={[styles.profileName, { color: colors.foreground }]}>
-              {user?.name ?? "Курьер"}
+              {courier.name}
             </Text>
-            <Text style={[styles.profileEmail, { color: colors.muted }]}>
-              {user?.email ?? ""}
+            <Text style={[styles.profileUsername, { color: colors.muted }]}>
+              @{courier.username}
             </Text>
-            {courier ? (
+            {courier.vehicleType ? (
               <Text style={[styles.profileVehicle, { color: colors.primary }]}>
-                {courier.vehicleType ? (VEHICLE_LABELS[courier.vehicleType] ?? courier.vehicleType) : ""}
+                {VEHICLE_LABELS[courier.vehicleType] ?? courier.vehicleType}
               </Text>
             ) : null}
           </View>
@@ -108,31 +188,38 @@ export default function ProfileScreen() {
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          <StatCard value={activeCount} label="Активных" color={colors.primary} />
-          <StatCard value={completedCount} label="Выполнено" color={colors.success} />
+          <StatCard value={courier.totalDeliveries} label="Всего" color={colors.warning} />
           <StatCard
-            value={courier?.totalDeliveries ?? 0}
-            label="Всего"
-            color={colors.warning}
+            value={courier.isActive ? "Активен" : "Неактивен"}
+            label="Статус"
+            color={courier.isActive ? colors.success : colors.error}
           />
         </View>
 
-        {/* Info section */}
+        {/* Info */}
         <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.infoSectionTitle, { color: colors.muted }]}>ИНФОРМАЦИЯ</Text>
 
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.muted }]}>Статус</Text>
-            <View style={[styles.statusDot, { backgroundColor: courier?.isActive ? colors.success : colors.error }]} />
+            <Text style={[styles.infoLabel, { color: colors.muted }]}>Логин</Text>
             <Text style={[styles.infoValue, { color: colors.foreground }]}>
-              {courier?.isActive ? "Активен" : "Неактивен"}
+              {courier.username}
             </Text>
           </View>
 
+          {courier.phone ? (
+            <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.infoLabel, { color: colors.muted }]}>Телефон</Text>
+              <Text style={[styles.infoValue, { color: colors.foreground }]}>
+                {courier.phone}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.infoRow}>
-            <Text style={[styles.infoLabel, { color: colors.muted }]}>Роль</Text>
+            <Text style={[styles.infoLabel, { color: colors.muted }]}>Транспорт</Text>
             <Text style={[styles.infoValue, { color: colors.foreground }]}>
-              Курьер
+              {courier.vehicleType ? (VEHICLE_LABELS[courier.vehicleType] ?? courier.vehicleType) : "—"}
             </Text>
           </View>
         </View>
@@ -140,7 +227,12 @@ export default function ProfileScreen() {
         {/* Logout */}
         <TouchableOpacity
           style={[styles.logoutBtn, { borderColor: colors.error }]}
-          onPress={logout}
+          onPress={() => {
+            Alert.alert("Выйти?", "Вы уверены, что хотите выйти из аккаунта?", [
+              { text: "Отмена", style: "cancel" },
+              { text: "Выйти", style: "destructive", onPress: logout },
+            ]);
+          }}
         >
           <Text style={[styles.logoutText, { color: colors.error }]}>Выйти из аккаунта</Text>
         </TouchableOpacity>
@@ -169,30 +261,64 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
-    gap: 12,
+    paddingHorizontal: 24,
+    gap: 8,
   },
   loginIcon: {
     fontSize: 72,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   loginTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
-    lineHeight: 28,
+    lineHeight: 30,
     textAlign: "center",
   },
   loginSubtitle: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: "center",
-    marginTop: 4,
+    marginBottom: 8,
+  },
+  formContainer: {
+    width: "100%",
+    gap: 12,
+    marginTop: 8,
+  },
+  inputWrapper: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  input: {
+    fontSize: 16,
+    lineHeight: 22,
+    padding: 0,
+  },
+  passwordRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  passwordInput: {
+    flex: 1,
+  },
+  eyeBtn: {
+    padding: 4,
   },
   loginBtn: {
-    marginTop: 20,
-    paddingHorizontal: 40,
-    paddingVertical: 16,
+    height: 52,
     borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
   },
   loginBtnText: {
     color: "#fff",
@@ -232,7 +358,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 26,
   },
-  profileEmail: {
+  profileUsername: {
     fontSize: 13,
     lineHeight: 18,
   },
@@ -255,9 +381,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: "800",
-    lineHeight: 34,
+    lineHeight: 28,
+    textAlign: "center",
   },
   statLabel: {
     fontSize: 12,
@@ -268,7 +395,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     padding: 16,
-    gap: 0,
   },
   infoSectionTitle: {
     fontSize: 11,
@@ -292,11 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
     lineHeight: 20,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   logoutBtn: {
     height: 52,

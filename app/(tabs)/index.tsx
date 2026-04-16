@@ -9,11 +9,12 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { skipToken } from "@tanstack/react-query";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { TaskCard, type TaskCardData } from "@/components/task-card";
 import { useColors } from "@/hooks/use-colors";
-import { useAuth } from "@/hooks/use-auth";
+import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import type { TaskStatus } from "@/shared/types";
 
@@ -28,7 +29,7 @@ const FILTER_TABS: { key: FilterTab; label: string; statuses: TaskStatus[] }[] =
 export default function TaskListScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { token, courier, isAuthenticated, loading: authLoading } = useCourierAuth();
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
 
   const {
@@ -36,12 +37,12 @@ export default function TaskListScreen() {
     isLoading,
     refetch,
     isRefetching,
-  } = trpc.tasks.myActive.useQuery(undefined, {
-    enabled: isAuthenticated,
-    refetchInterval: 15000, // Poll every 15 seconds for real-time updates
-  });
+  } = trpc.tasks.myActive.useQuery(
+    token ? { token } : skipToken,
+    { refetchInterval: 15000 }
+  );
 
-  const seedMutation = trpc.courier.seedDemoTasks.useMutation({
+  const seedMutation = trpc.tasks.seedDemo.useMutation({
     onSuccess: () => refetch(),
   });
 
@@ -71,11 +72,12 @@ export default function TaskListScreen() {
     return (
       <ScreenContainer className="p-6">
         <View style={styles.center}>
+          <Text style={styles.emptyIcon}>📦</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
             Войдите в аккаунт
           </Text>
           <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-            Для просмотра заданий необходимо авторизоваться
+            Для просмотра заданий необходимо войти в систему
           </Text>
           <TouchableOpacity
             style={[styles.loginBtn, { backgroundColor: colors.primary }]}
@@ -95,7 +97,7 @@ export default function TaskListScreen() {
         <View>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Мои задания</Text>
           <Text style={[styles.headerSub, { color: colors.muted }]}>
-            {user?.name ?? "Курьер"}
+            {courier?.name ?? "Курьер"}
           </Text>
         </View>
         <View style={[styles.badge, { backgroundColor: colors.primary + "18" }]}>
@@ -167,7 +169,7 @@ export default function TaskListScreen() {
               </Text>
               <TouchableOpacity
                 style={[styles.seedBtn, { borderColor: colors.primary }]}
-                onPress={() => seedMutation.mutate()}
+                onPress={() => token && seedMutation.mutate({ token })}
                 disabled={seedMutation.isPending}
               >
                 <Text style={[styles.seedBtnText, { color: colors.primary }]}>

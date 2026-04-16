@@ -23,7 +23,14 @@ export type InsertUser = typeof users.$inferInsert;
  */
 export const couriers = mysqlTable("couriers", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+  /** Optional link to Manus OAuth user — null for couriers created by manager */
+  userId: int("userId"),
+  /** Display name of the courier */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Login username set by manager */
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  /** Bcrypt hashed password */
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   vehicleType: mysqlEnum("vehicleType", ["bicycle", "scooter", "car", "foot"]).default("scooter").notNull(),
   isActive: boolean("isActive").default(true).notNull(),

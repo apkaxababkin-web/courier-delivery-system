@@ -15,6 +15,13 @@
       "when": 1776300582255,
       "tag": "0001_awesome_wolfpack",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1776301879062,
+      "tag": "0002_huge_dagger",
+      "breakpoints": true
     }
   ]
 }

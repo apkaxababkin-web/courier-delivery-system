@@ -32,3 +32,16 @@
 ## Branding
 - [x] Generate app icon
 - [x] Update app.config.ts with app name and logo
+
+## Auth Rework (Login/Password)
+- [x] Add login/password fields to couriers table in DB schema
+- [x] API: POST /auth/courier-login (login with username + password)
+- [x] API: POST /auth/courier-logout (clear session)
+- [x] Backend: password hashing with bcrypt
+- [x] Backend: JWT session token for couriers
+- [x] Remove OAuth dependency from mobile app
+- [x] Create LoginScreen with username/password form
+- [x] Store courier session token in SecureStore
+- [x] Update ProfileScreen: show courier info without OAuth
+- [x] Update TaskList/History screens to use courier auth
+- [x] Manager API: create courier with login/password

@@ -1,3 +1,5 @@
+import bcrypt from "bcryptjs";
+import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -5,8 +7,37 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
+// ─── Courier JWT helpers ──────────────────────────────────────────────────────
+
+const COURIER_JWT_SECRET = new TextEncoder().encode(
+  process.env.COURIER_JWT_SECRET ?? "courier-secret-key-change-in-production"
+);
+const COURIER_TOKEN_EXPIRY = "7d";
+
+async function signCourierToken(courierId: number): Promise<string> {
+  return new SignJWT({ courierId, type: "courier" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime(COURIER_TOKEN_EXPIRY)
+    .setIssuedAt()
+    .sign(COURIER_JWT_SECRET);
+}
+
+export async function verifyCourierToken(token: string): Promise<{ courierId: number } | null> {
+  try {
+    const { payload } = await jwtVerify(token, COURIER_JWT_SECRET);
+    if (payload.type !== "courier" || typeof payload.courierId !== "number") return null;
+    return { courierId: payload.courierId };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+
 export const appRouter = router({
   system: systemRouter,
+
+  // ─── OAuth auth (kept for manager website integration) ─────────────────────
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -16,125 +47,124 @@ export const appRouter = router({
     }),
   }),
 
-  // ─── Courier profile ────────────────────────────────────────────────────────
-  courier: router({
+  // ─── Courier authentication (login/password) ───────────────────────────────
+  courierAuth: router({
     /**
-     * Get or create courier profile for the logged-in user.
-     * Returns the courier record linked to the current user.
+     * Login with username + password.
+     * Returns a JWT token to be stored in SecureStore on the device.
      */
-    me: protectedProcedure.query(async ({ ctx }) => {
-      let courier = await db.getCourierByUserId(ctx.user.id);
-      if (!courier) {
-        // Auto-create courier profile on first login
-        const id = await db.createCourier({
-          userId: ctx.user.id,
-          vehicleType: "scooter",
-          isActive: true,
-          totalDeliveries: 0,
-        });
-        courier = await db.getCourierByUserId(ctx.user.id);
-      }
-      return {
-        ...courier,
-        user: ctx.user,
-      };
-    }),
+    login: publicProcedure
+      .input(z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const courier = await db.getCourierByUsername(input.username);
+        if (!courier) {
+          throw new Error("Неверный логин или пароль");
+        }
+        if (!courier.isActive) {
+          throw new Error("Аккаунт курьера деактивирован");
+        }
+        const valid = await bcrypt.compare(input.password, courier.passwordHash);
+        if (!valid) {
+          throw new Error("Неверный логин или пароль");
+        }
+        const token = await signCourierToken(courier.id);
+        return {
+          token,
+          courier: {
+            id: courier.id,
+            name: courier.name,
+            username: courier.username,
+            phone: courier.phone,
+            vehicleType: courier.vehicleType,
+            isActive: courier.isActive,
+            totalDeliveries: courier.totalDeliveries,
+          },
+        };
+      }),
 
     /**
-     * Seed demo tasks for the current courier (for testing/demo purposes).
+     * Verify token and return courier profile.
+     * Used on app startup to restore session.
      */
-    seedDemoTasks: protectedProcedure.mutation(async ({ ctx }) => {
-      let courier = await db.getCourierByUserId(ctx.user.id);
-      if (!courier) {
-        const id = await db.createCourier({
-          userId: ctx.user.id,
-          vehicleType: "scooter",
-          isActive: true,
-          totalDeliveries: 0,
-        });
-        courier = await db.getCourierByUserId(ctx.user.id);
-      }
-      if (!courier) throw new Error("Failed to get courier");
-      await db.seedDemoTasksForCourier(courier.id);
-      return { success: true };
-    }),
+    me: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const courier = await db.getCourierById(payload.courierId);
+        if (!courier) throw new Error("Курьер не найден");
+        return {
+          id: courier.id,
+          name: courier.name,
+          username: courier.username,
+          phone: courier.phone,
+          vehicleType: courier.vehicleType,
+          isActive: courier.isActive,
+          totalDeliveries: courier.totalDeliveries,
+        };
+      }),
   }),
 
   // ─── Tasks (courier view) ───────────────────────────────────────────────────
   tasks: router({
-    /**
-     * Get active tasks assigned to the current courier.
-     * Includes tasks with status: assigned, accepted, in_progress.
-     */
-    myActive: protectedProcedure.query(async ({ ctx }) => {
-      const courier = await db.getCourierByUserId(ctx.user.id);
-      if (!courier) return [];
-      return db.getActiveTasksForCourier(courier.id);
-    }),
-
-    /**
-     * Get task history for the current courier (completed + rejected).
-     */
-    myHistory: protectedProcedure.query(async ({ ctx }) => {
-      const courier = await db.getCourierByUserId(ctx.user.id);
-      if (!courier) return [];
-      return db.getTaskHistoryForCourier(courier.id);
-    }),
-
-    /**
-     * Get a single task by ID.
-     */
-    byId: protectedProcedure
-      .input(z.object({ id: z.number() }))
+    myActive: publicProcedure
+      .input(z.object({ token: z.string() }))
       .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        return db.getActiveTasksForCourier(payload.courierId);
+      }),
+
+    myHistory: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        return db.getTaskHistoryForCourier(payload.courierId);
+      }),
+
+    byId: publicProcedure
+      .input(z.object({ token: z.string(), id: z.number() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
         return db.getTaskById(input.id);
       }),
 
-    /**
-     * Accept a task — courier confirms they will deliver.
-     */
-    accept: protectedProcedure
-      .input(z.object({ taskId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        const courier = await db.getCourierByUserId(ctx.user.id);
-        if (!courier) throw new Error("Courier profile not found");
+    accept: publicProcedure
+      .input(z.object({ token: z.string(), taskId: z.number() }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
 
         const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Task not found");
-        if (task.courierId !== courier.id) throw new Error("Task not assigned to you");
-        if (task.status !== "assigned") throw new Error("Task cannot be accepted in current status");
+        if (!task) throw new Error("Задание не найдено");
+        if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
+        if (task.status !== "assigned") throw new Error("Задание нельзя принять в текущем статусе");
 
-        await db.updateTaskStatus(input.taskId, "accepted", {
-          acceptedAt: new Date(),
-        });
+        await db.updateTaskStatus(input.taskId, "accepted", { acceptedAt: new Date() });
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: "accepted",
-          changedByUserId: ctx.user.id,
           note: "Курьер принял задание",
         });
         return { success: true };
       }),
 
-    /**
-     * Reject a task — courier declines the delivery.
-     */
-    reject: protectedProcedure
-      .input(
-        z.object({
-          taskId: z.number(),
-          reason: z.string().optional(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const courier = await db.getCourierByUserId(ctx.user.id);
-        if (!courier) throw new Error("Courier profile not found");
+    reject: publicProcedure
+      .input(z.object({ token: z.string(), taskId: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
 
         const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Task not found");
-        if (task.courierId !== courier.id) throw new Error("Task not assigned to you");
+        if (!task) throw new Error("Задание не найдено");
+        if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
         if (!["assigned", "accepted"].includes(task.status)) {
-          throw new Error("Task cannot be rejected in current status");
+          throw new Error("Задание нельзя отклонить в текущем статусе");
         }
 
         await db.updateTaskStatus(input.taskId, "rejected", {
@@ -143,96 +173,112 @@ export const appRouter = router({
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: "rejected",
-          changedByUserId: ctx.user.id,
           note: input.reason ?? "Курьер отклонил задание",
         });
         return { success: true };
       }),
 
-    /**
-     * Mark task as in_progress — courier picked up the package.
-     */
-    startDelivery: protectedProcedure
-      .input(z.object({ taskId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        const courier = await db.getCourierByUserId(ctx.user.id);
-        if (!courier) throw new Error("Courier profile not found");
+    startDelivery: publicProcedure
+      .input(z.object({ token: z.string(), taskId: z.number() }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
 
         const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Task not found");
-        if (task.courierId !== courier.id) throw new Error("Task not assigned to you");
-        if (task.status !== "accepted") throw new Error("Task must be accepted first");
+        if (!task) throw new Error("Задание не найдено");
+        if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
+        if (task.status !== "accepted") throw new Error("Сначала нужно принять задание");
 
         await db.updateTaskStatus(input.taskId, "in_progress");
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: "in_progress",
-          changedByUserId: ctx.user.id,
           note: "Курьер забрал посылку",
         });
         return { success: true };
       }),
 
-    /**
-     * Complete a task — courier confirms delivery.
-     */
-    complete: protectedProcedure
-      .input(z.object({ taskId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        const courier = await db.getCourierByUserId(ctx.user.id);
-        if (!courier) throw new Error("Courier profile not found");
+    complete: publicProcedure
+      .input(z.object({ token: z.string(), taskId: z.number() }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
 
         const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Task not found");
-        if (task.courierId !== courier.id) throw new Error("Task not assigned to you");
-        if (task.status !== "in_progress") throw new Error("Task must be in progress to complete");
+        if (!task) throw new Error("Задание не найдено");
+        if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
+        if (task.status !== "in_progress") throw new Error("Задание должно быть в статусе 'В пути'");
 
-        await db.updateTaskStatus(input.taskId, "completed", {
-          completedAt: new Date(),
-        });
+        await db.updateTaskStatus(input.taskId, "completed", { completedAt: new Date() });
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: "completed",
-          changedByUserId: ctx.user.id,
           note: "Доставка выполнена",
         });
+        return { success: true };
+      }),
+
+    seedDemo: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        await db.seedDemoTasksForCourier(payload.courierId);
         return { success: true };
       }),
   }),
 
   // ─── Manager API ─────────────────────────────────────────────────────────────
   manager: router({
-    /**
-     * Get all tasks (for manager dashboard on website).
-     */
     allTasks: protectedProcedure.query(async () => {
       return db.getAllTasks();
     }),
 
-    /**
-     * Get all couriers (for manager dashboard on website).
-     */
     allCouriers: protectedProcedure.query(async () => {
-      return db.getAllCouriersWithUsers();
+      return db.getAllCouriers();
     }),
 
     /**
-     * Create a new delivery task (manager action).
+     * Create a new courier account (manager action).
+     * Password is hashed before storage.
      */
+    createCourier: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        username: z.string().min(3).max(50),
+        password: z.string().min(6),
+        phone: z.string().optional(),
+        vehicleType: z.enum(["bicycle", "scooter", "car", "foot"]).default("scooter"),
+      }))
+      .mutation(async ({ input }) => {
+        const existing = await db.getCourierByUsername(input.username);
+        if (existing) throw new Error("Логин уже занят");
+
+        const passwordHash = await bcrypt.hash(input.password, 10);
+        const id = await db.createCourier({
+          name: input.name,
+          username: input.username,
+          passwordHash,
+          phone: input.phone ?? null,
+          vehicleType: input.vehicleType,
+          isActive: true,
+          totalDeliveries: 0,
+        });
+        return { id };
+      }),
+
     createTask: protectedProcedure
-      .input(
-        z.object({
-          recipientName: z.string().min(1),
-          recipientPhone: z.string().optional(),
-          deliveryAddress: z.string().min(1),
-          deliveryCity: z.string().optional(),
-          packageDescription: z.string().optional(),
-          packageType: z.enum(["document", "small", "medium", "large", "fragile"]).default("small"),
-          specialInstructions: z.string().optional(),
-          estimatedMinutes: z.number().optional(),
-          courierId: z.number().optional(),
-        })
-      )
+      .input(z.object({
+        recipientName: z.string().min(1),
+        recipientPhone: z.string().optional(),
+        deliveryAddress: z.string().min(1),
+        deliveryCity: z.string().optional(),
+        packageDescription: z.string().optional(),
+        packageType: z.enum(["document", "small", "medium", "large", "fragile"]).default("small"),
+        specialInstructions: z.string().optional(),
+        estimatedMinutes: z.number().optional(),
+        courierId: z.number().optional(),
+      }))
       .mutation(async ({ ctx, input }) => {
         const taskId = await db.createTask({
           createdByUserId: ctx.user.id,
@@ -256,16 +302,8 @@ export const appRouter = router({
         return { taskId };
       }),
 
-    /**
-     * Assign a task to a courier (manager action).
-     */
     assignTask: protectedProcedure
-      .input(
-        z.object({
-          taskId: z.number(),
-          courierId: z.number(),
-        })
-      )
+      .input(z.object({ taskId: z.number(), courierId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         await db.assignTaskToCourier(input.taskId, input.courierId);
         await db.addTaskStatusHistory({
@@ -277,9 +315,6 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    /**
-     * Get status history for a task.
-     */
     taskHistory: protectedProcedure
       .input(z.object({ taskId: z.number() }))
       .query(async ({ input }) => {
