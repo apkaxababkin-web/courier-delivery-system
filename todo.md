@@ -93,3 +93,17 @@
 - [x] Update demo tasks with real Ulan-Ude addresses (Основа движения, HelloKorea)
 - [x] Status buttons in task detail: active/selected state clearly visible
 - [x] Status badge on task card reflects current status with color
+
+
+## Phase 2: Extended Task Detail Screen
+- [x] Add senderPhone and comments fields to database schema
+- [x] Update demo data with sender phone numbers and comments
+- [x] Create PhoneButton component for clickable phone numbers
+- [x] Create AddressWithMap component for 2GIS integration
+- [x] Create CommentsSection component for displaying task comments
+- [x] Add sender information section to task detail screen
+- [x] Update recipient section with AddressWithMap and PhoneButton components
+- [x] Add comments section to task detail screen
+- [x] Implement toggle behavior for status buttons (click to activate, click again to deactivate)
+- [x] Implement numeric keypad modal for places input (МЕСТО button)
+- [x] Update API router to accept "pending" status for toggle functionality
