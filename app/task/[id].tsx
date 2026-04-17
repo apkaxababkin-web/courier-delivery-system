@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 import { skipToken } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -76,12 +77,28 @@ export default function TaskDetailScreen() {
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
-  const handleOpenMap = (address: string | null | undefined) => {
+  const handleOpenMap = async (address: string | null | undefined) => {
     if (!address) return;
-    // Use web URL for 2GIS with proper search parameter
-    const q = encodeURIComponent(address);
-    const dgisUrl = `https://2gis.ru/search?queryText=${q}`;
-    Linking.openURL(dgisUrl);
+    // Copy address to clipboard
+    await Clipboard.setStringAsync(address);
+    // Show alert with option to open 2GIS
+    Alert.alert(
+      "Адрес скопирован",
+      "Адрес скопирован в буфер обмена. Откроется 2ГИС — вставьте адрес в поиск.",
+      [
+        {
+          text: "Отмена",
+          onPress: () => {},
+          style: "cancel",
+        },
+        {
+          text: "Открыть 2ГИС",
+          onPress: () => {
+            Linking.openURL("https://2gis.ru");
+          },
+        },
+      ]
+    );
   };
 
   const handleCallPhone = (phone: string | null | undefined) => {

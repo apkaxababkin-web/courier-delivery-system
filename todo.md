@@ -93,3 +93,21 @@
 - [x] Update demo tasks with real Ulan-Ude addresses (Основа движения, HelloKorea)
 - [x] Status buttons in task detail: active/selected state clearly visible
 - [x] Status badge on task card reflects current status with color
+
+## Extended Task Detail Screen
+- [x] Backend: add senderPhone and comments fields to tasks table
+- [x] Mobile: task detail — sender section with clickable address and phone
+- [x] Mobile: task detail — recipient section with clickable address and phone
+- [x] Mobile: task detail — comments section (read-only, from manager)
+- [x] Mobile: task detail — places button with numeric keypad input
+- [x] Mobile: task detail — status buttons (В работе, Выполнено, Отмена, Перенос заявки)
+- [x] Mobile: task detail — calendar for rescheduling task date
+- [x] Mobile: 2GIS integration — address opens map with search
+- [x] Mobile: phone integration — tap to call functionality
+
+## Next Features
+- [ ] **Filter "My Tasks"** — show only tasks assigned to current courier on main screen
+- [ ] Task status history — timeline of all status changes with timestamps
+- [ ] Save reschedule date to API when calendar date selected
+- [ ] Push notifications for new tasks assigned to courier
+- [ ] Proof of delivery — photo capture when marking task complete
