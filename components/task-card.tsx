@@ -25,6 +25,13 @@ function getCourierColor(name: string): string {
   return COURIER_COLORS[Math.abs(hash) % COURIER_COLORS.length];
 }
 
+/** Shorten name: "Иван Тестов" → "Иван Т." */
+function shortName(name: string): string {
+  const parts = name.trim().split(" ");
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[1][0]}.`;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TaskCardData {
@@ -45,25 +52,28 @@ interface TaskCardProps {
   onPress: (task: TaskCardData) => void;
 }
 
+// ─── Status accent colors (soft, not too bright) ─────────────────────────────
+
+const STATUS_ACCENT: Record<TaskStatus, string> = {
+  pending:     "#9CA3AF", // grey
+  assigned:    "#3B82F6", // blue
+  in_progress: "#F97316", // orange
+  completed:   "#22C55E", // green
+  cancelled:   "#D1D5DB", // light grey
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
-
-  const statusBorderColor: Record<TaskStatus, string> = {
-    pending:     "#6B7280",
-    assigned:    "#1A73E8",
-    in_progress: "#FF6D00",
-    completed:   "#34A853",
-    cancelled:   "#9CA3AF",
-  };
-  const leftBorderColor = statusBorderColor[task.status] ?? colors.border;
+  const accent = STATUS_ACCENT[task.status] ?? "#9CA3AF";
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
   const timeLabel = hasTimeInterval
     ? `${task.deliveryTimeFrom ?? "?"} – ${task.deliveryTimeTo ?? "?"}`
     : null;
 
+  // Show places only if more than 1
   const hasPlaces = task.placesCount != null && task.placesCount > 1;
 
   return (
@@ -73,7 +83,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         {
           backgroundColor: colors.surface,
           borderColor: colors.border,
-          borderLeftColor: leftBorderColor,
+          borderLeftColor: accent,
         },
       ]}
       onPress={() => onPress(task)}
@@ -81,26 +91,25 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
     >
       {/* Row 1: Number badge + Client name */}
       <View style={styles.row1}>
-        <View style={[styles.numBadge, { backgroundColor: leftBorderColor }]}>
-          <Text style={styles.numText}>#{task.id}</Text>
+        <View style={[styles.numBadge, { backgroundColor: accent }]}>
+          <Text style={styles.numText}>{task.id}</Text>
         </View>
         <Text style={[styles.clientName, { color: colors.foreground }]} numberOfLines={1}>
           {task.recipientName}
         </Text>
       </View>
 
-      {/* Row 2: Pickup address */}
+      {/* Row 2: Pickup (sender) address */}
       <View style={styles.infoRow}>
-        <Text style={[styles.infoLabel, { color: colors.muted }]}>АДРЕС</Text>
+        <Text style={[styles.infoLabel, { color: colors.muted }]}>📍 АДРЕС</Text>
         <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
-          {task.deliveryAddress}
-          {task.deliveryCity ? `, ${task.deliveryCity}` : ""}
+          {task.deliveryAddress}{task.deliveryCity ? `, ${task.deliveryCity}` : ""}
         </Text>
       </View>
 
-      {/* Row 3: Recipient */}
+      {/* Row 3: Recipient name */}
       <View style={styles.infoRow}>
-        <Text style={[styles.infoLabel, { color: colors.muted }]}>ПОЛУЧАТЕЛЬ</Text>
+        <Text style={[styles.infoLabel, { color: colors.muted }]}>📦 ПОЛУЧАТЕЛЬ</Text>
         <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
           {task.recipientName}
         </Text>
@@ -109,7 +118,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
       {/* Row 4: Recipient address (if set) */}
       {task.recipientAddress ? (
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: colors.muted }]}>АДРЕС ПОЛУЧ.</Text>
+          <Text style={[styles.infoLabel, { color: colors.muted }]}>🏠 АДРЕС ПОЛУЧ.</Text>
           <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
             {task.recipientAddress}
           </Text>
@@ -119,7 +128,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
       {/* Row 5: Time interval (if set) */}
       {timeLabel ? (
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: colors.muted }]}>ВРЕМЯ</Text>
+          <Text style={[styles.infoLabel, { color: colors.muted }]}>🕐 ВРЕМЯ</Text>
           <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
             {timeLabel}
           </Text>
@@ -127,35 +136,33 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
       ) : null}
 
       {/* Footer: places left | status + courier right */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        {/* Left: places count (empty if 1 or not set) */}
         <View style={styles.footerLeft}>
           {hasPlaces ? (
             <Text style={[styles.placesText, { color: colors.muted }]}>
-              📦 {task.placesCount} места
+              📦 {task.placesCount} мест
             </Text>
-          ) : <View />}
+          ) : null}
         </View>
 
+        {/* Right: status badge + courier */}
         <View style={styles.footerRight}>
           <StatusBadge status={task.status} size="sm" />
+
           {task.courierName ? (
-            <View style={styles.courierBadge}>
-              <View
-                style={[
-                  styles.courierDot,
-                  { backgroundColor: getCourierColor(task.courierName) },
-                ]}
-              />
-              <Text style={[styles.courierName, { color: colors.foreground }]}>
-                {task.courierName.split(" ")[0]}{" "}
-                {task.courierName.split(" ")[1]?.[0] ? `${task.courierName.split(" ")[1][0]}.` : ""}
+            <View style={styles.courierRow}>
+              <View style={[styles.courierDot, { backgroundColor: getCourierColor(task.courierName) }]} />
+              <Text style={[styles.courierText, { color: colors.foreground }]}>
+                {shortName(task.courierName)}
               </Text>
             </View>
           ) : (
-            <View style={[styles.courierBadge, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
-              <Text style={[styles.courierName, { color: "#D97706" }]}>Не назначен</Text>
-            </View>
+            <Text style={[styles.unassignedText, { color: colors.muted }]}>
+              Не назначен
+            </Text>
           )}
+
           <Text style={[styles.chevron, { color: colors.muted }]}>›</Text>
         </View>
       </View>
@@ -169,22 +176,23 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 14,
     borderWidth: 1,
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 10,
     marginBottom: 10,
-    gap: 6,
+    gap: 5,
   },
   row1: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   numBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 7,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -192,35 +200,38 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontWeight: "700",
+    lineHeight: 18,
   },
   clientName: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
-    lineHeight: 22,
+    lineHeight: 20,
   },
   infoRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
+    gap: 6,
   },
   infoLabel: {
     fontSize: 10,
     fontWeight: "600",
-    lineHeight: 18,
-    width: 80,
-    letterSpacing: 0.3,
+    lineHeight: 17,
+    width: 90,
+    letterSpacing: 0.2,
   },
   infoValue: {
     flex: 1,
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 17,
   },
   footer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 4,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 0.5,
   },
   footerLeft: {
     flex: 1,
@@ -228,33 +239,35 @@ const styles = StyleSheet.create({
   footerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
   placesText: {
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
   },
-  courierBadge: {
+  // Courier: just dot + name, no background box
+  courierRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "#f0f2f5",
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
   },
   courierDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
   },
-  courierName: {
+  courierText: {
     fontSize: 12,
     fontWeight: "500",
-    lineHeight: 18,
+    lineHeight: 17,
+  },
+  unassignedText: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontStyle: "italic",
   },
   chevron: {
     fontSize: 18,
-    lineHeight: 22,
+    lineHeight: 20,
   },
 });
