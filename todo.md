@@ -45,3 +45,15 @@
 - [x] Update ProfileScreen: show courier info without OAuth
 - [x] Update TaskList/History screens to use courier auth
 - [x] Manager API: create courier with login/password
+
+## Task Logic Rework
+- [x] Backend: remove reject endpoint
+- [x] Backend: simplify statuses — assigned → in_progress → completed
+- [x] Backend: allow multiple tasks in_progress simultaneously
+- [x] Mobile: remove "Отклонить" button everywhere
+- [x] Mobile: rename "Принять" → "Я заберу" (assigned → in_progress)
+- [x] Mobile: rename "Подтвердить доставку" → "Доставлено"
+- [x] Mobile: remove "accepted" intermediate status
+- [x] Mobile: update filter tabs to match new statuses
+- [x] Mobile: update StatusBadge labels
+- [x] Mobile: update TaskCard to show new statuses

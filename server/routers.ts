@@ -110,6 +110,9 @@ export const appRouter = router({
 
   // ─── Tasks (courier view) ───────────────────────────────────────────────────
   tasks: router({
+    /**
+     * Active tasks: assigned + in_progress
+     */
     myActive: publicProcedure
       .input(z.object({ token: z.string() }))
       .query(async ({ input }) => {
@@ -118,6 +121,9 @@ export const appRouter = router({
         return db.getActiveTasksForCourier(payload.courierId);
       }),
 
+    /**
+     * History: completed + cancelled tasks
+     */
     myHistory: publicProcedure
       .input(z.object({ token: z.string() }))
       .query(async ({ input }) => {
@@ -134,7 +140,11 @@ export const appRouter = router({
         return db.getTaskById(input.id);
       }),
 
-    accept: publicProcedure
+    /**
+     * "Я заберу" — courier picks up the package, task moves to in_progress.
+     * Multiple tasks can be in_progress simultaneously.
+     */
+    pickup: publicProcedure
       .input(z.object({ token: z.string(), taskId: z.number() }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -143,51 +153,7 @@ export const appRouter = router({
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
         if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
-        if (task.status !== "assigned") throw new Error("Задание нельзя принять в текущем статусе");
-
-        await db.updateTaskStatus(input.taskId, "accepted", { acceptedAt: new Date() });
-        await db.addTaskStatusHistory({
-          taskId: input.taskId,
-          status: "accepted",
-          note: "Курьер принял задание",
-        });
-        return { success: true };
-      }),
-
-    reject: publicProcedure
-      .input(z.object({ token: z.string(), taskId: z.number(), reason: z.string().optional() }))
-      .mutation(async ({ input }) => {
-        const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-
-        const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Задание не найдено");
-        if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
-        if (!["assigned", "accepted"].includes(task.status)) {
-          throw new Error("Задание нельзя отклонить в текущем статусе");
-        }
-
-        await db.updateTaskStatus(input.taskId, "rejected", {
-          rejectionReason: input.reason ?? null,
-        });
-        await db.addTaskStatusHistory({
-          taskId: input.taskId,
-          status: "rejected",
-          note: input.reason ?? "Курьер отклонил задание",
-        });
-        return { success: true };
-      }),
-
-    startDelivery: publicProcedure
-      .input(z.object({ token: z.string(), taskId: z.number() }))
-      .mutation(async ({ input }) => {
-        const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-
-        const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Задание не найдено");
-        if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
-        if (task.status !== "accepted") throw new Error("Сначала нужно принять задание");
+        if (task.status !== "assigned") throw new Error("Задание уже взято или завершено");
 
         await db.updateTaskStatus(input.taskId, "in_progress");
         await db.addTaskStatusHistory({
@@ -198,6 +164,9 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    /**
+     * "Доставлено" — courier confirms delivery, task moves to completed.
+     */
     complete: publicProcedure
       .input(z.object({ token: z.string(), taskId: z.number() }))
       .mutation(async ({ input }) => {
@@ -207,7 +176,7 @@ export const appRouter = router({
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
         if (task.courierId !== payload.courierId) throw new Error("Задание не назначено вам");
-        if (task.status !== "in_progress") throw new Error("Задание должно быть в статусе 'В пути'");
+        if (task.status !== "in_progress") throw new Error("Сначала нажмите 'Я заберу'");
 
         await db.updateTaskStatus(input.taskId, "completed", { completedAt: new Date() });
         await db.addTaskStatusHistory({
@@ -215,6 +184,8 @@ export const appRouter = router({
           status: "completed",
           note: "Доставка выполнена",
         });
+        // Increment courier's total deliveries
+        await db.incrementCourierDeliveries(payload.courierId);
         return { success: true };
       }),
 
@@ -246,7 +217,7 @@ export const appRouter = router({
       .input(z.object({
         name: z.string().min(1),
         username: z.string().min(3).max(50),
-        password: z.string().min(6),
+        password: z.string().min(4),
         phone: z.string().optional(),
         vehicleType: z.enum(["bicycle", "scooter", "car", "foot"]).default("scooter"),
       }))

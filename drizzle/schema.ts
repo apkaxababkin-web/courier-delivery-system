@@ -52,13 +52,11 @@ export const tasks = mysqlTable("tasks", {
   /** Assigned courier ID (null = unassigned) */
   courierId: int("courierId"),
   status: mysqlEnum("status", [
-    "pending",    // Waiting to be assigned
-    "assigned",   // Assigned to courier, not yet accepted
-    "accepted",   // Courier accepted the task
-    "in_progress", // Courier picked up the package
-    "completed",  // Delivery confirmed
-    "rejected",   // Courier rejected the task
-    "cancelled",  // Manager cancelled the task
+    "pending",     // Waiting to be assigned
+    "assigned",    // Assigned to courier, waiting for pickup
+    "in_progress", // Courier picked up the package — "Я заберу"
+    "completed",   // Delivery confirmed — "Доставлено"
+    "cancelled",   // Manager cancelled the task
   ]).default("pending").notNull(),
   /** Recipient information */
   recipientName: varchar("recipientName", { length: 255 }).notNull(),
@@ -73,7 +71,7 @@ export const tasks = mysqlTable("tasks", {
   specialInstructions: text("specialInstructions"),
   /** Estimated delivery time in minutes */
   estimatedMinutes: int("estimatedMinutes"),
-  /** Rejection reason if courier rejected */
+  /** Note from courier or manager */
   rejectionReason: text("rejectionReason"),
   /** Timestamps */
   scheduledAt: timestamp("scheduledAt"),

@@ -114,7 +114,7 @@ export async function getActiveTasksForCourier(courierId: number): Promise<Task[
     .from(tasks)
     .where(and(
       eq(tasks.courierId, courierId),
-      inArray(tasks.status, ["assigned", "accepted", "in_progress"])
+      inArray(tasks.status, ["assigned", "in_progress"])
     ))
     .orderBy(desc(tasks.createdAt));
 }
@@ -127,7 +127,7 @@ export async function getTaskHistoryForCourier(courierId: number): Promise<Task[
     .from(tasks)
     .where(and(
       eq(tasks.courierId, courierId),
-      inArray(tasks.status, ["completed", "rejected"])
+      inArray(tasks.status, ["completed", "cancelled"])
     ))
     .orderBy(desc(tasks.updatedAt));
 }
@@ -160,6 +160,16 @@ export async function updateTaskStatus(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(tasks).set({ status, ...extra }).where(eq(tasks.id, taskId));
+}
+
+export async function incrementCourierDeliveries(courierId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const courier = await getCourierById(courierId);
+  if (!courier) return;
+  await db.update(couriers)
+    .set({ totalDeliveries: courier.totalDeliveries + 1 })
+    .where(eq(couriers.id, courierId));
 }
 
 export async function assignTaskToCourier(taskId: number, courierId: number): Promise<void> {

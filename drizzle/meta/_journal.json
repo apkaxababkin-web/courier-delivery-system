@@ -22,6 +22,13 @@
       "when": 1776301879062,
       "tag": "0002_huge_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1776384303129,
+      "tag": "0003_acoustic_scourge",
+      "breakpoints": true
     }
   ]
 }

@@ -22,8 +22,8 @@ type FilterTab = "new" | "active" | "all";
 
 const FILTER_TABS: { key: FilterTab; label: string; statuses: TaskStatus[] }[] = [
   { key: "new",    label: "Новые",   statuses: ["assigned"] },
-  { key: "active", label: "В работе", statuses: ["accepted", "in_progress"] },
-  { key: "all",    label: "Все",     statuses: ["assigned", "accepted", "in_progress"] },
+  { key: "active", label: "В пути",  statuses: ["in_progress"] },
+  { key: "all",    label: "Все",     statuses: ["assigned", "in_progress"] },
 ];
 
 export default function TaskListScreen() {
