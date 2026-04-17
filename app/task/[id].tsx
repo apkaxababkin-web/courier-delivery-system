@@ -78,12 +78,10 @@ export default function TaskDetailScreen() {
 
   const handleOpenMap = (address: string | null | undefined) => {
     if (!address) return;
+    // Use web URL for 2GIS with proper search parameter
     const q = encodeURIComponent(address);
-    const dgisDeep = `dgis://2gis.ru/search/${q}`;
-    const dgisWeb = `https://2gis.ru/search?q=${q}`;
-    Linking.canOpenURL(dgisDeep).then((ok) => {
-      Linking.openURL(ok ? dgisDeep : dgisWeb);
-    });
+    const dgisUrl = `https://2gis.ru/search?queryText=${q}`;
+    Linking.openURL(dgisUrl);
   };
 
   const handleCallPhone = (phone: string | null | undefined) => {
@@ -126,17 +124,18 @@ export default function TaskDetailScreen() {
   const renderCalendar = () => {
     const daysInMonth = getDaysInMonth(selectedDate);
     const firstDay = getFirstDayOfMonth(selectedDate);
-    const days = [];
+    const calendarGrid = [];
+    let week = [];
 
     // Empty cells for days before month starts
     for (let i = 0; i < firstDay; i++) {
-      days.push(<View key={`empty-${i}`} style={{ flex: 1 }} />);
+      week.push(<View key={`empty-${i}`} style={{ flex: 1 }} />);
     }
 
     // Days of month
     for (let day = 1; day <= daysInMonth; day++) {
       const isSelected = selectedDate.getDate() === day;
-      days.push(
+      week.push(
         <TouchableOpacity
           key={day}
           onPress={() => handleDateChange(day)}
@@ -147,17 +146,38 @@ export default function TaskDetailScreen() {
             alignItems: "center",
             backgroundColor: isSelected ? colors.primary : "transparent",
             borderRadius: 8,
-            marginBottom: 8,
           }}
         >
-          <Text style={{ color: isSelected ? "#fff" : colors.foreground, fontWeight: isSelected ? "700" : "500" }}>
+          <Text style={{ color: isSelected ? "#fff" : colors.foreground, fontWeight: isSelected ? "700" : "500", fontSize: 14 }}>
             {day}
           </Text>
         </TouchableOpacity>
       );
+
+      // Push week to grid when it has 7 days
+      if (week.length === 7) {
+        calendarGrid.push(
+          <View key={`week-${calendarGrid.length}`} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+            {week}
+          </View>
+        );
+        week = [];
+      }
     }
 
-    return days;
+    // Push remaining days if any
+    if (week.length > 0) {
+      while (week.length < 7) {
+        week.push(<View key={`empty-end-${week.length}`} style={{ flex: 1 }} />);
+      }
+      calendarGrid.push(
+        <View key={`week-${calendarGrid.length}`} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+          {week}
+        </View>
+      );
+    }
+
+    return calendarGrid;
   };
 
   if (isLoading) {
