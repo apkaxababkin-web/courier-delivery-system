@@ -168,7 +168,8 @@ export default function TaskDetailScreen() {
   }
 
   const status = task.status as TaskStatus;
-  const isFinished = status === "completed" || status === "cancelled";
+  const statusStr = status as string;
+  const isFinished = statusStr === "completed" || statusStr === "cancelled";
   const places = task.placesCount ?? 1;
   const isMutating = statusMutation.isPending || assignMutation.isPending || placesMutation.isPending || timeIntervalMutation.isPending;
 
@@ -194,39 +195,42 @@ export default function TaskDetailScreen() {
               <TouchableOpacity
                 style={[
                   styles.statusBtn,
-                  {
-                    borderColor: colors.warning,
-                    backgroundColor: status === "in_progress" ? colors.warning + "22" : "transparent",
-                  },
+                  status === "in_progress"
+                    ? { borderColor: colors.warning, backgroundColor: colors.warning, borderWidth: 2 }
+                    : { borderColor: colors.warning, backgroundColor: "transparent" },
                 ]}
                 onPress={() => handleSetStatus("in_progress")}
                 disabled={status === "in_progress" || isMutating}
               >
-                <Text style={[styles.statusBtnText, { color: colors.warning }]}>🚴 В работе</Text>
+                <Text style={[styles.statusBtnText, { color: status === "in_progress" ? "#fff" : colors.warning }]}>🚴 В работе</Text>
               </TouchableOpacity>
 
               {/* Выполнено */}
               <TouchableOpacity
                 style={[
                   styles.statusBtn,
-                  { borderColor: colors.success, backgroundColor: colors.success + "18" },
+                  status === "completed"
+                    ? { borderColor: colors.success, backgroundColor: colors.success, borderWidth: 2 }
+                    : { borderColor: colors.success, backgroundColor: "transparent" },
                 ]}
                 onPress={() => handleSetStatus("completed")}
                 disabled={isMutating}
               >
-                <Text style={[styles.statusBtnText, { color: colors.success }]}>✓ Выполнено</Text>
+                <Text style={[styles.statusBtnText, { color: status === "completed" ? "#fff" : colors.success }]}>✓ Выполнено</Text>
               </TouchableOpacity>
 
               {/* Отменено */}
               <TouchableOpacity
                 style={[
                   styles.statusBtn,
-                  { borderColor: colors.error, backgroundColor: colors.error + "12" },
+                  status === "cancelled"
+                    ? { borderColor: colors.error, backgroundColor: colors.error, borderWidth: 2 }
+                    : { borderColor: colors.error, backgroundColor: "transparent" },
                 ]}
                 onPress={() => handleSetStatus("cancelled")}
                 disabled={isMutating}
               >
-                <Text style={[styles.statusBtnText, { color: colors.error }]}>✕ Отменено</Text>
+                <Text style={[styles.statusBtnText, { color: status === "cancelled" ? "#fff" : colors.error }]}>✕ Отменено</Text>
               </TouchableOpacity>
             </View>
           </View>

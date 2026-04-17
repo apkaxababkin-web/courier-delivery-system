@@ -88,3 +88,8 @@
 - [x] Mobile: TaskCard — show ОТПРАВИТЕЛЬ name + address, then ПОЛУЧАТЕЛЬ name + address
 - [x] Mobile: task detail — show sender name and address section
 - [x] Demo data: add senderName and senderAddress to seed tasks
+
+## Demo Data & Status Buttons Fix
+- [x] Update demo tasks with real Ulan-Ude addresses (Основа движения, HelloKorea)
+- [x] Status buttons in task detail: active/selected state clearly visible
+- [x] Status badge on task card reflects current status with color
