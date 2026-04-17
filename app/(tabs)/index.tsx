@@ -12,15 +12,11 @@ import { useRouter } from "expo-router";
 import { skipToken } from "@tanstack/react-query";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { StatusBadge } from "@/components/status-badge";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import { TaskCard, type TaskCardData } from "@/components/task-card";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
-import { PACKAGE_TYPE_LABELS, type PackageType, type TaskStatus } from "@/shared/types";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const icon = (name: string) => name as any;
+import { type TaskStatus } from "@/shared/types";
 
 type FilterTab = "active" | "history";
 
@@ -135,69 +131,23 @@ export default function TaskListScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const status = item.status as TaskStatus;
+            const cardData: TaskCardData = {
+              id: item.id,
+              recipientName: item.recipientName,
+              deliveryAddress: item.deliveryAddress,
+              deliveryCity: item.deliveryCity,
+              recipientAddress: item.recipientAddress,
+              status: item.status as TaskStatus,
+              placesCount: item.placesCount,
+              deliveryTimeFrom: item.deliveryTimeFrom,
+              deliveryTimeTo: item.deliveryTimeTo,
+              courierName: item.courierName,
+            };
             return (
-              <TouchableOpacity
-                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              <TaskCard
+                task={cardData}
                 onPress={() => router.push(`/task/${item.id}` as never)}
-                activeOpacity={0.75}
-              >
-                {/* Top row */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.cardHeaderLeft}>
-                    <Text style={[styles.recipient, { color: colors.foreground }]} numberOfLines={1}>
-                      {item.recipientName}
-                    </Text>
-                    <Text style={[styles.taskId, { color: colors.muted }]}>Заявка #{item.id}</Text>
-                  </View>
-                  <View style={styles.cardHeaderRight}>
-                    <StatusBadge status={status} size="sm" />
-                    {item.courierName ? (
-                      <Text style={[styles.courierName, { color: colors.muted }]} numberOfLines={1}>
-                        {item.courierName}
-                      </Text>
-                    ) : (
-                      <Text style={[styles.courierName, { color: colors.warning }]}>Не назначен</Text>
-                    )}
-                  </View>
-                </View>
-
-                {/* Address */}
-                <View style={styles.addressRow}>
-                  <IconSymbol name={icon("mappin.fill")} size={13} color={colors.primary} />
-                  <Text style={[styles.address, { color: colors.foreground }]} numberOfLines={2}>
-                    {item.deliveryAddress}{item.deliveryCity ? `, ${item.deliveryCity}` : ""}
-                  </Text>
-                </View>
-
-                {/* Footer */}
-                <View style={styles.cardFooter}>
-                  <View style={styles.footerLeft}>
-                    <View style={styles.inlineRow}>
-                      <IconSymbol name={icon("shippingbox.fill")} size={12} color={colors.muted} />
-                      <Text style={[styles.footerText, { color: colors.muted }]}>
-                        {PACKAGE_TYPE_LABELS[item.packageType as PackageType] ?? item.packageType}
-                      </Text>
-                    </View>
-                    {item.placesCount > 1 && (
-                      <Text style={[styles.footerText, { color: colors.primary }]}>
-                        📦 {item.placesCount} мест
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.footerRight}>
-                    {item.estimatedMinutes ? (
-                      <View style={styles.inlineRow}>
-                        <IconSymbol name={icon("clock")} size={12} color={colors.muted} />
-                        <Text style={[styles.footerText, { color: colors.muted }]}>
-                          ~{item.estimatedMinutes} мин
-                        </Text>
-                      </View>
-                    ) : null}
-                    <IconSymbol name={icon("chevron.right")} size={16} color={colors.muted} />
-                  </View>
-                </View>
-              </TouchableOpacity>
+              />
             );
           }}
         />
@@ -222,21 +172,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2, borderBottomColor: "transparent",
   },
   tabText: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
-  list: { padding: 12, gap: 10, flexGrow: 1 },
-  card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
-  cardHeaderLeft: { flex: 1, gap: 2 },
-  cardHeaderRight: { alignItems: "flex-end", gap: 4 },
-  recipient: { fontSize: 16, fontWeight: "600", lineHeight: 22 },
-  taskId: { fontSize: 12, lineHeight: 16 },
-  courierName: { fontSize: 11, fontWeight: "500", lineHeight: 15 },
-  addressRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
-  address: { flex: 1, fontSize: 14, lineHeight: 20 },
-  cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
-  footerLeft: { flex: 1, gap: 3 },
-  footerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
-  inlineRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  footerText: { fontSize: 12, lineHeight: 16 },
+  list: { padding: 12, flexGrow: 1 },
   emptyTitle: { fontSize: 18, fontWeight: "600", textAlign: "center", lineHeight: 24 },
   emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
 });

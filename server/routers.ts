@@ -240,6 +240,30 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    /**
+     * Update delivery time interval for a task.
+     */
+    updateTimeInterval: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        taskId: z.number(),
+        deliveryTimeFrom: z.string().nullable(),
+        deliveryTimeTo: z.string().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+
+        const task = await db.getTaskById(input.taskId);
+        if (!task) throw new Error("Задание не найдено");
+        if (task.status === "completed" || task.status === "cancelled") {
+          throw new Error("Нельзя изменить завершённое задание");
+        }
+
+        await db.updateTaskTimeInterval(input.taskId, input.deliveryTimeFrom, input.deliveryTimeTo);
+        return { success: true };
+      }),
+
     seedDemo: publicProcedure
       .input(z.object({ token: z.string() }))
       .mutation(async ({ input }) => {
@@ -290,11 +314,14 @@ export const appRouter = router({
         recipientPhone: z.string().optional(),
         deliveryAddress: z.string().min(1),
         deliveryCity: z.string().optional(),
+        recipientAddress: z.string().optional(),
         packageDescription: z.string().optional(),
         packageType: z.enum(["document", "small", "medium", "large", "fragile"]).default("small"),
         specialInstructions: z.string().optional(),
         estimatedMinutes: z.number().optional(),
         placesCount: z.number().int().min(1).default(1),
+        deliveryTimeFrom: z.string().optional(),
+        deliveryTimeTo: z.string().optional(),
         courierId: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -306,11 +333,14 @@ export const appRouter = router({
           recipientPhone: input.recipientPhone ?? null,
           deliveryAddress: input.deliveryAddress,
           deliveryCity: input.deliveryCity ?? null,
+          recipientAddress: input.recipientAddress ?? null,
           packageDescription: input.packageDescription ?? null,
           packageType: input.packageType,
           specialInstructions: input.specialInstructions ?? null,
           estimatedMinutes: input.estimatedMinutes ?? null,
           placesCount: input.placesCount,
+          deliveryTimeFrom: input.deliveryTimeFrom ?? null,
+          deliveryTimeTo: input.deliveryTimeTo ?? null,
         });
         await db.addTaskStatusHistory({
           taskId,

@@ -72,3 +72,13 @@
 - [x] Mobile: task detail — status buttons: В работе / Выполнено / Отменено
 - [x] Mobile: task detail — places counter (default 1, +/- buttons)
 - [x] Mobile: task detail — show assigned courier name
+
+## Task Card Design v3 (Time Interval + Courier Dots)
+- [x] Backend: add deliveryTimeFrom / deliveryTimeTo fields to tasks table
+- [x] Backend: update API to accept and return time interval fields
+- [x] Mobile: TaskCard — add time interval row (hidden if not set)
+- [x] Mobile: TaskCard — colored dot before courier name
+- [x] Mobile: TaskCard — recipient address row
+- [x] Mobile: TaskCard — places count in footer (hidden if not set)
+- [x] Mobile: task detail screen — time interval input fields
+- [x] Mobile: task detail screen — colored dot in courier picker

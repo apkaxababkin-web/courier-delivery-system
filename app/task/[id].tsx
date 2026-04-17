@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -33,6 +34,9 @@ export default function TaskDetailScreen() {
   const taskId = parseInt(id ?? "0", 10);
 
   const [courierPickerVisible, setCourierPickerVisible] = useState(false);
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [timeFrom, setTimeFrom] = useState("");
+  const [timeTo, setTimeTo] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -104,6 +108,25 @@ export default function TaskDetailScreen() {
     placesMutation.mutate({ token: token!, taskId, placesCount: newVal });
   };
 
+  const timeIntervalMutation = trpc.tasks.updateTimeInterval.useMutation({
+    onSuccess: () => {
+      utils.tasks.byId.invalidate();
+      utils.tasks.all.invalidate();
+      setTimePickerVisible(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
+  });
+
+  const handleSaveTimeInterval = () => {
+    timeIntervalMutation.mutate({
+      token: token!,
+      taskId,
+      deliveryTimeFrom: timeFrom.trim() || null,
+      deliveryTimeTo: timeTo.trim() || null,
+    });
+  };
+
   const handleCall = () => {
     if (task?.recipientPhone) Linking.openURL(`tel:${task.recipientPhone}`);
   };
@@ -147,7 +170,7 @@ export default function TaskDetailScreen() {
   const status = task.status as TaskStatus;
   const isFinished = status === "completed" || status === "cancelled";
   const places = task.placesCount ?? 1;
-  const isMutating = statusMutation.isPending || assignMutation.isPending || placesMutation.isPending;
+  const isMutating = statusMutation.isPending || assignMutation.isPending || placesMutation.isPending || timeIntervalMutation.isPending;
 
   return (
     <ScreenContainer>
@@ -314,6 +337,40 @@ export default function TaskDetailScreen() {
           ) : null}
         </View>
 
+        {/* ── Time interval ── */}
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.muted }]}>ВРЕМЕННОЙ ИНТЕРВАЛ</Text>
+          <View style={styles.courierRow}>
+            {(task.deliveryTimeFrom || task.deliveryTimeTo) ? (
+              <View style={styles.addressRow}>
+                <IconSymbol name={icon("clock")} size={16} color={colors.primary} />
+                <Text style={[styles.address, { color: colors.foreground }]}>
+                  {task.deliveryTimeFrom ?? "?"} – {task.deliveryTimeTo ?? "?"}
+                </Text>
+              </View>
+            ) : (
+              <Text style={[styles.courierNameText, { color: colors.muted, fontSize: 14 }]}>
+                Не указан
+              </Text>
+            )}
+            {!isFinished && (
+              <TouchableOpacity
+                style={[styles.assignBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
+                onPress={() => {
+                  setTimeFrom(task.deliveryTimeFrom ?? "");
+                  setTimeTo(task.deliveryTimeTo ?? "");
+                  setTimePickerVisible(true);
+                }}
+                disabled={isMutating}
+              >
+                <Text style={[styles.assignBtnText, { color: colors.primary }]}>
+                  {(task.deliveryTimeFrom || task.deliveryTimeTo) ? "Изменить" : "Указать"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
         {/* ── Package ── */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.muted }]}>ПОСЫЛКА</Text>
@@ -341,6 +398,74 @@ export default function TaskDetailScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* ── Time interval modal ── */}
+      <Modal
+        visible={timePickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setTimePickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Временной интервал</Text>
+              <TouchableOpacity onPress={() => setTimePickerVisible(false)}>
+                <Text style={[styles.modalClose, { color: colors.muted }]}>Закрыть</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 20, gap: 16 }}>
+              <View style={{ gap: 6 }}>
+                <Text style={[{ fontSize: 13, fontWeight: "600", color: colors.muted }]}>ОТ (например: 10:00)</Text>
+                <TextInput
+                  style={[styles.timeInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.surface }]}
+                  value={timeFrom}
+                  onChangeText={setTimeFrom}
+                  placeholder="10:00"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="numbers-and-punctuation"
+                  returnKeyType="next"
+                />
+              </View>
+              <View style={{ gap: 6 }}>
+                <Text style={[{ fontSize: 13, fontWeight: "600", color: colors.muted }]}>ДО (например: 14:00)</Text>
+                <TextInput
+                  style={[styles.timeInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.surface }]}
+                  value={timeTo}
+                  onChangeText={setTimeTo}
+                  placeholder="14:00"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="numbers-and-punctuation"
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveTimeInterval}
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.saveTimeBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSaveTimeInterval}
+                disabled={timeIntervalMutation.isPending}
+              >
+                <Text style={styles.saveTimeBtnText}>
+                  {timeIntervalMutation.isPending ? "Сохраняю..." : "Сохранить"}
+                </Text>
+              </TouchableOpacity>
+              {(task.deliveryTimeFrom || task.deliveryTimeTo) && (
+                <TouchableOpacity
+                  style={[styles.clearTimeBtn, { borderColor: colors.error }]}
+                  onPress={() => {
+                    setTimeFrom("");
+                    setTimeTo("");
+                    timeIntervalMutation.mutate({ token: token!, taskId, deliveryTimeFrom: null, deliveryTimeTo: null });
+                  }}
+                  disabled={timeIntervalMutation.isPending}
+                >
+                  <Text style={[styles.clearTimeBtnText, { color: colors.error }]}>Убрать интервал</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Courier picker modal ── */}
       <Modal
@@ -467,4 +592,17 @@ const styles = StyleSheet.create({
   courierOptionSub: { fontSize: 13, lineHeight: 18 },
   errorText: { fontSize: 16, fontWeight: "600" },
   backLink: { fontSize: 15, fontWeight: "500" },
+  // Time interval
+  timeInput: {
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 17, lineHeight: 22,
+  },
+  saveTimeBtn: {
+    paddingVertical: 14, borderRadius: 12, alignItems: "center",
+  },
+  saveTimeBtnText: { fontSize: 16, fontWeight: "700", color: "#fff", lineHeight: 22 },
+  clearTimeBtn: {
+    paddingVertical: 12, borderRadius: 12, alignItems: "center", borderWidth: 1,
+  },
+  clearTimeBtnText: { fontSize: 15, fontWeight: "600", lineHeight: 22 },
 });

@@ -73,6 +73,11 @@ export const tasks = mysqlTable("tasks", {
   placesCount: int("placesCount").default(1).notNull(),
   /** Estimated delivery time in minutes */
   estimatedMinutes: int("estimatedMinutes"),
+  /** Delivery time interval — e.g. "10:00" to "14:00" */
+  deliveryTimeFrom: varchar("deliveryTimeFrom", { length: 5 }),
+  deliveryTimeTo: varchar("deliveryTimeTo", { length: 5 }),
+  /** Recipient address (apartment/floor/etc) */
+  recipientAddress: text("recipientAddress"),
   /** Note from courier or manager */
   rejectionReason: text("rejectionReason"),
   /** Timestamps */

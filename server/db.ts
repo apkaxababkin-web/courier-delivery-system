@@ -212,6 +212,16 @@ export async function updateTaskPlaces(taskId: number, placesCount: number): Pro
   await db.update(tasks).set({ placesCount }).where(eq(tasks.id, taskId));
 }
 
+export async function updateTaskTimeInterval(
+  taskId: number,
+  deliveryTimeFrom: string | null,
+  deliveryTimeTo: string | null
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(tasks).set({ deliveryTimeFrom, deliveryTimeTo }).where(eq(tasks.id, taskId));
+}
+
 export async function assignTaskToCourier(
   taskId: number,
   courierId: number | null,
@@ -253,21 +263,25 @@ export async function seedDemoTasks(): Promise<void> {
       status: "pending",
       recipientName: "Иван Петров",
       recipientPhone: "+7 (999) 123-45-67",
-      deliveryAddress: "ул. Ленина, 42, кв. 15",
+      deliveryAddress: "ул. Ленина, 42",
       deliveryCity: "Москва",
-      packageDescription: "Документы А4",
+      recipientAddress: "ул. Ленина, 42, кв. 15",
+      packageDescription: "Документы Ад4",
       packageType: "document",
       specialInstructions: "Позвонить за 10 минут до прибытия",
       estimatedMinutes: 25,
       placesCount: 1,
+      deliveryTimeFrom: "10:00",
+      deliveryTimeTo: "13:00",
     },
     {
       courierId: null,
       status: "pending",
       recipientName: "Мария Сидорова",
       recipientPhone: "+7 (999) 987-65-43",
-      deliveryAddress: "пр. Мира, 18, офис 301",
+      deliveryAddress: "пр. Мира, 18",
       deliveryCity: "Москва",
+      recipientAddress: "пр. Мира, 18, офис 301",
       packageDescription: "Небольшая посылка",
       packageType: "small",
       specialInstructions: null,
@@ -279,13 +293,16 @@ export async function seedDemoTasks(): Promise<void> {
       status: "pending",
       recipientName: "Алексей Козлов",
       recipientPhone: "+7 (999) 555-11-22",
-      deliveryAddress: "ул. Садовая, 7, кв. 88",
+      deliveryAddress: "ул. Садовая, 7",
       deliveryCity: "Москва",
+      recipientAddress: "ул. Садовая, 7, кв. 88",
       packageDescription: "Хрупкий груз — стекло",
       packageType: "fragile",
       specialInstructions: "Осторожно! Хрупкое",
       estimatedMinutes: 55,
       placesCount: 2,
+      deliveryTimeFrom: "14:00",
+      deliveryTimeTo: "18:00",
     },
   ];
 

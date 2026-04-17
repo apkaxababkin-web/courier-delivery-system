@@ -36,6 +36,13 @@
       "when": 1776385719424,
       "tag": "0004_premium_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1776387815773,
+      "tag": "0005_fine_magneto",
+      "breakpoints": true
     }
   ]
 }
