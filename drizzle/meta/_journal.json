@@ -50,20 +50,6 @@
       "when": 1776388886799,
       "tag": "0006_dry_talon",
       "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "5",
-      "when": 1776441775085,
-      "tag": "0007_watery_supernaut",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "5",
-      "when": 1776442805211,
-      "tag": "0008_high_tony_stark",
-      "breakpoints": true
     }
   ]
 }

@@ -117,7 +117,7 @@ export async function incrementCourierDeliveries(courierId: number): Promise<voi
 // ─── Task helpers ─────────────────────────────────────────────────────────────
 
 /** Task with optional courier name attached */
-export type TaskWithCourier = Task & { courierName: string | null; senderPhone?: string | null; comments?: string | null };
+export type TaskWithCourier = Task & { courierName: string | null };
 
 /** Join tasks with courier name */
 async function fetchTasksWithCourier(
@@ -179,7 +179,7 @@ export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCo
     const courier = await getCourierById(task.courierId);
     courierName = courier?.name ?? null;
   }
-  return { ...task, courierName, senderPhone: task.senderPhone, comments: task.comments };
+  return { ...task, courierName };
 }
 
 export async function getTaskById(taskId: number): Promise<Task | null> {
