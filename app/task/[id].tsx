@@ -34,6 +34,7 @@ export default function TaskDetailScreen() {
 
   const [courierPickerVisible, setCourierPickerVisible] = useState(false);
   const [placesModalVisible, setPlacesModalVisible] = useState(false);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [placesInput, setPlacesInput] = useState("");
   const [activeStatusButtons, setActiveStatusButtons] = useState<Set<string>>(new Set());
 
@@ -81,15 +82,15 @@ export default function TaskDetailScreen() {
       Alert.alert("Ошибка", "Адрес не указан");
       return;
     }
-    const encodedAddress = encodeURIComponent(address);
-    const dgisUrl = `dgis://search?q=${encodedAddress}`;
-    const webUrl = `https://2gis.ru/search?q=${encodedAddress}`;
+    // Use geo: scheme for 2GIS which works better
+    const geoUrl = `geo:0,0?q=${encodeURIComponent(address)}`;
+    const dgisUrl = `https://2gis.ru/search?q=${encodeURIComponent(address)}`;
     
-    Linking.canOpenURL(dgisUrl).then((supported) => {
+    Linking.canOpenURL(geoUrl).then((supported) => {
       if (supported) {
-        Linking.openURL(dgisUrl);
+        Linking.openURL(geoUrl);
       } else {
-        Linking.openURL(webUrl);
+        Linking.openURL(dgisUrl);
       }
     });
   };
@@ -150,88 +151,25 @@ export default function TaskDetailScreen() {
 
   return (
     <ScreenContainer className="p-0">
+      {/* Header */}
+      <View className="bg-surface px-4 py-3 flex-row items-center justify-between border-b border-border">
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text className="text-primary text-lg">←</Text>
+        </TouchableOpacity>
+        <Text className="text-lg font-bold text-foreground">Заявка #{task.id}</Text>
+        <StatusBadge status={task.status} />
+      </View>
+
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View className="bg-surface px-4 py-3 flex-row items-center justify-between border-b border-border">
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text className="text-primary text-lg">←</Text>
-          </TouchableOpacity>
-          <Text className="text-lg font-bold text-foreground">Заявка #{task.id}</Text>
-          <StatusBadge status={task.status} />
-        </View>
-
         <View className="px-4 py-4 gap-3">
-          {/* STATUS BUTTONS */}
-          <View className="bg-surface rounded-xl p-4 gap-2">
-            <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-              Статус заявки
-            </Text>
-            <View className="flex-row gap-2">
-              <StatusButton
-                label="В работе"
-                isActive={activeStatusButtons.has("in_progress")}
-                onPress={() => handleToggleStatus("in_progress")}
-                color="#F59E0B"
-              />
-              <StatusButton
-                label="Выполнено"
-                isActive={activeStatusButtons.has("completed")}
-                onPress={() => handleToggleStatus("completed")}
-                color="#22C55E"
-              />
-              <StatusButton
-                label="Отмена"
-                isActive={activeStatusButtons.has("cancelled")}
-                onPress={() => handleToggleStatus("cancelled")}
-                color="#EF4444"
-              />
-            </View>
-          </View>
-
-          {/* COURIER */}
-          <View className="bg-surface rounded-xl p-4">
-            <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-              Курьер
-            </Text>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-base font-semibold text-foreground">
-                {task.courierName || "Не назначен"}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setCourierPickerVisible(true)}
-                className="px-3 py-1.5 border border-primary rounded-lg"
-              >
-                <Text className="text-primary text-xs font-semibold">Изменить</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* PLACE */}
-          <View className="bg-surface rounded-xl p-4">
-            <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-              Место
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                setPlacesInput(task.placesCount?.toString() || "");
-                setPlacesModalVisible(true);
-              }}
-              className="border border-primary rounded-lg py-3 items-center"
-            >
-              <Text className="text-xl font-bold text-foreground">
-                {task.placesCount || 0}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* SENDER */}
-          <View className="bg-surface rounded-xl p-4 gap-2">
+          {/* ОТПРАВИТЕЛЬ */}
+          <View className="bg-surface rounded-2xl p-4 gap-2">
             <Text className="text-xs font-semibold text-muted uppercase tracking-wide">
               Отправитель
             </Text>
-            <Text className="text-base font-semibold text-foreground">{task.senderName}</Text>
+            <Text className="text-base font-bold text-foreground">{task.senderName}</Text>
             
-            {/* Sender Address with Map Icon */}
+            {/* Sender Address */}
             <View className="flex-row items-center justify-between gap-2">
               <Text className="text-sm text-foreground flex-1">{task.senderAddress}</Text>
               <TouchableOpacity
@@ -244,24 +182,26 @@ export default function TaskDetailScreen() {
 
             {/* Sender Phone */}
             {task.senderPhone && (
-              <TouchableOpacity
-                onPress={() => handleCallPhone(task.senderPhone)}
-                className="flex-row items-center gap-2"
-              >
-                <IconSymbol name="paperplane.fill" size={16} color={colors.primary} />
-                <Text className="text-sm text-primary font-medium">{task.senderPhone}</Text>
-              </TouchableOpacity>
+              <View className="flex-row items-center justify-between gap-2">
+                <Text className="text-sm text-foreground">{task.senderPhone}</Text>
+                <TouchableOpacity
+                  onPress={() => handleCallPhone(task.senderPhone)}
+                  className="p-2"
+                >
+                  <IconSymbol name="paperplane.fill" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
-          {/* RECIPIENT */}
-          <View className="bg-surface rounded-xl p-4 gap-2">
+          {/* ПОЛУЧАТЕЛЬ */}
+          <View className="bg-surface rounded-2xl p-4 gap-2">
             <Text className="text-xs font-semibold text-muted uppercase tracking-wide">
               Получатель
             </Text>
-            <Text className="text-base font-semibold text-foreground">{task.recipientName}</Text>
+            <Text className="text-base font-bold text-foreground">{task.recipientName}</Text>
             
-            {/* Recipient Address with Map Icon */}
+            {/* Recipient Address */}
             <View className="flex-row items-center justify-between gap-2">
               <Text className="text-sm text-foreground flex-1">{task.deliveryAddress}</Text>
               <TouchableOpacity
@@ -274,21 +214,23 @@ export default function TaskDetailScreen() {
 
             {/* Recipient Phone */}
             {task.recipientPhone && (
-              <TouchableOpacity
-                onPress={() => handleCallPhone(task.recipientPhone)}
-                className="flex-row items-center gap-2"
-              >
-                <IconSymbol name="paperplane.fill" size={16} color={colors.primary} />
-                <Text className="text-sm text-primary font-medium">{task.recipientPhone}</Text>
-              </TouchableOpacity>
+              <View className="flex-row items-center justify-between gap-2">
+                <Text className="text-sm text-foreground">{task.recipientPhone}</Text>
+                <TouchableOpacity
+                  onPress={() => handleCallPhone(task.recipientPhone)}
+                  className="p-2"
+                >
+                  <IconSymbol name="paperplane.fill" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
           {/* TIME INTERVAL */}
           {(task.deliveryTimeFrom || task.deliveryTimeTo) && (
-            <View className="bg-surface rounded-xl p-4">
+            <View className="bg-surface rounded-2xl p-4">
               <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-                Временной интервал
+                Время доставки
               </Text>
               <Text className="text-base font-semibold text-foreground">
                 {task.deliveryTimeFrom} - {task.deliveryTimeTo}
@@ -298,13 +240,95 @@ export default function TaskDetailScreen() {
 
           {/* COMMENTS */}
           {task.comments && (
-            <View className="bg-surface rounded-xl p-4">
+            <View className="bg-surface rounded-2xl p-4">
               <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-                Посылка
+                Комментарии
               </Text>
               <Text className="text-sm text-foreground leading-relaxed">{task.comments}</Text>
             </View>
           )}
+
+          {/* PLACE */}
+          <View className="bg-surface rounded-2xl p-4">
+            <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
+              Место
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setPlacesInput(task.placesCount?.toString() || "");
+                setPlacesModalVisible(true);
+              }}
+              className="border border-primary rounded-lg py-4 items-center"
+            >
+              <Text className="text-2xl font-bold text-foreground">
+                {task.placesCount || 0}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* STATUS BUTTONS - 2x2 Grid */}
+          <View className="bg-surface rounded-2xl p-4">
+            <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
+              Статус заявки
+            </Text>
+            <View className="gap-2">
+              <View className="flex-row gap-2">
+                <View className="flex-1">
+                  <StatusButton
+                    label="В работе"
+                    isActive={activeStatusButtons.has("in_progress")}
+                    onPress={() => handleToggleStatus("in_progress")}
+                    color="#F59E0B"
+                  />
+                </View>
+                <View className="flex-1">
+                  <StatusButton
+                    label="Выполнено"
+                    isActive={activeStatusButtons.has("completed")}
+                    onPress={() => handleToggleStatus("completed")}
+                    color="#22C55E"
+                  />
+                </View>
+              </View>
+              <View className="flex-row gap-2">
+                <View className="flex-1">
+                  <StatusButton
+                    label="Отмена"
+                    isActive={activeStatusButtons.has("cancelled")}
+                    onPress={() => handleToggleStatus("cancelled")}
+                    color="#EF4444"
+                  />
+                </View>
+                <View className="flex-1">
+                  <StatusButton
+                    label="Перенос даты"
+                    isActive={false}
+                    onPress={() => setDatePickerVisible(true)}
+                    color="#3B82F6"
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* COURIER ASSIGNMENT */}
+          <View className="bg-surface rounded-2xl p-4">
+            <Text className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
+              Курьер
+            </Text>
+            <TouchableOpacity
+              onPress={() => setCourierPickerVisible(true)}
+              className="flex-row items-center justify-between"
+            >
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full bg-green-500" />
+                <Text className="text-base font-semibold text-foreground">
+                  {task.courierName || "Не назначен"}
+                </Text>
+              </View>
+              <Text className="text-lg text-foreground">›</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -380,6 +404,27 @@ export default function TaskDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Date Picker Modal (Placeholder) */}
+      <Modal
+        visible={datePickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDatePickerVisible(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-background rounded-t-2xl p-4 gap-4">
+            <Text className="text-lg font-bold text-foreground">Перенос даты</Text>
+            <Text className="text-sm text-muted">Выберите новую дату доставки</Text>
+            <TouchableOpacity
+              onPress={() => setDatePickerVisible(false)}
+              className="py-3 bg-primary rounded-lg items-center"
+            >
+              <Text className="text-background font-semibold">Закрыть</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -397,12 +442,11 @@ function StatusButton({ label, isActive, onPress, color }: StatusButtonProps) {
       onPress={onPress}
       style={({ pressed }) => [
         {
-          flex: 1,
           backgroundColor: isActive ? color : "transparent",
           borderColor: color,
           borderWidth: 2,
           borderRadius: 8,
-          paddingVertical: 10,
+          paddingVertical: 12,
           paddingHorizontal: 8,
           opacity: pressed ? 0.8 : 1,
         },
@@ -413,7 +457,7 @@ function StatusButton({ label, isActive, onPress, color }: StatusButtonProps) {
           color: isActive ? "#ffffff" : color,
           fontWeight: "600",
           textAlign: "center",
-          fontSize: 12,
+          fontSize: 13,
         }}
       >
         {label}
