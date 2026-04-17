@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import * as Clipboard from "expo-clipboard";
+
 import { skipToken } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -77,28 +77,9 @@ export default function TaskDetailScreen() {
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
-  const handleOpenMap = async (address: string | null | undefined) => {
-    if (!address) return;
-    // Copy address to clipboard
-    await Clipboard.setStringAsync(address);
-    // Show alert with option to open 2GIS
-    Alert.alert(
-      "Адрес скопирован",
-      "Адрес скопирован в буфер обмена. Откроется 2ГИС — вставьте адрес в поиск.",
-      [
-        {
-          text: "Отмена",
-          onPress: () => {},
-          style: "cancel",
-        },
-        {
-          text: "Открыть 2ГИС",
-          onPress: () => {
-            Linking.openURL("https://2gis.ru");
-          },
-        },
-      ]
-    );
+  const handleOpenMap = (url: string | null | undefined) => {
+    if (!url) return;
+    Linking.openURL(url);
   };
 
   const handleCallPhone = (phone: string | null | undefined) => {
@@ -234,9 +215,13 @@ export default function TaskDetailScreen() {
         <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12 }}>
           <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Отправитель</Text>
           <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground, marginBottom: 6 }}>{task.senderName}</Text>
-          <TouchableOpacity onPress={() => handleOpenMap(task.senderAddress)}>
-            <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.senderAddress}</Text>
-          </TouchableOpacity>
+          {task.senderAddressUrl ? (
+            <TouchableOpacity onPress={() => handleOpenMap(task.senderAddressUrl)}>
+              <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.senderAddress}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ fontSize: 13, color: colors.foreground, marginBottom: 4 }}>📍 {task.senderAddress}</Text>
+          )}
           {task.senderPhone && (
             <TouchableOpacity onPress={() => handleCallPhone(task.senderPhone)}>
               <Text style={{ fontSize: 13, color: colors.primary }}>📞 {task.senderPhone}</Text>
@@ -248,9 +233,13 @@ export default function TaskDetailScreen() {
         <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12 }}>
           <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Получатель</Text>
           <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground, marginBottom: 6 }}>{task.recipientName}</Text>
-          <TouchableOpacity onPress={() => handleOpenMap(task.deliveryAddress)}>
-            <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.deliveryAddress}</Text>
-          </TouchableOpacity>
+          {task.recipientAddressUrl ? (
+            <TouchableOpacity onPress={() => handleOpenMap(task.recipientAddressUrl)}>
+              <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.deliveryAddress}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ fontSize: 13, color: colors.foreground, marginBottom: 4 }}>📍 {task.deliveryAddress}</Text>
+          )}
           {task.recipientPhone && (
             <TouchableOpacity onPress={() => handleCallPhone(task.recipientPhone)}>
               <Text style={{ fontSize: 13, color: colors.primary }}>📞 {task.recipientPhone}</Text>

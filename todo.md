@@ -105,6 +105,12 @@
 - [x] Mobile: 2GIS integration — address opens map with search
 - [x] Mobile: phone integration — tap to call functionality
 
+## Manager-Side Address URL Conversion
+- [x] Backend: add senderAddressUrl and recipientAddressUrl fields to tasks table
+- [x] Mobile: task detail — addresses are hyperlinks (if URL provided)
+- [x] Mobile: task detail — addresses are plain text (if no URL provided)
+- [x] Demo data: add 2GIS URLs for all demo task addresses
+
 ## Next Features
 - [ ] **Filter "My Tasks"** — show only tasks assigned to current courier on main screen
 - [ ] Task status history — timeline of all status changes with timestamps

@@ -224,6 +224,8 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+
+
         {/* Logout */}
         <TouchableOpacity
           style={[styles.logoutBtn, { borderColor: colors.error }]}
@@ -430,5 +432,22 @@ const styles = StyleSheet.create({
   logoutText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  navigatorButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  navButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
   },
 });

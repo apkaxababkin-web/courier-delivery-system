@@ -33,6 +33,7 @@ export const couriers = mysqlTable("couriers", {
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   vehicleType: mysqlEnum("vehicleType", ["bicycle", "scooter", "car", "foot"]).default("scooter").notNull(),
+
   isActive: boolean("isActive").default(true).notNull(),
   totalDeliveries: int("totalDeliveries").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -84,6 +85,10 @@ export const tasks = mysqlTable("tasks", {
   senderAddress: text("senderAddress"),
   /** Sender phone number */
   senderPhone: varchar("senderPhone", { length: 20 }),
+  /** 2GIS URL for sender address (set by manager) */
+  senderAddressUrl: text("senderAddressUrl"),
+  /** 2GIS URL for recipient/delivery address (set by manager) */
+  recipientAddressUrl: text("recipientAddressUrl"),
   /** Comments from manager with delivery instructions */
   comments: text("comments"),
   /** Note from courier or manager */
