@@ -43,6 +43,13 @@
       "when": 1776387815773,
       "tag": "0005_fine_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1776388886799,
+      "tag": "0006_dry_talon",
+      "breakpoints": true
     }
   ]
 }

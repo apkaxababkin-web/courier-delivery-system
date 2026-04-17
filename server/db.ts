@@ -261,6 +261,8 @@ export async function seedDemoTasks(): Promise<void> {
     {
       courierId: null,
       status: "pending",
+      senderName: "ООО Альфа Логистика",
+      senderAddress: "ул. Промышленная, 5, склад 3",
       recipientName: "Иван Петров",
       recipientPhone: "+7 (999) 123-45-67",
       deliveryAddress: "ул. Ленина, 42",
@@ -277,6 +279,8 @@ export async function seedDemoTasks(): Promise<void> {
     {
       courierId: null,
       status: "pending",
+      senderName: "ИП Кузнецов А.В.",
+      senderAddress: "пр. Независимости, 10",
       recipientName: "Мария Сидорова",
       recipientPhone: "+7 (999) 987-65-43",
       deliveryAddress: "пр. Мира, 18",
@@ -291,6 +295,8 @@ export async function seedDemoTasks(): Promise<void> {
     {
       courierId: null,
       status: "pending",
+      senderName: "Магазин Хрусталь",
+      senderAddress: "ул. Торговая, 3",
       recipientName: "Алексей Козлов",
       recipientPhone: "+7 (999) 555-11-22",
       deliveryAddress: "ул. Садовая, 7",

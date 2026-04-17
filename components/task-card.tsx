@@ -40,6 +40,8 @@ export interface TaskCardData {
   deliveryAddress: string;
   deliveryCity?: string | null;
   recipientAddress?: string | null;
+  senderName?: string | null;
+  senderAddress?: string | null;
   status: TaskStatus;
   placesCount?: number | null;
   deliveryTimeFrom?: string | null;
@@ -99,15 +101,25 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         </Text>
       </View>
 
-      {/* Row 2: Pickup (sender) address */}
+      {/* Row 2: Sender name (if set) */}
+      {task.senderName ? (
+        <View style={styles.infoRow}>
+          <Text style={[styles.infoLabel, { color: colors.muted }]}>👤 ОТПРАВИТЕЛЬ</Text>
+          <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
+            {task.senderName}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Row 3: Sender address */}
       <View style={styles.infoRow}>
         <Text style={[styles.infoLabel, { color: colors.muted }]}>📍 АДРЕС</Text>
         <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
-          {task.deliveryAddress}{task.deliveryCity ? `, ${task.deliveryCity}` : ""}
+          {task.senderAddress ?? task.deliveryAddress}{task.deliveryCity ? `, ${task.deliveryCity}` : ""}
         </Text>
       </View>
 
-      {/* Row 3: Recipient name */}
+      {/* Row 4: Recipient name */}
       <View style={styles.infoRow}>
         <Text style={[styles.infoLabel, { color: colors.muted }]}>📦 ПОЛУЧАТЕЛЬ</Text>
         <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
@@ -115,10 +127,10 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         </Text>
       </View>
 
-      {/* Row 4: Recipient address (if set) */}
+      {/* Row 5: Recipient address (if set) */}
       {task.recipientAddress ? (
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: colors.muted }]}>🏠 АДРЕС ПОЛУЧ.</Text>
+          <Text style={[styles.infoLabel, { color: colors.muted }]}>🏠 АДРЕС</Text>
           <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
             {task.recipientAddress}
           </Text>

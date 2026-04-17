@@ -137,6 +137,8 @@ export default function TaskListScreen() {
               deliveryAddress: item.deliveryAddress,
               deliveryCity: item.deliveryCity,
               recipientAddress: item.recipientAddress,
+              senderName: item.senderName,
+              senderAddress: item.senderAddress,
               status: item.status as TaskStatus,
               placesCount: item.placesCount,
               deliveryTimeFrom: item.deliveryTimeFrom,

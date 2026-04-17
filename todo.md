@@ -82,3 +82,9 @@
 - [x] Mobile: TaskCard — places count in footer (hidden if not set)
 - [x] Mobile: task detail screen — time interval input fields
 - [x] Mobile: task detail screen — colored dot in courier picker
+
+## Sender Info
+- [x] Backend: add senderName and senderAddress fields to tasks table
+- [x] Mobile: TaskCard — show ОТПРАВИТЕЛЬ name + address, then ПОЛУЧАТЕЛЬ name + address
+- [x] Mobile: task detail — show sender name and address section
+- [x] Demo data: add senderName and senderAddress to seed tasks
