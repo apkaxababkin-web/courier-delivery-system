@@ -82,6 +82,10 @@ export const tasks = mysqlTable("tasks", {
   senderName: varchar("senderName", { length: 255 }),
   /** Sender address (where to pick up the package) */
   senderAddress: text("senderAddress"),
+  /** Sender phone number */
+  senderPhone: varchar("senderPhone", { length: 20 }),
+  /** Comments from manager with delivery instructions */
+  comments: text("comments"),
   /** Note from courier or manager */
   rejectionReason: text("rejectionReason"),
   /** Timestamps */
