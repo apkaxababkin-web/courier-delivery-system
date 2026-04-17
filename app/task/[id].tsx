@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +37,8 @@ export default function TaskDetailScreen() {
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
+  const [placesInputVisible, setPlacesInputVisible] = useState(false);
+  const [placesInput, setPlacesInput] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -48,6 +50,15 @@ export default function TaskDetailScreen() {
     token ? { token } : skipToken
   );
 
+  const statusMutation = trpc.tasks.setStatus.useMutation({
+    onSuccess: () => {
+      utils.tasks.byId.invalidate();
+      utils.tasks.all.invalidate();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
+  });
+
   const assignMutation = trpc.tasks.assignCourier.useMutation({
     onSuccess: () => {
       utils.tasks.byId.invalidate();
@@ -57,39 +68,33 @@ export default function TaskDetailScreen() {
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
-  const statusMutation = trpc.tasks.setStatus.useMutation({
+  const placesMutation = trpc.tasks.updatePlaces.useMutation({
     onSuccess: () => {
       utils.tasks.byId.invalidate();
       utils.tasks.all.invalidate();
-      utils.tasks.history.invalidate();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
-  const placesMutation = trpc.tasks.updatePlaces.useMutation({
-    onSuccess: () => {
-      utils.tasks.byId.invalidate();
-      utils.tasks.all.invalidate();
-    },
-    onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
-  });
-
   const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled") => {
+    const currentStatus = task?.status as string;
+    const finalStatus = currentStatus === newStatus ? "pending" : newStatus;
     const labels: Record<string, string> = {
+      pending: "Не назначен",
       in_progress: "В работе",
       completed: "Выполнено",
       cancelled: "Отменено",
     };
     Alert.alert(
       "Изменить статус",
-      `Перевести заявку в статус «${labels[newStatus]}»?`,
+      `Перевести заявку в статус «${labels[finalStatus]}»?`,
       [
         { text: "Отмена", style: "cancel" },
         {
           text: "Да",
-          style: newStatus === "cancelled" ? "destructive" : "default",
-          onPress: () => statusMutation.mutate({ token: token!, taskId, status: newStatus }),
+          style: finalStatus === "cancelled" ? "destructive" : "default",
+          onPress: () => statusMutation.mutate({ token: token!, taskId, status: finalStatus as any }),
         },
       ]
     );
@@ -127,22 +132,24 @@ export default function TaskDetailScreen() {
     });
   };
 
-  const handleCall = () => {
-    if (task?.recipientPhone) Linking.openURL(`tel:${task.recipientPhone}`);
+  const handleCallPhone = (phone: string) => {
+    Linking.openURL(`tel:${phone}`);
   };
 
-  if (!token) {
-    return (
-      <ScreenContainer className="p-6">
-        <View style={styles.center}>
-          <Text style={[styles.errorText, { color: colors.error }]}>Необходима авторизация</Text>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={[styles.backLink, { color: colors.primary }]}>← Назад</Text>
-          </TouchableOpacity>
-        </View>
-      </ScreenContainer>
-    );
-  }
+  const handleOpenMap = (address: string, city?: string) => {
+    const fullAddress = city ? `${address}, ${city}` : address;
+    const encodedAddress = encodeURIComponent(fullAddress);
+    const dgisUrl = `dgis://2gis.com/search?q=${encodedAddress}`;
+    const googleMapsUrl = `https://www.google.com/maps/search/${encodedAddress}`;
+    
+    Linking.canOpenURL(dgisUrl).then((supported) => {
+      if (supported) {
+        Linking.openURL(dgisUrl);
+      } else {
+        Linking.openURL(googleMapsUrl);
+      }
+    });
+  };
 
   if (isLoading) {
     return (
@@ -200,7 +207,7 @@ export default function TaskDetailScreen() {
                     : { borderColor: colors.warning, backgroundColor: "transparent" },
                 ]}
                 onPress={() => handleSetStatus("in_progress")}
-                disabled={status === "in_progress" || isMutating}
+                disabled={isMutating}
               >
                 <Text style={[styles.statusBtnText, { color: status === "in_progress" ? "#fff" : colors.warning }]}>🚴 В работе</Text>
               </TouchableOpacity>
@@ -276,32 +283,20 @@ export default function TaskDetailScreen() {
           </View>
         </View>
 
-        {/* ── Places counter ── */}
+        {/* ── Places ── */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.muted }]}>КОЛИЧЕСТВО МЕСТ</Text>
+          <Text style={[styles.sectionTitle, { color: colors.muted }]}>МЕСТО</Text>
           {!isFinished ? (
-            <View style={styles.placesRow}>
-              <TouchableOpacity
-                style={[styles.placesBtn, { backgroundColor: colors.border }]}
-                onPress={() => handleChangePlaces(-1)}
-                disabled={places <= 1 || placesMutation.isPending}
-              >
-                <Text style={[styles.placesBtnText, { color: colors.foreground }]}>−</Text>
-              </TouchableOpacity>
-              <View style={[styles.placesValue, { borderColor: colors.border }]}>
-                <Text style={[styles.placesValueText, { color: colors.foreground }]}>{places}</Text>
-                <Text style={[styles.placesUnit, { color: colors.muted }]}>
-                  {places === 1 ? "место" : places < 5 ? "места" : "мест"}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.placesBtn, { backgroundColor: colors.border }]}
-                onPress={() => handleChangePlaces(1)}
-                disabled={places >= 999 || placesMutation.isPending}
-              >
-                <Text style={[styles.placesBtnText, { color: colors.foreground }]}>+</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[styles.assignBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
+              onPress={() => {
+                setPlacesInput(places.toString());
+                setPlacesInputVisible(true);
+              }}
+              disabled={placesMutation.isPending}
+            >
+              <Text style={[styles.placesValueText, { color: colors.foreground, textAlign: "center", fontSize: 18, fontWeight: "bold" }]}>{places}</Text>
+            </TouchableOpacity>
           ) : (
             <Text style={[styles.placesValueText, { color: colors.foreground }]}>
               📦 {places} {places === 1 ? "место" : places < 5 ? "места" : "мест"}
@@ -309,28 +304,56 @@ export default function TaskDetailScreen() {
           )}
         </View>
 
+        {/* ── Sender ── */}
+        {(task.senderName || task.senderAddress || task.senderPhone) && (
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.muted }]}>ОТПРАВИТЕЛЬ</Text>
+            {task.senderName && (
+              <Text style={[styles.recipientName, { color: colors.foreground }]}>{task.senderName}</Text>
+            )}
+            {task.senderPhone && (
+              <TouchableOpacity style={styles.phoneRow} onPress={() => handleCallPhone(task.senderPhone || "")}>
+                <IconSymbol name={icon("phone.fill")} size={16} color={colors.primary} />
+                <Text style={[styles.phone, { color: colors.primary }]}>{task.senderPhone}</Text>
+                <Text style={[styles.callHint, { color: colors.muted }]}>Нажмите для звонка</Text>
+              </TouchableOpacity>
+            )}
+            {task.senderAddress && (
+              <TouchableOpacity 
+                style={styles.addressRow}
+                onPress={() => handleOpenMap(task.senderAddress || "", task.deliveryCity || undefined)}
+              >
+                <IconSymbol name={icon("mappin.fill")} size={18} color={colors.error} />
+                <Text style={[styles.address, { color: colors.foreground }]}>
+                  {task.senderAddress}
+                </Text>
+                <IconSymbol name={icon("mappin.fill")} size={14} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* ── Recipient ── */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.muted }]}>ПОЛУЧАТЕЛЬ</Text>
           <Text style={[styles.recipientName, { color: colors.foreground }]}>{task.recipientName}</Text>
-          {task.recipientPhone ? (
-            <TouchableOpacity style={styles.phoneRow} onPress={handleCall}>
+          {task.recipientPhone && (
+            <TouchableOpacity style={styles.phoneRow} onPress={() => handleCallPhone(task.recipientPhone || "")}>
               <IconSymbol name={icon("phone.fill")} size={16} color={colors.primary} />
               <Text style={[styles.phone, { color: colors.primary }]}>{task.recipientPhone}</Text>
               <Text style={[styles.callHint, { color: colors.muted }]}>Нажмите для звонка</Text>
             </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* ── Address ── */}
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.muted }]}>АДРЕС ДОСТАВКИ</Text>
-          <View style={styles.addressRow}>
+          )}
+          <TouchableOpacity 
+            style={styles.addressRow}
+            onPress={() => handleOpenMap(task.deliveryAddress || "", task.deliveryCity || undefined)}
+          >
             <IconSymbol name={icon("mappin.fill")} size={18} color={colors.error} />
             <Text style={[styles.address, { color: colors.foreground }]}>
               {task.deliveryAddress}{task.deliveryCity ? `, ${task.deliveryCity}` : ""}
             </Text>
-          </View>
+            <IconSymbol name={icon("mappin.fill")} size={14} color={colors.primary} />
+          </TouchableOpacity>
           {task.estimatedMinutes ? (
             <View style={styles.estimateRow}>
               <IconSymbol name={icon("clock")} size={14} color={colors.muted} />
@@ -341,6 +364,14 @@ export default function TaskDetailScreen() {
           ) : null}
         </View>
 
+        {/* ── Comments ── */}
+        {task.comments && (
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.error + "44", borderWidth: 1.5 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.muted }]}>КОММЕНТАРИИ</Text>
+            <Text style={[styles.commentsText, { color: colors.foreground }]}>{task.comments || ""}</Text>
+          </View>
+        )}
+
         {/* ── Time interval ── */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.muted }]}>ВРЕМЕННОЙ ИНТЕРВАЛ</Text>
@@ -349,61 +380,33 @@ export default function TaskDetailScreen() {
               <View style={styles.addressRow}>
                 <IconSymbol name={icon("clock")} size={16} color={colors.primary} />
                 <Text style={[styles.address, { color: colors.foreground }]}>
-                  {task.deliveryTimeFrom ?? "?"} – {task.deliveryTimeTo ?? "?"}
+                  {task.deliveryTimeFrom} - {task.deliveryTimeTo}
                 </Text>
               </View>
             ) : (
-              <Text style={[styles.courierNameText, { color: colors.muted, fontSize: 14 }]}>
-                Не указан
-              </Text>
+              <Text style={[styles.address, { color: colors.muted }]}>Не указан</Text>
             )}
             {!isFinished && (
               <TouchableOpacity
                 style={[styles.assignBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
                 onPress={() => {
-                  setTimeFrom(task.deliveryTimeFrom ?? "");
-                  setTimeTo(task.deliveryTimeTo ?? "");
+                  setTimeFrom(task.deliveryTimeFrom || "");
+                  setTimeTo(task.deliveryTimeTo || "");
                   setTimePickerVisible(true);
                 }}
-                disabled={isMutating}
+                disabled={timeIntervalMutation.isPending}
               >
                 <Text style={[styles.assignBtnText, { color: colors.primary }]}>
-                  {(task.deliveryTimeFrom || task.deliveryTimeTo) ? "Изменить" : "Указать"}
+                  {timeIntervalMutation.isPending ? "..." : "Указать"}
                 </Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {/* ── Package ── */}
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.muted }]}>ПОСЫЛКА</Text>
-          <View style={styles.packageRow}>
-            <IconSymbol name={icon("shippingbox.fill")} size={16} color={colors.primary} />
-            <Text style={[styles.packageType, { color: colors.foreground }]}>
-              {PACKAGE_TYPE_LABELS[task.packageType as PackageType] ?? task.packageType}
-            </Text>
-          </View>
-          {task.packageDescription ? (
-            <Text style={[styles.packageDesc, { color: colors.muted }]}>{task.packageDescription}</Text>
-          ) : null}
-        </View>
-
-        {/* ── Special instructions ── */}
-        {task.specialInstructions ? (
-          <View style={[styles.card, { backgroundColor: colors.warning + "11", borderColor: colors.warning + "55" }]}>
-            <View style={styles.warningHeader}>
-              <IconSymbol name={icon("exclamationmark.triangle.fill")} size={16} color={colors.warning} />
-              <Text style={[styles.sectionTitle, { color: colors.warning }]}>ОСОБЫЕ УКАЗАНИЯ</Text>
-            </View>
-            <Text style={[styles.instructions, { color: colors.foreground }]}>{task.specialInstructions}</Text>
-          </View>
-        ) : null}
-
-        <View style={{ height: 32 }} />
       </ScrollView>
 
-      {/* ── Time interval modal ── */}
+      {/* ── Time picker modal ── */}
       <Modal
         visible={timePickerVisible}
         animationType="slide"
@@ -526,6 +529,59 @@ export default function TaskDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Places input modal ── */}
+      <Modal
+        visible={placesInputVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setPlacesInputVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.background, maxHeight: "60%" }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Количество мест</Text>
+              <TouchableOpacity onPress={() => setPlacesInputVisible(false)}>
+                <Text style={[styles.modalClose, { color: colors.muted }]}>Закрыть</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 20, gap: 16 }}>
+              <TextInput
+                style={[styles.timeInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.surface, fontSize: 32, textAlign: "center", fontWeight: "bold" }]}
+                value={placesInput}
+                onChangeText={setPlacesInput}
+                placeholder="0"
+                placeholderTextColor={colors.muted}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  const num = parseInt(placesInput, 10);
+                  if (!isNaN(num) && num > 0 && num <= 999) {
+                    placesMutation.mutate({ token: token!, taskId, placesCount: num });
+                    setPlacesInputVisible(false);
+                  }
+                }}
+                autoFocus
+              />
+              <TouchableOpacity
+                style={[styles.saveTimeBtn, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  const num = parseInt(placesInput, 10);
+                  if (!isNaN(num) && num > 0 && num <= 999) {
+                    placesMutation.mutate({ token: token!, taskId, placesCount: num });
+                    setPlacesInputVisible(false);
+                  }
+                }}
+                disabled={placesMutation.isPending}
+              >
+                <Text style={styles.saveTimeBtnText}>
+                  {placesMutation.isPending ? "Сохраняю..." : "Сохранить"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -535,78 +591,61 @@ const styles = StyleSheet.create({
   navHeader: {
     flexDirection: "row", alignItems: "center",
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 0.5, gap: 12,
+    borderBottomWidth: 1,
   },
-  backBtn: { padding: 4 },
-  navTitle: { flex: 1, fontSize: 18, fontWeight: "600", lineHeight: 24 },
-  scrollContent: { padding: 16, gap: 12 },
-  card: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 8 },
-  sectionTitle: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8, lineHeight: 16 },
-  // Status buttons
-  statusBtns: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  backBtn: { padding: 8, marginRight: 12 },
+  navTitle: { flex: 1, fontSize: 18, fontWeight: "600" },
+  scrollContent: { paddingHorizontal: 16, paddingVertical: 16, gap: 12 },
+  card: {
+    borderRadius: 12, borderWidth: 1, padding: 16, gap: 8,
+  },
+  sectionTitle: { fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
+  statusBtns: { flexDirection: "row", gap: 8 },
   statusBtn: {
-    flex: 1, minWidth: 90, paddingVertical: 11, paddingHorizontal: 8,
-    borderRadius: 10, borderWidth: 1.5, alignItems: "center",
+    flex: 1, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 8,
+    borderWidth: 2, alignItems: "center", justifyContent: "center",
   },
-  statusBtnText: { fontSize: 13, fontWeight: "700", lineHeight: 18 },
-  // Done banner
+  statusBtnText: { fontSize: 13, fontWeight: "600", textAlign: "center" },
   doneBanner: {
-    borderRadius: 14, borderWidth: 1, padding: 20, alignItems: "center", gap: 8,
+    borderRadius: 12, borderWidth: 1, padding: 16,
+    alignItems: "center", justifyContent: "center", gap: 8,
   },
-  doneText: { fontSize: 17, fontWeight: "700", lineHeight: 22 },
-  // Courier
-  courierRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  courierNameText: { fontSize: 16, fontWeight: "600", lineHeight: 22, flex: 1 },
-  assignBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
-  assignBtnText: { fontSize: 13, fontWeight: "600", lineHeight: 18 },
-  // Places
+  doneText: { fontSize: 16, fontWeight: "600" },
+  courierRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  courierNameText: { fontSize: 16, fontWeight: "600", flex: 1 },
+  assignBtn: {
+    paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6,
+    borderWidth: 1,
+  },
+  assignBtnText: { fontSize: 13, fontWeight: "600" },
+  placesValueText: { fontSize: 16, fontWeight: "600" },
+  placesUnit: { fontSize: 12 },
   placesRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  placesBtn: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  placesBtnText: { fontSize: 22, fontWeight: "600", lineHeight: 28 },
-  placesValue: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-  placesValueText: { fontSize: 24, fontWeight: "700", lineHeight: 30 },
-  placesUnit: { fontSize: 12, lineHeight: 16, marginTop: 2 },
-  // Recipient
-  recipientName: { fontSize: 20, fontWeight: "700", lineHeight: 26 },
-  phoneRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
-  phone: { fontSize: 16, fontWeight: "600", lineHeight: 22 },
-  callHint: { fontSize: 12, lineHeight: 16 },
-  // Address
-  addressRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  address: { flex: 1, fontSize: 16, lineHeight: 22 },
-  estimateRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
-  estimate: { fontSize: 13, lineHeight: 18 },
-  // Package
-  packageRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  packageType: { fontSize: 16, fontWeight: "600", lineHeight: 22 },
-  packageDesc: { fontSize: 14, lineHeight: 20 },
-  warningHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
-  instructions: { fontSize: 14, lineHeight: 20 },
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  modalSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "70%", minHeight: 200 },
-  modalHeader: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    padding: 16, borderBottomWidth: 0.5,
-  },
-  modalTitle: { fontSize: 17, fontWeight: "700", lineHeight: 22 },
-  modalClose: { fontSize: 16, lineHeight: 22 },
-  courierOption: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5, gap: 2 },
-  courierOptionText: { fontSize: 16, fontWeight: "500", lineHeight: 22 },
-  courierOptionSub: { fontSize: 13, lineHeight: 18 },
+  placesBtn: { width: 44, height: 44, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  placesBtnText: { fontSize: 20, fontWeight: "600" },
+  placesValue: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 8, borderWidth: 1 },
+  recipientName: { fontSize: 16, fontWeight: "600", marginBottom: 8 },
+  phoneRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
+  phone: { fontSize: 14, fontWeight: "600", flex: 1 },
+  callHint: { fontSize: 12 },
+  addressRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
+  address: { fontSize: 14, fontWeight: "500", flex: 1 },
+  estimateRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
+  estimate: { fontSize: 12 },
+  commentsText: { fontSize: 14, lineHeight: 20 },
   errorText: { fontSize: 16, fontWeight: "600" },
-  backLink: { fontSize: 15, fontWeight: "500" },
-  // Time interval
-  timeInput: {
-    borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 17, lineHeight: 22,
-  },
-  saveTimeBtn: {
-    paddingVertical: 14, borderRadius: 12, alignItems: "center",
-  },
-  saveTimeBtnText: { fontSize: 16, fontWeight: "700", color: "#fff", lineHeight: 22 },
-  clearTimeBtn: {
-    paddingVertical: 12, borderRadius: 12, alignItems: "center", borderWidth: 1,
-  },
-  clearTimeBtnText: { fontSize: 15, fontWeight: "600", lineHeight: 22 },
+  backLink: { fontSize: 14, fontWeight: "600", marginTop: 12 },
+  modalOverlay: { flex: 1, backgroundColor: "#00000055", justifyContent: "flex-end" },
+  modalSheet: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "80%" },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
+  modalTitle: { fontSize: 16, fontWeight: "600" },
+  modalClose: { fontSize: 14, fontWeight: "600" },
+  timeInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },
+  saveTimeBtn: { paddingVertical: 12, borderRadius: 8, alignItems: "center" },
+  saveTimeBtnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  clearTimeBtn: { paddingVertical: 12, borderRadius: 8, alignItems: "center", borderWidth: 1 },
+  clearTimeBtnText: { fontSize: 14, fontWeight: "600" },
+  courierOption: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
+  courierOptionText: { fontSize: 15, fontWeight: "500" },
+  courierOptionSub: { fontSize: 12, marginTop: 4 },
 });
