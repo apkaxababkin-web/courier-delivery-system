@@ -57,3 +57,18 @@
 - [x] Mobile: update filter tabs to match new statuses
 - [x] Mobile: update StatusBadge labels
 - [x] Mobile: update TaskCard to show new statuses
+
+## Task Card Rework v2
+- [x] Backend: add placesCount field to tasks (default 1)
+- [x] Backend: API to update placesCount (courier or manager)
+- [x] Backend: API tasks.all — all tasks visible to all couriers
+- [x] Backend: API tasks.assignCourier — courier can assign any courier to a task
+- [x] Backend: API tasks.setStatus — set status (in_progress, completed, cancelled)
+- [x] Backend: API couriers.list — list all couriers (for picker)
+- [x] Mobile: main screen shows ALL tasks (not just assigned to me)
+- [x] Mobile: TaskCard shows courier name under status badge
+- [x] Mobile: TaskCard shows "Не назначен" if no courier
+- [x] Mobile: task detail — courier picker (dropdown/modal with all couriers)
+- [x] Mobile: task detail — status buttons: В работе / Выполнено / Отменено
+- [x] Mobile: task detail — places counter (default 1, +/- buttons)
+- [x] Mobile: task detail — show assigned courier name

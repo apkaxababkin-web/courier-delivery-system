@@ -13,7 +13,7 @@ export default function HistoryScreen() {
   const router = useRouter();
   const { token, isAuthenticated } = useCourierAuth();
 
-  const { data: tasks, isLoading } = trpc.tasks.myHistory.useQuery(
+  const { data: tasks, isLoading } = trpc.tasks.history.useQuery(
     token ? { token } : skipToken
   );
 

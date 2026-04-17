@@ -29,6 +29,13 @@
       "when": 1776384303129,
       "tag": "0003_acoustic_scourge",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1776385719424,
+      "tag": "0004_premium_gravity",
+      "breakpoints": true
     }
   ]
 }

@@ -69,6 +69,8 @@ export const tasks = mysqlTable("tasks", {
   packageType: mysqlEnum("packageType", ["document", "small", "medium", "large", "fragile"]).default("small").notNull(),
   /** Special instructions for the courier */
   specialInstructions: text("specialInstructions"),
+  /** Number of packages/boxes (places). Default 1 */
+  placesCount: int("placesCount").default(1).notNull(),
   /** Estimated delivery time in minutes */
   estimatedMinutes: int("estimatedMinutes"),
   /** Note from courier or manager */

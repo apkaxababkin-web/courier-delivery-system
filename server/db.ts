@@ -101,41 +101,85 @@ export async function updateCourier(id: number, data: Partial<InsertCourier>): P
 export async function getAllCouriers(): Promise<Courier[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(couriers);
+  return db.select().from(couriers).orderBy(couriers.name);
+}
+
+export async function incrementCourierDeliveries(courierId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const courier = await getCourierById(courierId);
+  if (!courier) return;
+  await db.update(couriers)
+    .set({ totalDeliveries: courier.totalDeliveries + 1 })
+    .where(eq(couriers.id, courierId));
 }
 
 // ─── Task helpers ─────────────────────────────────────────────────────────────
 
-export async function getActiveTasksForCourier(courierId: number): Promise<Task[]> {
+/** Task with optional courier name attached */
+export type TaskWithCourier = Task & { courierName: string | null };
+
+/** Join tasks with courier name */
+async function fetchTasksWithCourier(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  whereClause?: Parameters<typeof db.select>[0] extends undefined ? undefined : unknown
+): Promise<TaskWithCourier[]> {
+  // Fetch tasks and couriers separately, then join in JS
+  const allTasks = whereClause
+    ? await (whereClause as () => Promise<Task[]>)()
+    : await db.select().from(tasks).orderBy(desc(tasks.createdAt));
+  const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
+  const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
+  return allTasks.map((t) => ({
+    ...t,
+    courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+  }));
+}
+
+export async function getAllTasksWithCourier(): Promise<TaskWithCourier[]> {
   const db = await getDb();
   if (!db) return [];
-  return db
+  const allTasks = await db
     .select()
     .from(tasks)
-    .where(and(
-      eq(tasks.courierId, courierId),
-      inArray(tasks.status, ["assigned", "in_progress"])
-    ))
+    .where(inArray(tasks.status, ["pending", "assigned", "in_progress"]))
     .orderBy(desc(tasks.createdAt));
+  const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
+  const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
+  return allTasks.map((t) => ({
+    ...t,
+    courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+  }));
 }
 
-export async function getTaskHistoryForCourier(courierId: number): Promise<Task[]> {
+export async function getCompletedTasksWithCourier(): Promise<TaskWithCourier[]> {
   const db = await getDb();
   if (!db) return [];
-  return db
+  const allTasks = await db
     .select()
     .from(tasks)
-    .where(and(
-      eq(tasks.courierId, courierId),
-      inArray(tasks.status, ["completed", "cancelled"])
-    ))
+    .where(inArray(tasks.status, ["completed", "cancelled"]))
     .orderBy(desc(tasks.updatedAt));
+  const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
+  const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
+  return allTasks.map((t) => ({
+    ...t,
+    courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+  }));
 }
 
-export async function getAllTasks(): Promise<Task[]> {
+export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCourier | null> {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(tasks).orderBy(desc(tasks.createdAt));
+  if (!db) return null;
+  const rows = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  const task = rows[0] ?? null;
+  if (!task) return null;
+  let courierName: string | null = null;
+  if (task.courierId) {
+    const courier = await getCourierById(task.courierId);
+    courierName = courier?.name ?? null;
+  }
+  return { ...task, courierName };
 }
 
 export async function getTaskById(taskId: number): Promise<Task | null> {
@@ -162,20 +206,20 @@ export async function updateTaskStatus(
   await db.update(tasks).set({ status, ...extra }).where(eq(tasks.id, taskId));
 }
 
-export async function incrementCourierDeliveries(courierId: number): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  const courier = await getCourierById(courierId);
-  if (!courier) return;
-  await db.update(couriers)
-    .set({ totalDeliveries: courier.totalDeliveries + 1 })
-    .where(eq(couriers.id, courierId));
-}
-
-export async function assignTaskToCourier(taskId: number, courierId: number): Promise<void> {
+export async function updateTaskPlaces(taskId: number, placesCount: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(tasks).set({ courierId, status: "assigned" }).where(eq(tasks.id, taskId));
+  await db.update(tasks).set({ placesCount }).where(eq(tasks.id, taskId));
+}
+
+export async function assignTaskToCourier(
+  taskId: number,
+  courierId: number | null,
+  status: Task["status"]
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(tasks).set({ courierId, status }).where(eq(tasks.id, taskId));
 }
 
 // ─── Task status history ──────────────────────────────────────────────────────
@@ -198,10 +242,62 @@ export async function getTaskStatusHistory(taskId: number) {
 
 // ─── Seed helpers ─────────────────────────────────────────────────────────────
 
-export async function seedDemoTasksForCourier(courierId: number): Promise<void> {
+/** Seed demo tasks without assigning to any courier (pending state) */
+export async function seedDemoTasks(): Promise<void> {
   const db = await getDb();
   if (!db) return;
 
+  const demoTasks: InsertTask[] = [
+    {
+      courierId: null,
+      status: "pending",
+      recipientName: "Иван Петров",
+      recipientPhone: "+7 (999) 123-45-67",
+      deliveryAddress: "ул. Ленина, 42, кв. 15",
+      deliveryCity: "Москва",
+      packageDescription: "Документы А4",
+      packageType: "document",
+      specialInstructions: "Позвонить за 10 минут до прибытия",
+      estimatedMinutes: 25,
+      placesCount: 1,
+    },
+    {
+      courierId: null,
+      status: "pending",
+      recipientName: "Мария Сидорова",
+      recipientPhone: "+7 (999) 987-65-43",
+      deliveryAddress: "пр. Мира, 18, офис 301",
+      deliveryCity: "Москва",
+      packageDescription: "Небольшая посылка",
+      packageType: "small",
+      specialInstructions: null,
+      estimatedMinutes: 40,
+      placesCount: 3,
+    },
+    {
+      courierId: null,
+      status: "pending",
+      recipientName: "Алексей Козлов",
+      recipientPhone: "+7 (999) 555-11-22",
+      deliveryAddress: "ул. Садовая, 7, кв. 88",
+      deliveryCity: "Москва",
+      packageDescription: "Хрупкий груз — стекло",
+      packageType: "fragile",
+      specialInstructions: "Осторожно! Хрупкое",
+      estimatedMinutes: 55,
+      placesCount: 2,
+    },
+  ];
+
+  for (const task of demoTasks) {
+    await db.insert(tasks).values(task);
+  }
+}
+
+// Keep old function for backward compat
+export async function seedDemoTasksForCourier(courierId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
   const demoTasks: InsertTask[] = [
     {
       courierId,
@@ -214,33 +310,9 @@ export async function seedDemoTasksForCourier(courierId: number): Promise<void> 
       packageType: "document",
       specialInstructions: "Позвонить за 10 минут до прибытия",
       estimatedMinutes: 25,
-    },
-    {
-      courierId,
-      status: "assigned",
-      recipientName: "Мария Сидорова",
-      recipientPhone: "+7 (999) 987-65-43",
-      deliveryAddress: "пр. Мира, 18, офис 301",
-      deliveryCity: "Москва",
-      packageDescription: "Небольшая посылка",
-      packageType: "small",
-      specialInstructions: null,
-      estimatedMinutes: 40,
-    },
-    {
-      courierId,
-      status: "assigned",
-      recipientName: "Алексей Козлов",
-      recipientPhone: "+7 (999) 555-11-22",
-      deliveryAddress: "ул. Садовая, 7, кв. 88",
-      deliveryCity: "Москва",
-      packageDescription: "Хрупкий груз — стекло",
-      packageType: "fragile",
-      specialInstructions: "Осторожно! Хрупкое",
-      estimatedMinutes: 55,
+      placesCount: 1,
     },
   ];
-
   for (const task of demoTasks) {
     await db.insert(tasks).values(task);
   }

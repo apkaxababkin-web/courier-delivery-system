@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -12,79 +12,61 @@ import { useRouter } from "expo-router";
 import { skipToken } from "@tanstack/react-query";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { TaskCard, type TaskCardData } from "@/components/task-card";
+import { StatusBadge } from "@/components/status-badge";
+import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
-import type { TaskStatus } from "@/shared/types";
+import { PACKAGE_TYPE_LABELS, type PackageType, type TaskStatus } from "@/shared/types";
 
-type FilterTab = "new" | "active" | "all";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const icon = (name: string) => name as any;
 
-const FILTER_TABS: { key: FilterTab; label: string; statuses: TaskStatus[] }[] = [
-  { key: "new",    label: "Новые",   statuses: ["assigned"] },
-  { key: "active", label: "В пути",  statuses: ["in_progress"] },
-  { key: "all",    label: "Все",     statuses: ["assigned", "in_progress"] },
+type FilterTab = "active" | "history";
+
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: "active",  label: "Активные" },
+  { key: "history", label: "История" },
 ];
 
 export default function TaskListScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { token, courier, isAuthenticated, loading: authLoading } = useCourierAuth();
-  const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
+  const { token, courier } = useCourierAuth();
+  const [tab, setTab] = useState<FilterTab>("active");
 
   const {
-    data: tasks,
-    isLoading,
-    refetch,
-    isRefetching,
-  } = trpc.tasks.myActive.useQuery(
-    token ? { token } : skipToken,
-    { refetchInterval: 15000 }
-  );
+    data: activeTasks,
+    isLoading: loadingActive,
+    refetch: refetchActive,
+    isRefetching: refreshingActive,
+  } = trpc.tasks.all.useQuery(token ? { token } : skipToken);
+
+  const {
+    data: historyTasks,
+    isLoading: loadingHistory,
+    refetch: refetchHistory,
+    isRefetching: refreshingHistory,
+  } = trpc.tasks.history.useQuery(token ? { token } : skipToken);
 
   const seedMutation = trpc.tasks.seedDemo.useMutation({
-    onSuccess: () => refetch(),
+    onSuccess: () => { refetchActive(); refetchHistory(); },
   });
 
-  const currentFilter = FILTER_TABS.find((f) => f.key === activeFilter)!;
-  const filteredTasks = (tasks ?? []).filter((t) =>
-    currentFilter.statuses.includes(t.status as TaskStatus)
-  ) as TaskCardData[];
+  const tasks = tab === "active" ? (activeTasks ?? []) : (historyTasks ?? []);
+  const isLoading = tab === "active" ? loadingActive : loadingHistory;
+  const isRefreshing = tab === "active" ? refreshingActive : refreshingHistory;
+  const refetch = tab === "active" ? refetchActive : refetchHistory;
 
-  const handleTaskPress = useCallback(
-    (task: TaskCardData) => {
-      router.push({ pathname: "/task/[id]" as any, params: { id: task.id } });
-    },
-    [router]
-  );
-
-  if (authLoading) {
-    return (
-      <ScreenContainer>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  if (!isAuthenticated) {
+  if (!token) {
     return (
       <ScreenContainer className="p-6">
         <View style={styles.center}>
-          <Text style={styles.emptyIcon}>📦</Text>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            Войдите в аккаунт
-          </Text>
+          <Text style={{ fontSize: 40 }}>📦</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Войдите в аккаунт</Text>
           <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-            Для просмотра заданий необходимо войти в систему
+            Перейдите на вкладку «Профиль» и введите логин и пароль
           </Text>
-          <TouchableOpacity
-            style={[styles.loginBtn, { backgroundColor: colors.primary }]}
-            onPress={() => router.push("/(tabs)/profile" as any)}
-          >
-            <Text style={styles.loginBtnText}>Перейти к входу</Text>
-          </TouchableOpacity>
         </View>
       </ScreenContainer>
     );
@@ -95,89 +77,129 @@ export default function TaskListScreen() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <View>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Мои задания</Text>
-          <Text style={[styles.headerSub, { color: colors.muted }]}>
-            {courier?.name ?? "Курьер"}
-          </Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Заявки</Text>
+          {courier && (
+            <Text style={[styles.headerSub, { color: colors.muted }]}>{courier.name}</Text>
+          )}
         </View>
-        <View style={[styles.badge, { backgroundColor: colors.primary + "18" }]}>
-          <Text style={[styles.badgeText, { color: colors.primary }]}>
-            {(tasks ?? []).length}
+        <TouchableOpacity
+          style={[styles.seedBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
+          onPress={() => seedMutation.mutate({ token })}
+          disabled={seedMutation.isPending}
+        >
+          <Text style={[styles.seedBtnText, { color: colors.primary }]}>
+            {seedMutation.isPending ? "..." : "+ Демо"}
           </Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Filter tabs */}
-      <View style={[styles.filterRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {FILTER_TABS.map((tab) => {
-          const isActive = activeFilter === tab.key;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={[
-                styles.filterTab,
-                isActive && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
-              ]}
-              onPress={() => setActiveFilter(tab.key)}
-            >
-              <Text
-                style={[
-                  styles.filterLabel,
-                  { color: isActive ? colors.primary : colors.muted },
-                  isActive && { fontWeight: "600" },
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View style={[styles.tabs, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        {FILTER_TABS.map((t) => (
+          <TouchableOpacity
+            key={t.key}
+            style={[
+              styles.tab,
+              tab === t.key && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
+            ]}
+            onPress={() => setTab(t.key)}
+          >
+            <Text style={[styles.tabText, { color: tab === t.key ? colors.primary : colors.muted }]}>
+              {t.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Task list */}
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.muted }]}>Загрузка заданий...</Text>
         </View>
       ) : (
         <FlatList
-          data={filteredTasks}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            <TaskCard task={item} onPress={handleTaskPress} />
-          )}
-          contentContainerStyle={[
-            styles.listContent,
-            filteredTasks.length === 0 && styles.listEmpty,
-          ]}
+          data={tasks}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.list}
           refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
-              tintColor={colors.primary}
-            />
+            <RefreshControl refreshing={isRefreshing} onRefresh={refetch} tintColor={colors.primary} />
           }
           ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>📦</Text>
+            <View style={styles.center}>
+              <Text style={{ fontSize: 48 }}>📋</Text>
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                Нет активных заданий
+                {tab === "active" ? "Нет активных заявок" : "История пуста"}
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                Новые задания появятся здесь автоматически
+                {tab === "active" ? "Нажмите «+ Демо» для тестовых заявок" : "Выполненные заявки появятся здесь"}
               </Text>
-              <TouchableOpacity
-                style={[styles.seedBtn, { borderColor: colors.primary }]}
-                onPress={() => token && seedMutation.mutate({ token })}
-                disabled={seedMutation.isPending}
-              >
-                <Text style={[styles.seedBtnText, { color: colors.primary }]}>
-                  {seedMutation.isPending ? "Загрузка..." : "Загрузить демо-задания"}
-                </Text>
-              </TouchableOpacity>
             </View>
           }
+          renderItem={({ item }) => {
+            const status = item.status as TaskStatus;
+            return (
+              <TouchableOpacity
+                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => router.push(`/task/${item.id}` as never)}
+                activeOpacity={0.75}
+              >
+                {/* Top row */}
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardHeaderLeft}>
+                    <Text style={[styles.recipient, { color: colors.foreground }]} numberOfLines={1}>
+                      {item.recipientName}
+                    </Text>
+                    <Text style={[styles.taskId, { color: colors.muted }]}>Заявка #{item.id}</Text>
+                  </View>
+                  <View style={styles.cardHeaderRight}>
+                    <StatusBadge status={status} size="sm" />
+                    {item.courierName ? (
+                      <Text style={[styles.courierName, { color: colors.muted }]} numberOfLines={1}>
+                        {item.courierName}
+                      </Text>
+                    ) : (
+                      <Text style={[styles.courierName, { color: colors.warning }]}>Не назначен</Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Address */}
+                <View style={styles.addressRow}>
+                  <IconSymbol name={icon("mappin.fill")} size={13} color={colors.primary} />
+                  <Text style={[styles.address, { color: colors.foreground }]} numberOfLines={2}>
+                    {item.deliveryAddress}{item.deliveryCity ? `, ${item.deliveryCity}` : ""}
+                  </Text>
+                </View>
+
+                {/* Footer */}
+                <View style={styles.cardFooter}>
+                  <View style={styles.footerLeft}>
+                    <View style={styles.inlineRow}>
+                      <IconSymbol name={icon("shippingbox.fill")} size={12} color={colors.muted} />
+                      <Text style={[styles.footerText, { color: colors.muted }]}>
+                        {PACKAGE_TYPE_LABELS[item.packageType as PackageType] ?? item.packageType}
+                      </Text>
+                    </View>
+                    {item.placesCount > 1 && (
+                      <Text style={[styles.footerText, { color: colors.primary }]}>
+                        📦 {item.placesCount} мест
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.footerRight}>
+                    {item.estimatedMinutes ? (
+                      <View style={styles.inlineRow}>
+                        <IconSymbol name={icon("clock")} size={12} color={colors.muted} />
+                        <Text style={[styles.footerText, { color: colors.muted }]}>
+                          ~{item.estimatedMinutes} мин
+                        </Text>
+                      </View>
+                    ) : null}
+                    <IconSymbol name={icon("chevron.right")} size={16} color={colors.muted} />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
     </ScreenContainer>
@@ -185,109 +207,36 @@ export default function TaskListScreen() {
 }
 
 const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 0.5,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    lineHeight: 28,
+  headerTitle: { fontSize: 22, fontWeight: "700", lineHeight: 28 },
+  headerSub: { fontSize: 13, lineHeight: 18, marginTop: 1 },
+  seedBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  seedBtnText: { fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  tabs: { flexDirection: "row", borderBottomWidth: 0.5 },
+  tab: {
+    flex: 1, paddingVertical: 12, alignItems: "center",
+    borderBottomWidth: 2, borderBottomColor: "transparent",
   },
-  headerSub: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2,
-  },
-  badge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  filterRow: {
-    flexDirection: "row",
-    borderBottomWidth: 0.5,
-  },
-  filterTab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  filterLabel: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  listContent: {
-    padding: 16,
-  },
-  listEmpty: {
-    flex: 1,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-    gap: 8,
-  },
-  emptyIcon: {
-    fontSize: 56,
-    marginBottom: 8,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    lineHeight: 24,
-    textAlign: "center",
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  seedBtn: {
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1.5,
-  },
-  seedBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  loginBtn: {
-    marginTop: 20,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  loginBtnText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  tabText: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
+  list: { padding: 12, gap: 10, flexGrow: 1 },
+  card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
+  cardHeaderLeft: { flex: 1, gap: 2 },
+  cardHeaderRight: { alignItems: "flex-end", gap: 4 },
+  recipient: { fontSize: 16, fontWeight: "600", lineHeight: 22 },
+  taskId: { fontSize: 12, lineHeight: 16 },
+  courierName: { fontSize: 11, fontWeight: "500", lineHeight: 15 },
+  addressRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
+  address: { flex: 1, fontSize: 14, lineHeight: 20 },
+  cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+  footerLeft: { flex: 1, gap: 3 },
+  footerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  inlineRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  footerText: { fontSize: 12, lineHeight: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: "600", textAlign: "center", lineHeight: 24 },
+  emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
 });
