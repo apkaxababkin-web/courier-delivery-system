@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,9 +18,6 @@ import { skipToken } from "@tanstack/react-query";
 import { ScreenContainer } from "@/components/screen-container";
 import { StatusBadge } from "@/components/status-badge";
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { PhoneButton } from "@/components/phone-button";
-import { AddressWithMap } from "@/components/address-with-map";
-import { CommentsSection } from "@/components/comments-section";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
@@ -40,8 +37,6 @@ export default function TaskDetailScreen() {
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
-  const [placesInputVisible, setPlacesInputVisible] = useState(false);
-  const [placesInput, setPlacesInput] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -86,17 +81,15 @@ export default function TaskDetailScreen() {
       completed: "Выполнено",
       cancelled: "Отменено",
     };
-    const finalStatus = statusStr === newStatus ? "pending" : newStatus;
-    const action = statusStr === newStatus ? "Отменить" : "Перевести";
     Alert.alert(
       "Изменить статус",
-      `${action} заявку в статус «${statusStr === newStatus ? "Ожидание" : labels[newStatus]}»?`,
+      `Перевести заявку в статус «${labels[newStatus]}»?`,
       [
         { text: "Отмена", style: "cancel" },
         {
           text: "Да",
-          style: finalStatus === "cancelled" ? "destructive" : "default",
-          onPress: () => statusMutation.mutate({ token: token!, taskId, status: finalStatus as any }),
+          style: newStatus === "cancelled" ? "destructive" : "default",
+          onPress: () => statusMutation.mutate({ token: token!, taskId, status: newStatus }),
         },
       ]
     );
@@ -285,18 +278,30 @@ export default function TaskDetailScreen() {
 
         {/* ── Places counter ── */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.muted }]}>МЕСТО</Text>
+          <Text style={[styles.sectionTitle, { color: colors.muted }]}>КОЛИЧЕСТВО МЕСТ</Text>
           {!isFinished ? (
-            <TouchableOpacity
-              style={[styles.assignBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
-              onPress={() => {
-                setPlacesInput(places.toString());
-                setPlacesInputVisible(true);
-              }}
-              disabled={placesMutation.isPending}
-            >
-              <Text style={[styles.placesValueText, { color: colors.foreground, textAlign: "center", fontSize: 18, fontWeight: "bold" }]}>{places}</Text>
-            </TouchableOpacity>
+            <View style={styles.placesRow}>
+              <TouchableOpacity
+                style={[styles.placesBtn, { backgroundColor: colors.border }]}
+                onPress={() => handleChangePlaces(-1)}
+                disabled={places <= 1 || placesMutation.isPending}
+              >
+                <Text style={[styles.placesBtnText, { color: colors.foreground }]}>−</Text>
+              </TouchableOpacity>
+              <View style={[styles.placesValue, { borderColor: colors.border }]}>
+                <Text style={[styles.placesValueText, { color: colors.foreground }]}>{places}</Text>
+                <Text style={[styles.placesUnit, { color: colors.muted }]}>
+                  {places === 1 ? "место" : places < 5 ? "места" : "мест"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.placesBtn, { backgroundColor: colors.border }]}
+                onPress={() => handleChangePlaces(1)}
+                disabled={places >= 999 || placesMutation.isPending}
+              >
+                <Text style={[styles.placesBtnText, { color: colors.foreground }]}>+</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <Text style={[styles.placesValueText, { color: colors.foreground }]}>
               📦 {places} {places === 1 ? "место" : places < 5 ? "места" : "мест"}
@@ -304,44 +309,37 @@ export default function TaskDetailScreen() {
           )}
         </View>
 
-        {/* ── Sender ── */}
-        {(task.senderName || task.senderAddress || task.senderPhone) && (
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.muted }]}>ОТПРАВИТЕЛЬ</Text>
-            {task.senderName && (
-              <Text style={[styles.recipientName, { color: colors.foreground }]}>{task.senderName}</Text>
-            )}
-            {task.senderAddress && (
-              <View style={{ marginTop: 8 }}>
-                <AddressWithMap address={task.senderAddress} />
-              </View>
-            )}
-            {task.senderPhone && (
-              <View style={{ marginTop: 8 }}>
-                <PhoneButton phone={task.senderPhone} />
-              </View>
-            )}
-          </View>
-        )}
-
         {/* ── Recipient ── */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.muted }]}>ПОЛУЧАТЕЛЬ</Text>
           <Text style={[styles.recipientName, { color: colors.foreground }]}>{task.recipientName}</Text>
-          {task.recipientAddress && (
-            <View style={{ marginTop: 8 }}>
-              <AddressWithMap address={task.recipientAddress} />
-            </View>
-          )}
-          {task.recipientPhone && (
-            <View style={{ marginTop: 8 }}>
-              <PhoneButton phone={task.recipientPhone} />
-            </View>
-          )}
+          {task.recipientPhone ? (
+            <TouchableOpacity style={styles.phoneRow} onPress={handleCall}>
+              <IconSymbol name={icon("phone.fill")} size={16} color={colors.primary} />
+              <Text style={[styles.phone, { color: colors.primary }]}>{task.recipientPhone}</Text>
+              <Text style={[styles.callHint, { color: colors.muted }]}>Нажмите для звонка</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        {/* ── Comments ── */}
-        <CommentsSection comments={task.comments} />
+        {/* ── Address ── */}
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.muted }]}>АДРЕС ДОСТАВКИ</Text>
+          <View style={styles.addressRow}>
+            <IconSymbol name={icon("mappin.fill")} size={18} color={colors.error} />
+            <Text style={[styles.address, { color: colors.foreground }]}>
+              {task.deliveryAddress}{task.deliveryCity ? `, ${task.deliveryCity}` : ""}
+            </Text>
+          </View>
+          {task.estimatedMinutes ? (
+            <View style={styles.estimateRow}>
+              <IconSymbol name={icon("clock")} size={14} color={colors.muted} />
+              <Text style={[styles.estimate, { color: colors.muted }]}>
+                Примерное время: ~{task.estimatedMinutes} мин
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
         {/* ── Time interval ── */}
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -525,59 +523,6 @@ export default function TaskDetailScreen() {
                 </View>
               )}
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── Places input modal ── */}
-      <Modal
-        visible={placesInputVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setPlacesInputVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.background, maxHeight: "60%" }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Количество мест</Text>
-              <TouchableOpacity onPress={() => setPlacesInputVisible(false)}>
-                <Text style={[styles.modalClose, { color: colors.muted }]}>Закрыть</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ padding: 20, gap: 16 }}>
-              <TextInput
-                style={[styles.timeInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.surface, fontSize: 32, textAlign: "center", fontWeight: "bold" }]}
-                value={placesInput}
-                onChangeText={setPlacesInput}
-                placeholder="0"
-                placeholderTextColor={colors.muted}
-                keyboardType="number-pad"
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  const num = parseInt(placesInput, 10);
-                  if (!isNaN(num) && num > 0 && num <= 999) {
-                    placesMutation.mutate({ token: token!, taskId, placesCount: num });
-                    setPlacesInputVisible(false);
-                  }
-                }}
-                autoFocus
-              />
-              <TouchableOpacity
-                style={[styles.saveTimeBtn, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  const num = parseInt(placesInput, 10);
-                  if (!isNaN(num) && num > 0 && num <= 999) {
-                    placesMutation.mutate({ token: token!, taskId, placesCount: num });
-                    setPlacesInputVisible(false);
-                  }
-                }}
-                disabled={placesMutation.isPending}
-              >
-                <Text style={styles.saveTimeBtnText}>
-                  {placesMutation.isPending ? "Сохраняю..." : "Сохранить"}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>
