@@ -35,7 +35,7 @@ export default function TaskDetailScreen() {
   const [placesModalVisible, setPlacesModalVisible] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [placesInput, setPlacesInput] = useState("");
-  const [activeStatusButtons, setActiveStatusButtons] = useState<Set<string>>(new Set());
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const utils = trpc.useUtils();
 
@@ -79,7 +79,6 @@ export default function TaskDetailScreen() {
   const handleOpenMap = (address: string | null | undefined) => {
     if (!address) return;
     const q = encodeURIComponent(address);
-    // Try 2GIS deep link with search query, fallback to web
     const dgisDeep = `dgis://2gis.ru/search/${q}`;
     const dgisWeb = `https://2gis.ru/search?q=${q}`;
     Linking.canOpenURL(dgisDeep).then((ok) => {
@@ -92,18 +91,8 @@ export default function TaskDetailScreen() {
     Linking.openURL(`tel:${phone.replace(/\s|\(|\)|-/g, "")}`);
   };
 
-  const handleToggleStatus = (status: "in_progress" | "completed" | "cancelled") => {
-    const isActive = activeStatusButtons.has(status);
-    const newActive = new Set(activeStatusButtons);
-    if (isActive) {
-      newActive.delete(status);
-      statusMutation.mutate({ token: token!, taskId, status: "pending" as TaskStatus as any });
-    } else {
-      newActive.clear();
-      newActive.add(status);
-      statusMutation.mutate({ token: token!, taskId, status });
-    }
-    setActiveStatusButtons(newActive);
+  const handleSetStatus = (status: "in_progress" | "completed" | "cancelled") => {
+    statusMutation.mutate({ token: token!, taskId, status });
   };
 
   const handleSavePlaces = () => {
@@ -118,6 +107,57 @@ export default function TaskDetailScreen() {
   const handleAssignCourier = (courierId: number | null) => {
     setCourierPickerVisible(false);
     assignMutation.mutate({ token: token!, taskId, courierId });
+  };
+
+  const handleDateChange = (day: number) => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(day);
+    setSelectedDate(newDate);
+  };
+
+  const getDaysInMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = getDaysInMonth(selectedDate);
+    const firstDay = getFirstDayOfMonth(selectedDate);
+    const days = [];
+
+    // Empty cells for days before month starts
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<View key={`empty-${i}`} style={{ flex: 1 }} />);
+    }
+
+    // Days of month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const isSelected = selectedDate.getDate() === day;
+      days.push(
+        <TouchableOpacity
+          key={day}
+          onPress={() => handleDateChange(day)}
+          style={{
+            flex: 1,
+            aspectRatio: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: isSelected ? colors.primary : "transparent",
+            borderRadius: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={{ color: isSelected ? "#fff" : colors.foreground, fontWeight: isSelected ? "700" : "500" }}>
+            {day}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    return days;
   };
 
   if (isLoading) {
@@ -135,6 +175,10 @@ export default function TaskDetailScreen() {
       </ScreenContainer>
     );
   }
+
+  const isCompleted = task.status === "completed";
+  const isCancelled = task.status === "cancelled";
+  const isInProgress = task.status === "in_progress";
 
   return (
     <ScreenContainer className="p-0">
@@ -207,12 +251,36 @@ export default function TaskDetailScreen() {
         {/* СТАТУС КНОПКИ 2x2 */}
         <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12 }}>
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-            <StatusButton label="В работе" isActive={activeStatusButtons.has("in_progress")} onPress={() => handleToggleStatus("in_progress")} color="#F59E0B" />
-            <StatusButton label="Выполнено" isActive={activeStatusButtons.has("completed")} onPress={() => handleToggleStatus("completed")} color="#22C55E" />
+            <StatusButton
+              label="В работе"
+              isActive={isInProgress}
+              onPress={() => handleSetStatus("in_progress")}
+              color="#F59E0B"
+              disabled={isCompleted || isCancelled}
+            />
+            <StatusButton
+              label="Выполнено"
+              isActive={isCompleted}
+              onPress={() => handleSetStatus("completed")}
+              color="#22C55E"
+              disabled={isCancelled}
+            />
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <StatusButton label="Отмена" isActive={activeStatusButtons.has("cancelled")} onPress={() => handleToggleStatus("cancelled")} color="#EF4444" />
-            <StatusButton label="Перенос даты" isActive={false} onPress={() => setDatePickerVisible(true)} color="#3B82F6" />
+            <StatusButton
+              label="Отмена"
+              isActive={isCancelled}
+              onPress={() => handleSetStatus("cancelled")}
+              color="#EF4444"
+              disabled={isCompleted}
+            />
+            <StatusButton
+              label="Перенос заявки"
+              isActive={false}
+              onPress={() => setDatePickerVisible(true)}
+              color="#3B82F6"
+              disabled={false}
+            />
           </View>
         </View>
 
@@ -276,15 +344,57 @@ export default function TaskDetailScreen() {
         </View>
       </Modal>
 
-      {/* Date Picker Modal */}
+      {/* Calendar Date Picker Modal */}
       <Modal visible={datePickerVisible} transparent animationType="slide" onRequestClose={() => setDatePickerVisible(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12 }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Перенос даты</Text>
-            <Text style={{ fontSize: 14, color: colors.muted }}>Выберите новую дату доставки</Text>
-            <TouchableOpacity onPress={() => setDatePickerVisible(false)} style={{ paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Закрыть</Text>
-            </TouchableOpacity>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Перенос заявки</Text>
+            <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите новую дату доставки</Text>
+
+            {/* Month/Year Header */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1))}>
+                <Text style={{ fontSize: 20, color: colors.primary }}>‹</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>
+                {selectedDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
+              </Text>
+              <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}>
+                <Text style={{ fontSize: 20, color: colors.primary }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Weekday Headers */}
+            <View style={{ flexDirection: "row", marginBottom: 8, gap: 8 }}>
+              {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
+                <View key={day} style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>{day}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Calendar Grid */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {renderCalendar()}
+            </View>
+
+            {/* Selected Date Display */}
+            <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Выбранная дата:</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>
+                {selectedDate.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              </Text>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity onPress={() => setDatePickerVisible(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
+                <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setDatePickerVisible(false); Alert.alert("Дата перенесена", `Новая дата: ${selectedDate.toLocaleDateString("ru-RU")}`); }} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Применить</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -297,12 +407,14 @@ interface StatusButtonProps {
   isActive: boolean;
   onPress: () => void;
   color: string;
+  disabled?: boolean;
 }
 
-function StatusButton({ label, isActive, onPress, color }: StatusButtonProps) {
+function StatusButton({ label, isActive, onPress, color, disabled }: StatusButtonProps) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => ({
         flex: 1,
         backgroundColor: isActive ? color : "transparent",
@@ -311,7 +423,7 @@ function StatusButton({ label, isActive, onPress, color }: StatusButtonProps) {
         borderRadius: 8,
         paddingVertical: 11,
         alignItems: "center" as const,
-        opacity: pressed ? 0.8 : 1,
+        opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
       })}
     >
       <Text style={{ color: isActive ? "#fff" : color, fontWeight: "600", fontSize: 13 }}>
