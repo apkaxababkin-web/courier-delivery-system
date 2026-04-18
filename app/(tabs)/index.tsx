@@ -11,12 +11,15 @@ import {
 import { useRouter } from "expo-router";
 import { skipToken } from "@tanstack/react-query";
 
+
 import { ScreenContainer } from "@/components/screen-container";
 import { TaskCard, type TaskCardData } from "@/components/task-card";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { type TaskStatus } from "@/shared/types";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback } from "react";
 
 type FilterTab = "active" | "history";
 
@@ -36,14 +39,18 @@ export default function TaskListScreen() {
     isLoading: loadingActive,
     refetch: refetchActive,
     isRefetching: refreshingActive,
-  } = trpc.tasks.all.useQuery(token ? { token } : skipToken);
+  } = trpc.tasks.all.useQuery(token ? { token } : skipToken, {
+    placeholderData: (previousData) => previousData,
+  });
 
   const {
     data: historyTasks,
     isLoading: loadingHistory,
     refetch: refetchHistory,
     isRefetching: refreshingHistory,
-  } = trpc.tasks.history.useQuery(token ? { token } : skipToken);
+  } = trpc.tasks.history.useQuery(token ? { token } : skipToken, {
+    placeholderData: (previousData) => previousData,
+  });
 
   const seedMutation = trpc.tasks.seedDemo.useMutation({
     onSuccess: () => { refetchActive(); refetchHistory(); },
@@ -53,6 +60,16 @@ export default function TaskListScreen() {
   const isLoading = tab === "active" ? loadingActive : loadingHistory;
   const isRefreshing = tab === "active" ? refreshingActive : refreshingHistory;
   const refetch = tab === "active" ? refetchActive : refetchHistory;
+
+  // Prevent showing loading spinner when returning from task detail
+  useFocusEffect(
+    useCallback(() => {
+      // Don't refetch automatically, just ensure data is available
+      if (!tasks || tasks.length === 0) {
+        refetch();
+      }
+    }, [tasks, refetch])
+  );
 
   if (!token) {
     return (
