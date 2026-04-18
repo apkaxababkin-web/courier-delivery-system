@@ -154,3 +154,11 @@
 - [x] Mobile: split button layout — Places + Comments stacked vertically
 - [x] Mobile: comments modal with multiline text input for courier notes
 - [x] Mobile: display saved courier comments on task detail screen
+
+## Task Sorting & Urgency Highlighting
+- [x] Backend: add urgencyThresholdOrange and urgencyThresholdRed to couriers table
+- [x] Backend: add updateUrgencyThresholds mutation to tasks router
+- [x] Mobile: add urgency settings to courier profile screen
+- [ ] Mobile: implement smart task sorting (new → in_progress → completed → cancelled, sorted by deadline within each group)
+- [ ] Mobile: add color-coded urgency indicators (orange/red background on task cards based on time remaining)
+- [x] Mobile: create task-sorting.ts utility with calculateUrgency and sortTasks functions

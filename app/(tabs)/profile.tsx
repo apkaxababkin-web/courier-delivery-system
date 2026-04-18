@@ -17,6 +17,113 @@ import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 
+function UrgencySettingsCard({ courier, colors }: { courier: any; colors: any }) {
+  const { token } = useCourierAuth();
+  const [orange, setOrange] = useState(String(courier.urgencyThresholdOrange ?? 60));
+  const [red, setRed] = useState(String(courier.urgencyThresholdRed ?? 30));
+  const [isEditing, setIsEditing] = useState(false);
+
+  const updateMutation = trpc.tasks.updateUrgencyThresholds.useMutation({
+    onSuccess: () => {
+      Alert.alert("Успешно", "Пороги срочности обновлены");
+      setIsEditing(false);
+    },
+    onError: (error) => {
+      Alert.alert("Ошибка", error.message);
+    },
+  });
+
+  const handleSave = () => {
+    const orangeNum = parseInt(orange, 10);
+    const redNum = parseInt(red, 10);
+    if (isNaN(orangeNum) || isNaN(redNum) || orangeNum < 1 || redNum < 1) {
+      Alert.alert("Ошибка", "Введите корректные значения");
+      return;
+    }
+    if (redNum >= orangeNum) {
+      Alert.alert("Ошибка", "Красный порог должен быть меньше оранжевого");
+      return;
+    }
+    updateMutation.mutate({
+      token: token || "",
+      urgencyThresholdOrange: orangeNum,
+      urgencyThresholdRed: redNum,
+    });
+  };
+
+  return (
+    <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <Text style={[styles.infoSectionTitle, { color: colors.muted }]}>ПОРОГИ СРОЧНОСТИ</Text>
+        <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
+          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: "600" }}>
+            {isEditing ? "Отмена" : "Изменить"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {isEditing ? (
+        <>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={[styles.infoLabel, { color: colors.muted, marginBottom: 6 }]}>Оранжевый (минут)</Text>
+            <TextInput
+              value={orange}
+              onChangeText={setOrange}
+              keyboardType="number-pad"
+              maxLength={3}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.primary,
+                borderRadius: 8,
+                padding: 8,
+                color: colors.foreground,
+                fontSize: 14,
+              }}
+            />
+          </View>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={[styles.infoLabel, { color: colors.muted, marginBottom: 6 }]}>Красный (минут)</Text>
+            <TextInput
+              value={red}
+              onChangeText={setRed}
+              keyboardType="number-pad"
+              maxLength={3}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.primary,
+                borderRadius: 8,
+                padding: 8,
+                color: colors.foreground,
+                fontSize: 14,
+              }}
+            />
+          </View>
+          <TouchableOpacity
+            style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+            onPress={handleSave}
+            disabled={updateMutation.isPending}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600", textAlign: "center" }}>
+              {updateMutation.isPending ? "Сохранение..." : "Сохранить"}
+            </Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.muted }]}>🟠 Оранжевый</Text>
+            <Text style={[styles.infoValue, { color: colors.foreground }]}>{orange} мин</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: colors.muted }]}>🔴 Красный</Text>
+            <Text style={[styles.infoValue, { color: colors.foreground }]}>{red} мин</Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
 function StatCard({ value, label, color }: { value: string | number; label: string; color: string }) {
   const colors = useColors();
   return (
@@ -245,7 +352,8 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-
+        {/* Urgency Settings */}
+        <UrgencySettingsCard courier={courier} colors={colors} />
 
         {/* Logout */}
         <TouchableOpacity

@@ -444,3 +444,25 @@ export async function seedDemoCourier(): Promise<number> {
   
   return result[0].insertId;
 }
+
+export async function updateCourierUrgencyThresholds(
+  courierId: number,
+  urgencyThresholdOrange: number,
+  urgencyThresholdRed: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) { console.warn("[Database] Cannot update courier urgency thresholds: database not available"); return; }
+
+  try {
+    await db.update(couriers)
+      .set({
+        urgencyThresholdOrange,
+        urgencyThresholdRed,
+        updatedAt: new Date(),
+      })
+      .where(eq(couriers.id, courierId));
+  } catch (error) {
+    console.error("[Database] Error updating courier urgency thresholds:", error);
+    throw error;
+  }
+}

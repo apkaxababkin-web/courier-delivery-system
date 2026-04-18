@@ -36,6 +36,10 @@ export const couriers = mysqlTable("couriers", {
 
   isActive: boolean("isActive").default(true).notNull(),
   totalDeliveries: int("totalDeliveries").default(0).notNull(),
+  /** Urgency threshold in minutes for orange highlight (default: 60) */
+  urgencyThresholdOrange: int("urgencyThresholdOrange").default(60).notNull(),
+  /** Urgency threshold in minutes for red highlight (default: 30) */
+  urgencyThresholdRed: int("urgencyThresholdRed").default(30).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

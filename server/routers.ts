@@ -291,6 +291,26 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    updateUrgencyThresholds: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        urgencyThresholdOrange: z.number().min(1).max(1440),
+        urgencyThresholdRed: z.number().min(1).max(1440),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        if (input.urgencyThresholdRed >= input.urgencyThresholdOrange) {
+          throw new Error("Красный порог должен быть меньше оранжевого");
+        }
+        await db.updateCourierUrgencyThresholds(
+          payload.courierId,
+          input.urgencyThresholdOrange,
+          input.urgencyThresholdRed
+        );
+        return { success: true };
+      }),
+
     seedDemoCourier: publicProcedure
       .mutation(async () => {
         const courierId = await db.seedDemoCourier();
