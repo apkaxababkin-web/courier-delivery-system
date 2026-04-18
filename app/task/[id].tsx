@@ -268,12 +268,11 @@ export default function TaskDetailScreen() {
 
         {/* МЕСТО */}
         <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Место</Text>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Введите количество мест</Text>
           <TouchableOpacity
             onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
             style={{ borderWidth: 2, borderColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center" }}
           >
-            <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 4 }}>Введите количество мест</Text>
             <Text style={{ fontSize: 22, fontWeight: "700", color: colors.foreground }}>{task.placesCount || 0}</Text>
           </TouchableOpacity>
         </View>

@@ -258,11 +258,19 @@ export async function seedDemoTasks(): Promise<void> {
   const db = await getDb();
   if (!db) return;
 
+  // Delete all existing demo tasks (pending status) to avoid clutter
+  await db.delete(tasks).where(eq(tasks.status, "pending"));
+
+  // Get today's date to calculate task number
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const taskNumberOffset = parseInt(today.replace(/-/g, '')) % 1000; // Use date to vary numbering
+
   const demoTasks: InsertTask[] = [
     {
       // Заявка 1: Основа движения (просп. 50 лет Октября, 5) → клиент
       courierId: null,
       status: "pending",
+      taskNumber: 1,
       senderName: "Основа движения",
       senderAddress: "просп. 50 лет Октября, 5, Улан-Удэ",
       senderAddressUrl: "https://2gis.ru/search?queryText=%D0%BF%D1%80%D0%BE%D1%81%D0%BF.%2050%20%D0%BB%D0%B5%D1%82%20%D0%9E%D0%BA%D1%82%D1%8F%D0%B1%D1%80%D1%8F%2C%205%2C%20%D0%A3%D0%BB%D0%B0%D0%BD-%D0%A3%D0%B4%D1%8D",
@@ -283,10 +291,11 @@ export async function seedDemoTasks(): Promise<void> {
       deliveryTimeTo: "13:00",
     },
     {
-      // Заявка 2: Основа движения (ул. Терешковой, 24) → клиент
+      // Заявка 2:       // Заявка 4: Основа движения (ул. Чайковского, 33) → клиент
       courierId: null,
       status: "pending",
-      senderName: "Основа движения",
+      taskNumber: 4,
+      senderName: "Основа движения",,
       senderAddress: "ул. Терешковой, 24, Улан-Удэ",
       senderAddressUrl: "https://2gis.ru/search?queryText=%D1%83%D0%BB.%20%D0%A2%D0%B5%D1%80%D0%B5%D1%88%D0%BA%D0%BE%D0%B2%D0%BE%D0%B9%2C%2024%2C%20%D0%A3%D0%BB%D0%B0%D0%BD-%D0%A3%D0%B4%D1%8D",
       senderPhone: "+7 (914) 111-22-33",
@@ -350,10 +359,11 @@ export async function seedDemoTasks(): Promise<void> {
       deliveryTimeTo: "18:00",
     },
     {
-      // Заявка 5: Основа движения (ул. Калашникова, 17) → клиент
+      // Заявка 3:      // Заявка 5: Основа движения (ул. Калашникова, 17) → клиент
       courierId: null,
       status: "pending",
-      senderName: "Основа движения",
+      taskNumber: 5,
+      senderName: "Основа движения",я",
       senderAddress: "ул. Калашникова, 17, Улан-Удэ",
       senderAddressUrl: "https://2gis.ru/search?queryText=%D1%83%D0%BB.%20%D0%9A%D0%B0%D0%BB%D0%B0%D1%88%D0%BD%D0%B8%D0%BA%D0%BE%D0%B2%D0%B0%2C%2017%2C%20%D0%A3%D0%BB%D0%B0%D0%BD-%D0%A3%D0%B4%D1%8D",
       senderPhone: "+7 (914) 111-22-33",
