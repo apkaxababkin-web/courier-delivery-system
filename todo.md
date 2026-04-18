@@ -130,3 +130,9 @@
 - [x] Mobile: restored 2GIS integration (copy address + open 2GIS)
 - [x] Backend: updated setStatus to accept 'assigned' status for toggle
 - [x] Backend: allow reverting from completed/cancelled back to assigned
+
+## Places Input & Calendar & 2GIS Fixes
+- [x] Mobile: places input — autoFocus on TextInput (keyboard appears immediately)
+- [x] Mobile: places input — working save/cancel buttons
+- [x] Mobile: calendar — fixed layout to show day numbers properly
+- [x] Mobile: 2GIS — second variant with URL parameter ?q=address + clipboard copy

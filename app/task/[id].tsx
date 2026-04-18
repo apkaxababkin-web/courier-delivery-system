@@ -82,10 +82,11 @@ export default function TaskDetailScreen() {
     if (!address) return;
     // Copy address to clipboard
     Clipboard.setStringAsync(address);
-    // Open 2GIS
-    Linking.openURL("https://2gis.ru");
-    // Show feedback
-    Alert.alert("Адрес скопирован", `"${address}" скопирован в буфер обмена. Вставьте в поиск 2ГИС.`);
+    // Open 2GIS with search focused (second variant)
+    // Try different URL formats for 2GIS
+    const encodedAddress = encodeURIComponent(address);
+    const twoGisUrl = `https://2gis.ru/search?q=${encodedAddress}`;
+    Linking.openURL(twoGisUrl);
   };
 
   const handleCallPhone = (phone: string | null | undefined) => {
@@ -351,6 +352,7 @@ export default function TaskDetailScreen() {
           <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Количество мест</Text>
             <TextInput
+              autoFocus
               value={placesInput}
               onChangeText={setPlacesInput}
               placeholder="Введите количество"
@@ -400,7 +402,7 @@ export default function TaskDetailScreen() {
             </View>
 
             {/* Calendar Grid */}
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+            <View style={{ marginBottom: 16 }}>
               {renderCalendar()}
             </View>
 
