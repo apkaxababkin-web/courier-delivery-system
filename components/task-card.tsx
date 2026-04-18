@@ -87,47 +87,57 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
       onPress={() => onPress(task)}
       activeOpacity={0.7}
     >
-      {/* Top row: ID + Status (right) */}
+      {/* Top row: ID (right) */}
       <View style={styles.topRow}>
-        <Text style={[styles.idText, { color: colors.foreground }]}>
+        <View style={{ flex: 1 }} />
+        <Text style={[styles.idText, { color: colors.muted }]}>
           ID: {task.id}
         </Text>
-        <StatusBadge status={task.status} size="sm" />
       </View>
+
+      {/* Sender name (bold) */}
+      {task.senderName && (
+        <Text style={[styles.senderName, { color: colors.foreground }]}>
+          {task.senderName}
+        </Text>
+      )}
+
+      {/* Sender address */}
+      {task.senderAddress && (
+        <View style={styles.addressRow}>
+          <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
+          <Text style={[styles.addressText, { color: colors.muted }]}>
+            {task.senderAddress}
+          </Text>
+        </View>
+      )}
 
       {/* Recipient name (bold) */}
       <Text style={[styles.recipientName, { color: colors.foreground }]}>
         {task.recipientName}
       </Text>
 
-      {/* Sender (grey) */}
-      {task.senderName && (
-        <Text style={[styles.senderText, { color: colors.muted }]}>
-          Отправитель: {task.senderName}
+      {/* Recipient address */}
+      <View style={styles.addressRow}>
+        <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
+        <Text style={[styles.addressText, { color: colors.muted }]}>
+          {task.deliveryAddress}
+        </Text>
+      </View>
+
+      {/* Time interval */}
+      {timeLabel && (
+        <Text style={[styles.timeText, { color: colors.foreground }]}>
+          {timeLabel}
         </Text>
       )}
 
-      {/* From address */}
-      <View style={styles.addressRow}>
-        <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
-        <Text style={[styles.addressText, { color: colors.muted }]}>
-          От: {task.senderAddress || task.deliveryAddress}
-        </Text>
-      </View>
-
-      {/* To address */}
-      <View style={styles.addressRow}>
-        <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
-        <Text style={[styles.addressText, { color: colors.muted }]}>
-          До: {task.deliveryAddress}
-        </Text>
-      </View>
-
-      {/* Time + Places (bottom row) */}
+      {/* Bottom row: Status + Courier */}
       <View style={styles.bottomRow}>
-        {timeLabel && (
-          <Text style={[styles.timeText, { color: colors.muted }]}>
-            Время: {timeLabel}
+        <StatusBadge status={task.status} size="sm" />
+        {task.courierName && (
+          <Text style={[styles.courierText, { color: colors.muted }]}>
+            👤 {shortName(task.courierName)}
           </Text>
         )}
         {task.placesCount != null && (
@@ -153,31 +163,33 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     alignItems: "center",
     marginBottom: 6,
   },
   idText: {
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: "500",
+    lineHeight: 14,
+  },
+  senderName: {
+    fontSize: 14,
     fontWeight: "600",
-    lineHeight: 16,
+    lineHeight: 18,
+    marginBottom: 2,
   },
   recipientName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  senderText: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginBottom: 4,
+    lineHeight: 18,
+    marginBottom: 2,
+    marginTop: 4,
   },
   addressRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 6,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   addressIcon: {
     fontSize: 14,
@@ -189,18 +201,26 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     flex: 1,
   },
-  bottomRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 6,
-  },
   timeText: {
     fontSize: 12,
+    fontWeight: "500",
     lineHeight: 16,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  bottomRow: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+  },
+  courierText: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   placesText: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 14,
   },
 });

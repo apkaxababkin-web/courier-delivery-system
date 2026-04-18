@@ -170,10 +170,10 @@
 - [x] Create Tab Bar with 4 tabs: "Все заявки" | "Гемотест" | "Сбербанк" | "Письма"
 - [x] Implement auto-login with demo courier
 - [x] Add seed demo data button to empty state
+- [x] Redesign TaskCard component — new information structure
 - [ ] Implement smart task sorting (new → in_progress → completed → cancelled)
 - [ ] Add urgency color indicators (orange/red background on task cards)
 - [ ] Load tasks for selected date from server (history)
-- [ ] Apply Modern List design to all task cards
 
 ## Pickup Points System
 - [ ] Create database schema for pickup points
