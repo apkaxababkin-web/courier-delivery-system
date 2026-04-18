@@ -141,3 +141,9 @@
 - [x] Fix places modal — ensure modal window shows (not just keyboard)
 - [x] Update places button description to "Введите количество мест"
 - [x] Fix loading spinner on home screen when returning from task detail
+
+## Critical Bug Fixes (Session 2)
+- [x] Fix places modal TextInput not updating when typing digits
+- [x] Add KeyboardAvoidingView to prevent keyboard overlap
+- [x] Update UI labels: "Введите количество мест" header + "место" placeholder
+- [x] Add selectTextOnFocus and maxLength to TextInput

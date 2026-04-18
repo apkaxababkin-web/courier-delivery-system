@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   View,
   Pressable,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -349,28 +351,33 @@ export default function TaskDetailScreen() {
 
       {/* Places Input Modal */}
       <Modal visible={placesModalVisible} transparent animationType="slide" onRequestClose={() => setPlacesModalVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12 }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Введите количество мест</Text>
-            <TextInput
-              autoFocus
-              value={placesInput}
-              onChangeText={setPlacesInput}
-              placeholder="Введите количество"
-              placeholderTextColor={colors.muted}
-              keyboardType="number-pad"
-              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 16 }}
-            />
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              <TouchableOpacity onPress={() => setPlacesModalVisible(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
-                <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleSavePlaces} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Сохранить</Text>
-              </TouchableOpacity>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12 }}>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Введите количество мест</Text>
+              <TextInput
+                autoFocus
+                editable={true}
+                selectTextOnFocus
+                value={placesInput}
+                onChangeText={setPlacesInput}
+                placeholder="место"
+                placeholderTextColor={colors.muted}
+                keyboardType="number-pad"
+                maxLength={3}
+                style={{ borderWidth: 2, borderColor: colors.primary, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 16, fontWeight: "600" }}
+              />
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <TouchableOpacity onPress={() => { setPlacesModalVisible(false); setPlacesInput(""); }} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
+                  <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSavePlaces} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>Сохранить</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Calendar Date Picker Modal */}
