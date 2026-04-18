@@ -165,9 +165,11 @@
 
 
 ## Main Screen Redesign (Modern List Layout)
-- [ ] Redesign header: Profile | Date (18.04.26) | Logo
-- [ ] Add calendar modal for date selection (history filtering)
-- [ ] Create Tab Bar with 4 tabs: "Все заявки" | "Гемотест" | "Сбербанк" | "Письма"
+- [x] Redesign header: Profile | Date (18.04.26) | Logo
+- [x] Add calendar modal for date selection (history filtering)
+- [x] Create Tab Bar with 4 tabs: "Все заявки" | "Гемотест" | "Сбербанк" | "Письма"
+- [x] Implement auto-login with demo courier
+- [x] Add seed demo data button to empty state
 - [ ] Implement smart task sorting (new → in_progress → completed → cancelled)
 - [ ] Add urgency color indicators (orange/red background on task cards)
 - [ ] Load tasks for selected date from server (history)

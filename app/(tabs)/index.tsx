@@ -1,4 +1,3 @@
-import React, { useState, useMemo } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -19,7 +18,7 @@ import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { type TaskStatus } from "@/shared/types";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback } from "react";
+import { useCallback, useState, useMemo } from "react";
 
 export default function TaskListScreen() {
   const colors = useColors();
@@ -200,6 +199,16 @@ export default function TaskListScreen() {
               <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
                 {isToday ? "Нажмите на дату для выбора другого дня" : "Выполненные заявки появятся здесь"}
               </Text>
+              {isToday && (
+                <TouchableOpacity
+                  style={[styles.seedButton, { backgroundColor: colors.primary }]}
+                  onPress={() => seedMutation.mutate()}
+                >
+                  <Text style={styles.seedButtonText}>
+                    {seedMutation.isPending ? "Загрузка..." : "Загрузить демо-данные"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
           renderItem={({ item }) => {
@@ -268,4 +277,6 @@ const styles = StyleSheet.create({
   list: { padding: 12, flexGrow: 1, paddingBottom: 20 },
   emptyTitle: { fontSize: 18, fontWeight: "600", textAlign: "center", lineHeight: 24 },
   emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
+  seedButton: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, marginTop: 16 },
+  seedButtonText: { color: "white", fontSize: 16, fontWeight: "600", textAlign: "center" },
 });
