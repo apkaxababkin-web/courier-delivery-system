@@ -223,6 +223,12 @@ export async function updateTaskTimeInterval(
   await db.update(tasks).set({ deliveryTimeFrom, deliveryTimeTo }).where(eq(tasks.id, taskId));
 }
 
+export async function updateTaskCourierComments(taskId: number, courierComments: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(tasks).set({ courierComments }).where(eq(tasks.id, taskId));
+}
+
 export async function assignTaskToCourier(
   taskId: number,
   courierId: number | null,

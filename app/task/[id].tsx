@@ -38,7 +38,9 @@ export default function TaskDetailScreen() {
   const [courierPickerVisible, setCourierPickerVisible] = useState(false);
   const [placesModalVisible, setPlacesModalVisible] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
   const [placesInput, setPlacesInput] = useState("");
+  const [commentsInput, setCommentsInput] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   const utils = trpc.useUtils();
@@ -80,6 +82,17 @@ export default function TaskDetailScreen() {
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
+  const commentsMutation = trpc.tasks.updateComments.useMutation({
+    onSuccess: () => {
+      utils.tasks.byId.invalidate();
+      utils.tasks.all.invalidate();
+      setCommentsModalVisible(false);
+      setCommentsInput("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
+  });
+
   const handleOpenMap = (address: string | null | undefined) => {
     if (!address) return;
     // Copy address to clipboard
@@ -109,6 +122,14 @@ export default function TaskDetailScreen() {
       return;
     }
     placesMutation.mutate({ token: token!, taskId, placesCount: places });
+  };
+
+  const handleSaveComments = () => {
+    if (!commentsInput.trim()) {
+      Alert.alert("Ошибка", "Напишите комментарий");
+      return;
+    }
+    commentsMutation.mutate({ token: token!, taskId, courierComments: commentsInput });
   };
 
   const handleAssignCourier = (courierId: number | null) => {
@@ -266,15 +287,31 @@ export default function TaskDetailScreen() {
           </View>
         )}
 
-        {/* МЕСТО */}
-        <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Введите количество мест</Text>
-          <TouchableOpacity
-            onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
-            style={{ borderWidth: 2, borderColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center" }}
-          >
-            <Text style={{ fontSize: 22, fontWeight: "700", color: colors.foreground }}>{task.placesCount || 0}</Text>
-          </TouchableOpacity>
+        {/* МЕСТА И КОММЕНТАРИИ */}
+        <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12, gap: 8 }}>
+          {/* Места */}
+          <View>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Введите количество мест</Text>
+            <TouchableOpacity
+              onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
+              style={{ borderWidth: 2, borderColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center" }}
+            >
+              <Text style={{ fontSize: 22, fontWeight: "700", color: colors.foreground }}>{task.placesCount || 0}</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* Комментарии */}
+          <View>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>💬 Комментарий курьера</Text>
+            <TouchableOpacity
+              onPress={() => { setCommentsInput(task.courierComments || ""); setCommentsModalVisible(true); }}
+              style={{ borderWidth: 2, borderColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, alignItems: "flex-start" }}
+            >
+              <Text style={{ fontSize: 14, color: task.courierComments ? colors.foreground : colors.muted }}>
+                {task.courierComments || "Добавить комментарий..."}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* СТАТУС КНОПКИ 2x2 */}
@@ -371,6 +408,36 @@ export default function TaskDetailScreen() {
                   <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleSavePlaces} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>Сохранить</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Comments Input Modal */}
+      <Modal visible={commentsModalVisible} transparent animationType="slide" onRequestClose={() => setCommentsModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12 }}>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Комментарий курьера</Text>
+              <TextInput
+                autoFocus
+                editable={true}
+                multiline
+                value={commentsInput}
+                onChangeText={setCommentsInput}
+                placeholder="Напишите ваш комментарий..."
+                placeholderTextColor={colors.muted}
+                maxLength={1000}
+                style={{ borderWidth: 2, borderColor: colors.primary, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 14, minHeight: 100, textAlignVertical: "top" }}
+              />
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <TouchableOpacity onPress={() => { setCommentsModalVisible(false); setCommentsInput(""); }} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
+                  <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveComments} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
                   <Text style={{ color: "#fff", fontWeight: "600" }}>Сохранить</Text>
                 </TouchableOpacity>
               </View>

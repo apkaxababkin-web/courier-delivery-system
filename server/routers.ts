@@ -271,6 +271,26 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    updateComments: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        taskId: z.number(),
+        courierComments: z.string().min(1).max(1000),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+
+        const task = await db.getTaskById(input.taskId);
+        if (!task) throw new Error("Задание не найдено");
+        if (task.status === "completed" || task.status === "cancelled") {
+          throw new Error("Нельзя изменить завершённое задание");
+        }
+
+        await db.updateTaskCourierComments(input.taskId, input.courierComments);
+        return { success: true };
+      }),
+
     seedDemoCourier: publicProcedure
       .mutation(async () => {
         const courierId = await db.seedDemoCourier();

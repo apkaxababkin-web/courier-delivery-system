@@ -147,3 +147,10 @@
 - [x] Add KeyboardAvoidingView to prevent keyboard overlap
 - [x] Update UI labels: "Введите количество мест" header + "место" placeholder
 - [x] Add selectTextOnFocus and maxLength to TextInput
+
+## Courier Comments Feature
+- [x] Backend: add updateComments mutation to tasks router
+- [x] Backend: add courierComments field to tasks table
+- [x] Mobile: split button layout — Places + Comments stacked vertically
+- [x] Mobile: comments modal with multiline text input for courier notes
+- [x] Mobile: display saved courier comments on task detail screen

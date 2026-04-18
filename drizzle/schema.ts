@@ -91,6 +91,8 @@ export const tasks = mysqlTable("tasks", {
   recipientAddressUrl: text("recipientAddressUrl"),
   /** Comments from manager with delivery instructions */
   comments: text("comments"),
+  /** Comments from courier during delivery */
+  courierComments: text("courierComments"),
   /** Note from courier or manager */
   rejectionReason: text("rejectionReason"),
   /** Timestamps */
