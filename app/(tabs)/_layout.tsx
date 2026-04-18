@@ -77,4 +77,4 @@ export default function TabLayout() {
   );
 }
 
-// Note: Profile screen is accessed via header button, not tab bar
+// Note: Profile screen is accessed via header button (👤), not tab bar

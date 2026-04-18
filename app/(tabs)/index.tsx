@@ -34,6 +34,7 @@ export default function TaskListScreen() {
     isRefetching: refreshingActive,
   } = trpc.tasks.all.useQuery(token ? { token } : skipToken, {
     placeholderData: (previousData) => previousData,
+    enabled: !!token,
   });
 
   const {
@@ -43,6 +44,7 @@ export default function TaskListScreen() {
     isRefetching: refreshingHistory,
   } = trpc.tasks.history.useQuery(token ? { token } : skipToken, {
     placeholderData: (previousData) => previousData,
+    enabled: !!token,
   });
 
   const seedMutation = trpc.tasks.seedDemo.useMutation({
