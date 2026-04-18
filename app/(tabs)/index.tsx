@@ -17,6 +17,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { type TaskStatus } from "@/shared/types";
+import { sortTasks } from "@/lib/task-sorting";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useState, useMemo } from "react";
 
@@ -57,7 +58,11 @@ export default function TaskListScreen() {
     return selectedDate.toDateString() === today.toDateString();
   }, [selectedDate]);
 
-  const tasks = isToday ? (activeTasks ?? []) : (historyTasks ?? []);
+  const rawTasks = isToday ? (activeTasks ?? []) : (historyTasks ?? []);
+  const tasks = useMemo(
+    () => sortTasks(rawTasks, courier?.urgencyThresholdOrange ?? 60, courier?.urgencyThresholdRed ?? 30),
+    [rawTasks, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
+  );
   const isLoading = isToday ? loadingActive : loadingHistory;
   const isRefreshing = isToday ? refreshingActive : refreshingHistory;
   const refetch = isToday ? refetchActive : refetchHistory;

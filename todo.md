@@ -171,7 +171,10 @@
 - [x] Implement auto-login with demo courier
 - [x] Add seed demo data button to empty state
 - [x] Redesign TaskCard component — new information structure
-- [ ] Implement smart task sorting (new → in_progress → completed → cancelled)
+- [x] Implement smart task sorting (new → in_progress → completed → cancelled)
+- [x] Add courier color dots (stable color per courier name)
+- [x] ID on same line as sender name
+- [x] Status + Courier + Places at bottom of card
 - [ ] Add urgency color indicators (orange/red background on task cards)
 - [ ] Load tasks for selected date from server (history)
 

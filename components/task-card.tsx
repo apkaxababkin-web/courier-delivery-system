@@ -13,7 +13,7 @@ const STATUS_BORDER_COLORS: Record<TaskStatus, string> = {
   cancelled:   "#EF4444", // red
 };
 
-// ─── Courier color dot ────────────────────────────────────────────────────────
+// ─── Courier color palette ────────────────────────────────────────────────────
 
 const COURIER_COLORS = [
   "#007AFF", // blue
@@ -69,6 +69,7 @@ interface TaskCardProps {
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
   const borderColor = STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF";
+  const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
   const timeLabel = hasTimeInterval
@@ -87,20 +88,15 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
       onPress={() => onPress(task)}
       activeOpacity={0.7}
     >
-      {/* Top row: ID (right) */}
+      {/* Top row: Sender name + ID */}
       <View style={styles.topRow}>
-        <View style={{ flex: 1 }} />
+        <Text style={[styles.senderName, { color: colors.foreground }]}>
+          {task.senderName || "Отправитель"}
+        </Text>
         <Text style={[styles.idText, { color: colors.muted }]}>
           ID: {task.id}
         </Text>
       </View>
-
-      {/* Sender name (bold) */}
-      {task.senderName && (
-        <Text style={[styles.senderName, { color: colors.foreground }]}>
-          {task.senderName}
-        </Text>
-      )}
 
       {/* Sender address */}
       {task.senderAddress && (
@@ -112,7 +108,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         </View>
       )}
 
-      {/* Recipient name (bold) */}
+      {/* Recipient name */}
       <Text style={[styles.recipientName, { color: colors.foreground }]}>
         {task.recipientName}
       </Text>
@@ -132,14 +128,24 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         </Text>
       )}
 
-      {/* Bottom row: Status + Courier */}
+      {/* Bottom row: Status + Courier + Places */}
       <View style={styles.bottomRow}>
         <StatusBadge status={task.status} size="sm" />
+        
         {task.courierName && (
-          <Text style={[styles.courierText, { color: colors.muted }]}>
-            👤 {shortName(task.courierName)}
-          </Text>
+          <View style={styles.courierBadge}>
+            <View
+              style={[
+                styles.courierDot,
+                { backgroundColor: courierColor },
+              ]}
+            />
+            <Text style={[styles.courierText, { color: colors.muted }]}>
+              {shortName(task.courierName)}
+            </Text>
+          </View>
         )}
+        
         {task.placesCount != null && (
           <Text style={[styles.placesText, { color: colors.muted }]}>
             Мест: {task.placesCount}
@@ -163,9 +169,9 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: "row",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   idText: {
     fontSize: 11,
@@ -176,7 +182,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     lineHeight: 18,
-    marginBottom: 2,
   },
   recipientName: {
     fontSize: 14,
@@ -215,6 +220,16 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 6,
   },
+  courierBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  courierDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
   courierText: {
     fontSize: 11,
     lineHeight: 14,
@@ -222,5 +237,6 @@ const styles = StyleSheet.create({
   placesText: {
     fontSize: 11,
     lineHeight: 14,
+    marginLeft: "auto",
   },
 });
