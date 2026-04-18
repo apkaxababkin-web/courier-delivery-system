@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 
 import { skipToken } from "@tanstack/react-query";
 import { useState } from "react";
@@ -77,9 +78,14 @@ export default function TaskDetailScreen() {
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
-  const handleOpenMap = (url: string | null | undefined) => {
-    if (!url) return;
-    Linking.openURL(url);
+  const handleOpenMap = (address: string | null | undefined) => {
+    if (!address) return;
+    // Copy address to clipboard
+    Clipboard.setStringAsync(address);
+    // Open 2GIS
+    Linking.openURL("https://2gis.ru");
+    // Show feedback
+    Alert.alert("Адрес скопирован", `"${address}" скопирован в буфер обмена. Вставьте в поиск 2ГИС.`);
   };
 
   const handleCallPhone = (phone: string | null | undefined) => {
@@ -87,8 +93,10 @@ export default function TaskDetailScreen() {
     Linking.openURL(`tel:${phone.replace(/\s|\(|\)|-/g, "")}`);
   };
 
-  const handleSetStatus = (status: "in_progress" | "completed" | "cancelled") => {
-    statusMutation.mutate({ token: token!, taskId, status });
+  const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled") => {
+    // Toggle: if already in this status, revert to 'assigned'
+    const statusToSet = task?.status === newStatus ? "assigned" : newStatus;
+    statusMutation.mutate({ token: token!, taskId, status: statusToSet });
   };
 
   const handleSavePlaces = () => {
@@ -215,13 +223,9 @@ export default function TaskDetailScreen() {
         <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12 }}>
           <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Отправитель</Text>
           <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground, marginBottom: 6 }}>{task.senderName}</Text>
-          {task.senderAddressUrl ? (
-            <TouchableOpacity onPress={() => handleOpenMap(task.senderAddressUrl)}>
-              <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.senderAddress}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={{ fontSize: 13, color: colors.foreground, marginBottom: 4 }}>📍 {task.senderAddress}</Text>
-          )}
+          <TouchableOpacity onPress={() => handleOpenMap(task.senderAddress)}>
+            <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.senderAddress}</Text>
+          </TouchableOpacity>
           {task.senderPhone && (
             <TouchableOpacity onPress={() => handleCallPhone(task.senderPhone)}>
               <Text style={{ fontSize: 13, color: colors.primary }}>📞 {task.senderPhone}</Text>
@@ -233,13 +237,9 @@ export default function TaskDetailScreen() {
         <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 12 }}>
           <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Получатель</Text>
           <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground, marginBottom: 6 }}>{task.recipientName}</Text>
-          {task.recipientAddressUrl ? (
-            <TouchableOpacity onPress={() => handleOpenMap(task.recipientAddressUrl)}>
-              <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.deliveryAddress}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={{ fontSize: 13, color: colors.foreground, marginBottom: 4 }}>📍 {task.deliveryAddress}</Text>
-          )}
+          <TouchableOpacity onPress={() => handleOpenMap(task.deliveryAddress)}>
+            <Text style={{ fontSize: 13, color: colors.primary, marginBottom: 4 }}>📍 {task.deliveryAddress}</Text>
+          </TouchableOpacity>
           {task.recipientPhone && (
             <TouchableOpacity onPress={() => handleCallPhone(task.recipientPhone)}>
               <Text style={{ fontSize: 13, color: colors.primary }}>📞 {task.recipientPhone}</Text>
@@ -437,22 +437,30 @@ interface StatusButtonProps {
 }
 
 function StatusButton({ label, isActive, onPress, color, disabled }: StatusButtonProps) {
+  const [isPressed, setIsPressed] = useState(false);
+
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        setIsPressed(true);
+        onPress();
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setTimeout(() => setIsPressed(false), 150);
+      }}
       disabled={disabled}
       style={({ pressed }) => ({
         flex: 1,
-        backgroundColor: isActive ? color : "transparent",
+        backgroundColor: isActive || isPressed ? color : "transparent",
         borderColor: color,
         borderWidth: 2,
         borderRadius: 8,
         paddingVertical: 11,
         alignItems: "center" as const,
-        opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
+        opacity: disabled ? 0.5 : pressed || isPressed ? 0.85 : 1,
+        transform: [{ scale: pressed || isPressed ? 0.96 : 1 }],
       })}
     >
-      <Text style={{ color: isActive ? "#fff" : color, fontWeight: "600", fontSize: 13 }}>
+      <Text style={{ color: isActive || isPressed ? "#fff" : color, fontWeight: "600", fontSize: 13 }}>
         {label}
       </Text>
     </Pressable>

@@ -183,7 +183,7 @@ export const appRouter = router({
       .input(z.object({
         token: z.string(),
         taskId: z.number(),
-        status: z.enum(["in_progress", "completed", "cancelled"]),
+        status: z.enum(["assigned", "in_progress", "completed", "cancelled"]),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -191,8 +191,10 @@ export const appRouter = router({
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
-        if (task.status === "completed" || task.status === "cancelled") {
-          throw new Error("Задание уже завершено");
+        
+        // Allow reverting from completed/cancelled back to assigned
+        if ((task.status === "completed" || task.status === "cancelled") && input.status !== "assigned") {
+          throw new Error("Завершенное задание нельзя изменить");
         }
 
         const extra: Record<string, unknown> = {};
@@ -202,13 +204,18 @@ export const appRouter = router({
           if (task.courierId) {
             await db.incrementCourierDeliveries(task.courierId);
           }
+        } else if (input.status === "assigned") {
+          // Clear completed timestamp when reverting
+          extra.completedAt = null;
         }
 
         await db.updateTaskStatus(input.taskId, input.status, extra);
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: input.status,
-          note: input.status === "in_progress"
+          note: input.status === "assigned"
+            ? "Назначение отменено"
+            : input.status === "in_progress"
             ? "Курьер выехал"
             : input.status === "completed"
             ? "Доставка выполнена"

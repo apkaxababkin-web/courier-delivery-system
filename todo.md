@@ -123,3 +123,10 @@
 - [ ] Save reschedule date to API when calendar date selected
 - [ ] Push notifications for new tasks assigned to courier
 - [ ] Proof of delivery — photo capture when marking task complete
+
+## Status Button Toggle & 2GIS Integration Fix
+- [x] Mobile: status buttons work as toggle (нажал ещё раз = отмена)
+- [x] Mobile: improved visual feedback on button press (color, scale, haptic)
+- [x] Mobile: restored 2GIS integration (copy address + open 2GIS)
+- [x] Backend: updated setStatus to accept 'assigned' status for toggle
+- [x] Backend: allow reverting from completed/cancelled back to assigned
