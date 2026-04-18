@@ -264,6 +264,12 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    seedDemoCourier: publicProcedure
+      .mutation(async () => {
+        const courierId = await db.seedDemoCourier();
+        return { courierId, username: "demo", password: "demo123" };
+      }),
+
     seedDemo: publicProcedure
       .input(z.object({ token: z.string() }))
       .mutation(async ({ input }) => {

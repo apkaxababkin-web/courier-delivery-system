@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import bcrypt from "bcryptjs";
 import {
   couriers,
   tasks,
@@ -400,4 +401,30 @@ export async function seedDemoTasksForCourier(courierId: number): Promise<void> 
   for (const task of demoTasks) {
     await db.insert(tasks).values(task);
   }
+}
+
+/** Seed demo courier account for testing */
+export async function seedDemoCourier(): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Check if demo courier already exists
+  const existing = await db.select().from(couriers).where(eq(couriers.username, "demo")).limit(1);
+  if (existing.length > 0) {
+    return existing[0].id;
+  }
+  
+  // Create demo courier with password "demo123"
+  const hashedPassword = await bcrypt.hash("demo123", 10);
+  const result = await db.insert(couriers).values({
+    username: "demo",
+    passwordHash: hashedPassword,
+    name: "Демо Курьер",
+    phone: "+7 (999) 000-00-00",
+    vehicleType: "car",
+    isActive: true,
+    totalDeliveries: 0,
+  });
+  
+  return result[0].insertId;
 }

@@ -43,6 +43,17 @@ function LoginForm() {
     },
   });
 
+  const seedDemoCourierMutation = trpc.tasks.seedDemoCourier.useMutation({
+    onSuccess: (data) => {
+      setUsername(data.username);
+      setPassword(data.password);
+      Alert.alert("Демо-курьер создан", `Логин: ${data.username}\nПароль: ${data.password}`);
+    },
+    onError: (error) => {
+      Alert.alert("Ошибка", error.message);
+    },
+  });
+
   const handleLogin = () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert("Ошибка", "Введите логин и пароль");
@@ -118,6 +129,16 @@ function LoginForm() {
             ) : (
               <Text style={styles.loginBtnText}>Войти</Text>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.demoBtn, { borderColor: colors.primary }]}
+            onPress={() => seedDemoCourierMutation.mutate()}
+            disabled={seedDemoCourierMutation.isPending}
+          >
+            <Text style={[styles.demoBtnText, { color: colors.primary }]}>
+              {seedDemoCourierMutation.isPending ? "Создание..." : "Создать демо-курьера"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -420,6 +441,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
     lineHeight: 20,
+  },
+  demoBtn: {
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  demoBtnText: {
+    fontSize: 16,
+    fontWeight: "600",
   },
   logoutBtn: {
     height: 52,

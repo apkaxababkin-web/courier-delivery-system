@@ -111,6 +111,12 @@
 - [x] Mobile: task detail — addresses are plain text (if no URL provided)
 - [x] Demo data: add 2GIS URLs for all demo task addresses
 
+## Demo Courier & Tasks Loading
+- [x] Backend: add seedDemoCourier mutation to create demo courier (login: demo, password: demo123)
+- [x] Mobile: add "Create demo courier" button on login screen
+- [x] Mobile: auto-fill login/password fields when demo courier is created
+- [x] Backend: seedDemo mutation to load demo tasks (requires valid courier token)
+
 ## Next Features
 - [ ] **Filter "My Tasks"** — show only tasks assigned to current courier on main screen
 - [ ] Task status history — timeline of all status changes with timestamps
