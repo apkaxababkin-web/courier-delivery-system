@@ -107,7 +107,7 @@ export default function TaskListScreen() {
         ))}
       </View>
 
-      {isLoading ? (
+      {isLoading && tasks.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>

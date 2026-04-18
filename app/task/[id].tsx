@@ -271,6 +271,7 @@ export default function TaskDetailScreen() {
             onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
             style={{ borderWidth: 2, borderColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: "center" }}
           >
+            <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 4 }}>Введите количество мест</Text>
             <Text style={{ fontSize: 22, fontWeight: "700", color: colors.foreground }}>{task.placesCount || 0}</Text>
           </TouchableOpacity>
         </View>
@@ -350,7 +351,7 @@ export default function TaskDetailScreen() {
       <Modal visible={placesModalVisible} transparent animationType="slide" onRequestClose={() => setPlacesModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12 }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Количество мест</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Введите количество мест</Text>
             <TextInput
               autoFocus
               value={placesInput}

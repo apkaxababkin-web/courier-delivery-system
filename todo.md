@@ -136,3 +136,8 @@
 - [x] Mobile: places input — working save/cancel buttons
 - [x] Mobile: calendar — fixed layout to show day numbers properly
 - [x] Mobile: 2GIS — second variant with URL parameter ?q=address + clipboard copy
+
+## UI Fixes (Current Sprint)
+- [x] Fix places modal — ensure modal window shows (not just keyboard)
+- [x] Update places button description to "Введите количество мест"
+- [x] Fix loading spinner on home screen when returning from task detail
