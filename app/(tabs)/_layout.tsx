@@ -40,18 +40,36 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Задания",
+          title: "Все заявки",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={26} name={icon("list.bullet")} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="history"
+        name="pickup-gemotest"
         options={{
-          title: "История",
+          title: "Гемотест",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("clock.fill")} color={color} />
+            <IconSymbol size={26} name={icon("box.2")} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="pickup-sberbank"
+        options={{
+          title: "Сбербанк",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name={icon("building.2")} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="letters"
+        options={{
+          title: "Письма",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name={icon("envelope")} color={color} />
           ),
         }}
       />

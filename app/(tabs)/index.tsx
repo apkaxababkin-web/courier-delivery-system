@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   RefreshControl,
   StyleSheet,
   Text,
@@ -10,7 +11,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { skipToken } from "@tanstack/react-query";
-
 
 import { ScreenContainer } from "@/components/screen-container";
 import { TaskCard, type TaskCardData } from "@/components/task-card";
@@ -21,18 +21,12 @@ import { type TaskStatus } from "@/shared/types";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback } from "react";
 
-type FilterTab = "active" | "history";
-
-const FILTER_TABS: { key: FilterTab; label: string }[] = [
-  { key: "active",  label: "Активные" },
-  { key: "history", label: "История" },
-];
-
 export default function TaskListScreen() {
   const colors = useColors();
   const router = useRouter();
   const { token, courier } = useCourierAuth();
-  const [tab, setTab] = useState<FilterTab>("active");
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const {
     data: activeTasks,
@@ -56,20 +50,43 @@ export default function TaskListScreen() {
     onSuccess: () => { refetchActive(); refetchHistory(); },
   });
 
-  const tasks = tab === "active" ? (activeTasks ?? []) : (historyTasks ?? []);
-  const isLoading = tab === "active" ? loadingActive : loadingHistory;
-  const isRefreshing = tab === "active" ? refreshingActive : refreshingHistory;
-  const refetch = tab === "active" ? refetchActive : refetchHistory;
+  // Filter tasks by selected date
+  const isToday = useMemo(() => {
+    const today = new Date();
+    return selectedDate.toDateString() === today.toDateString();
+  }, [selectedDate]);
+
+  const tasks = isToday ? (activeTasks ?? []) : (historyTasks ?? []);
+  const isLoading = isToday ? loadingActive : loadingHistory;
+  const isRefreshing = isToday ? refreshingActive : refreshingHistory;
+  const refetch = isToday ? refetchActive : refetchHistory;
 
   // Prevent showing loading spinner when returning from task detail
   useFocusEffect(
     useCallback(() => {
-      // Don't refetch automatically, just ensure data is available
       if (!tasks || tasks.length === 0) {
         refetch();
       }
     }, [tasks, refetch])
   );
+
+  const formatDate = (date: Date) => {
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear()).slice(-2);
+    return `${day}.${month}.${year}`;
+  };
+
+  const generateDateOptions = () => {
+    const dates = [];
+    const today = new Date();
+    for (let i = -30; i <= 0; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() + i);
+      dates.push(date);
+    }
+    return dates;
+  };
 
   if (!token) {
     return (
@@ -87,42 +104,80 @@ export default function TaskListScreen() {
 
   return (
     <ScreenContainer>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <View>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Заявки</Text>
-          {courier && (
-            <Text style={[styles.headerSub, { color: colors.muted }]}>{courier.name}</Text>
-          )}
-        </View>
+      {/* New Header: Profile | Date | Logo */}
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.push("/profile" as never)}>
+          <Text style={styles.headerIcon}>👤</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
-          style={[styles.seedBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
-          onPress={() => token && seedMutation.mutate({ token })}
-          disabled={seedMutation.isPending || !token}
+          style={styles.dateButton}
+          onPress={() => setShowDatePicker(true)}
         >
-          <Text style={[styles.seedBtnText, { color: colors.primary }]}>
-            {seedMutation.isPending ? "..." : "+ Демо"}
+          <Text style={[styles.dateText, { color: colors.foreground }]}>
+            {formatDate(selectedDate)}
           </Text>
         </TouchableOpacity>
+
+        <Text style={styles.logo}>🚚</Text>
       </View>
 
-      {/* Filter tabs */}
-      <View style={[styles.tabs, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {FILTER_TABS.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[
-              styles.tab,
-              tab === t.key && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
-            ]}
-            onPress={() => setTab(t.key)}
-          >
-            <Text style={[styles.tabText, { color: tab === t.key ? colors.primary : colors.muted }]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Date Picker Modal */}
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: "rgba(0,0,0,0.5)" }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Выберите дату</Text>
+
+            <View style={styles.dateGrid}>
+              {generateDateOptions().map((date, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    styles.dateGridButton,
+                    {
+                      backgroundColor:
+                        date.toDateString() === selectedDate.toDateString()
+                          ? colors.primary
+                          : colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    setSelectedDate(date);
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.dateGridButtonText,
+                      {
+                        color:
+                          date.toDateString() === selectedDate.toDateString()
+                            ? "white"
+                            : colors.foreground,
+                      },
+                    ]}
+                  >
+                    {date.getDate()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: colors.primary }]}
+              onPress={() => setShowDatePicker(false)}
+            >
+              <Text style={styles.closeButtonText}>Закрыть</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {isLoading && tasks.length === 0 ? (
         <View style={styles.center}>
@@ -140,10 +195,10 @@ export default function TaskListScreen() {
             <View style={styles.center}>
               <Text style={{ fontSize: 48 }}>📋</Text>
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {tab === "active" ? "Нет активных заявок" : "История пуста"}
+                {isToday ? "Нет активных заявок" : "История пуста"}
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                {tab === "active" ? "Нажмите «+ Демо» для тестовых заявок" : "Выполненные заявки появятся здесь"}
+                {isToday ? "Нажмите на дату для выбора другого дня" : "Выполненные заявки появятся здесь"}
               </Text>
             </View>
           }
@@ -178,20 +233,39 @@ export default function TaskListScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 },
   header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
   },
-  headerTitle: { fontSize: 22, fontWeight: "700", lineHeight: 28 },
-  headerSub: { fontSize: 13, lineHeight: 18, marginTop: 1 },
-  seedBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
-  seedBtnText: { fontSize: 13, fontWeight: "600", lineHeight: 18 },
-  tabs: { flexDirection: "row", borderBottomWidth: 0.5 },
-  tab: {
-    flex: 1, paddingVertical: 12, alignItems: "center",
-    borderBottomWidth: 2, borderBottomColor: "transparent",
+  headerIcon: { fontSize: 24 },
+  dateButton: { paddingHorizontal: 12, paddingVertical: 6 },
+  dateText: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
+  logo: { fontSize: 20 },
+  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center" },
+  modalContent: { borderRadius: 12, padding: 20, width: "85%", maxHeight: "80%" },
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
+  dateGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-around",
+    marginBottom: 16,
+    gap: 8,
   },
-  tabText: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
-  list: { padding: 12, flexGrow: 1 },
+  dateGridButton: {
+    width: "22%",
+    aspectRatio: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dateGridButtonText: { fontSize: 14, fontWeight: "600" },
+  closeButton: { paddingVertical: 12, borderRadius: 8, alignItems: "center" },
+  closeButtonText: { color: "white", fontSize: 16, fontWeight: "600" },
+  list: { padding: 12, flexGrow: 1, paddingBottom: 20 },
   emptyTitle: { fontSize: 18, fontWeight: "600", textAlign: "center", lineHeight: 24 },
   emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
 });
