@@ -162,3 +162,22 @@
 - [ ] Mobile: implement smart task sorting (new → in_progress → completed → cancelled, sorted by deadline within each group)
 - [ ] Mobile: add color-coded urgency indicators (orange/red background on task cards based on time remaining)
 - [x] Mobile: create task-sorting.ts utility with calculateUrgency and sortTasks functions
+
+
+## Main Screen Redesign (Modern List Layout)
+- [ ] Redesign header: Profile | Date (18.04.26) | Logo
+- [ ] Add calendar modal for date selection (history filtering)
+- [ ] Create Tab Bar with 4 tabs: "Все заявки" | "Гемотест" | "Сбербанк" | "Письма"
+- [ ] Implement smart task sorting (new → in_progress → completed → cancelled)
+- [ ] Add urgency color indicators (orange/red background on task cards)
+- [ ] Load tasks for selected date from server (history)
+- [ ] Apply Modern List design to all task cards
+
+## Pickup Points System
+- [ ] Create database schema for pickup points
+- [ ] Create database schema for daily pickup schedules
+- [ ] Add backend endpoints for pickup points and tasks
+- [ ] Implement Гемотест tab with pickup list
+- [ ] Implement Сбербанк tab with pickup list
+- [ ] Add "mark as picked" functionality for pickup tasks
+- [ ] Show pickup task history
