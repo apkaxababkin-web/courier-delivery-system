@@ -3,28 +3,37 @@ import { StatusBadge } from "@/components/status-badge";
 import { type TaskStatus } from "@/shared/types";
 import { useColors } from "@/hooks/use-colors";
 
-// ─── Urgency & Border Colors ──────────────────────────────────────────────────
-const URGENCY_CONFIG = {
-  critical: { borderColor: "#EF4444", urgencyText: "< 30 мин", urgencyColor: "#EF4444" },
-  high: { borderColor: "#F59E0B", urgencyText: "< 1 час", urgencyColor: "#F59E0B" },
-  normal: { borderColor: "#22C55E", urgencyText: "", urgencyColor: "#687076" },
-  low: { borderColor: "#0a7ea4", urgencyText: "", urgencyColor: "#687076" },
-};
+// ─── Courier color dot ────────────────────────────────────────────────────────
 
-function getUrgencyConfig(deliveryTimeFrom?: string | null): typeof URGENCY_CONFIG.critical {
-  if (!deliveryTimeFrom) return URGENCY_CONFIG.normal;
+const COURIER_COLORS = [
+  "#007AFF", // blue
+  "#22C55E", // green
+  "#F59E0B", // orange
+  "#8B5CF6", // purple
+  "#EF4444", // red
+  "#06B6D4", // cyan
+  "#EC4899", // pink
+  "#84CC16", // lime
+];
 
-  const now = new Date();
-  const deliveryTime = new Date(deliveryTimeFrom);
-  const minutesUntilDelivery = (deliveryTime.getTime() - now.getTime()) / (1000 * 60);
+/** Returns a stable color for a given courier name */
+function getCourierColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return COURIER_COLORS[Math.abs(hash) % COURIER_COLORS.length];
+}
 
-  if (minutesUntilDelivery < 30) return URGENCY_CONFIG.critical;
-  if (minutesUntilDelivery < 60) return URGENCY_CONFIG.high;
-  if (minutesUntilDelivery < 240) return URGENCY_CONFIG.normal;
-  return URGENCY_CONFIG.low;
+/** Shorten name: "Иван Тестов" → "Иван Т." */
+function shortName(name: string): string {
+  const parts = name.trim().split(" ");
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[1][0]}.`;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
 export interface TaskCardData {
   id: number;
   recipientName: string;
@@ -45,157 +54,178 @@ interface TaskCardProps {
   onPress: (task: TaskCardData) => void;
 }
 
-// ─── Component ─────────────────────────────────────────────────────────────────
+// ─── Status accent colors (soft, not too bright) ─────────────────────────────
+
+const STATUS_ACCENT: Record<TaskStatus, string> = {
+  pending:     "#9CA3AF", // grey
+  assigned:    "#3B82F6", // blue
+  in_progress: "#F97316", // orange
+  completed:   "#22C55E", // green
+  cancelled:   "#D1D5DB", // light grey
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
-  const urgency = getUrgencyConfig(task.deliveryTimeFrom);
+  const accent = STATUS_ACCENT[task.status] ?? "#9CA3AF";
 
-  // Format time range
-  const timeRange = task.deliveryTimeFrom && task.deliveryTimeTo
-    ? `${task.deliveryTimeFrom.slice(0, 5)} - ${task.deliveryTimeTo.slice(0, 5)}`
-    : "";
+  const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
+  const timeLabel = hasTimeInterval
+    ? `${task.deliveryTimeFrom ?? "?"} – ${task.deliveryTimeTo ?? "?"}`
+    : null;
+
+  // Show places only if more than 1
+  const hasPlaces = task.placesCount != null && task.placesCount > 1;
 
   return (
-    <TouchableOpacity onPress={() => onPress(task)} activeOpacity={0.7}>
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: colors.surface,
-            borderLeftColor: urgency.borderColor,
-          },
-        ]}
-      >
-        {/* Row 1: ID + Urgency + Status */}
-        <View style={styles.row1}>
-          <View style={styles.idUrgencyContainer}>
-            <Text style={[styles.idText, { color: colors.muted }]}>
-              ID: {task.id}
-            </Text>
-            {urgency.urgencyText && (
-              <Text style={[styles.urgencyText, { color: urgency.urgencyColor }]}>
-                {urgency.urgencyText}
-              </Text>
-            )}
-          </View>
-          <StatusBadge status={task.status} size="sm" />
+    <TouchableOpacity
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+        },
+      ]}
+      onPress={() => onPress(task)}
+      activeOpacity={0.7}
+    >
+      {/* Main row: ID | Recipient | Address | Time | Places | Status | Courier | Chevron */}
+      <View style={styles.mainRow}>
+        {/* ID Badge */}
+        <View style={[styles.idBadge, { backgroundColor: accent }]}>
+          <Text style={styles.idText}>{task.id}</Text>
         </View>
 
-        {/* Row 2: Recipient Name */}
-        <Text style={[styles.recipientName, { color: colors.foreground }]}>
+        {/* Recipient name */}
+        <Text style={[styles.recipientName, { color: colors.foreground }]} numberOfLines={1}>
           {task.recipientName}
         </Text>
 
-        {/* Row 3: Sender */}
-        {task.senderAddress && (
-          <Text style={[styles.senderText, { color: colors.muted }]}>
-            Отправитель: {task.senderAddress}
+        {/* Delivery address (compact) */}
+        <Text style={[styles.addressText, { color: colors.muted }]} numberOfLines={1}>
+          {task.deliveryAddress}
+        </Text>
+
+        {/* Time interval (if exists) */}
+        {timeLabel && (
+          <Text style={[styles.timeText, { color: colors.muted }]} numberOfLines={1}>
+            {timeLabel}
           </Text>
         )}
 
-        {/* Row 4: From/To Addresses */}
-        <View style={styles.addressesContainer}>
-          <View style={styles.addressRow}>
-            <Text style={[styles.addressLabel, { color: colors.muted }]}>📍 От:</Text>
-            <Text style={[styles.addressValue, { color: colors.muted }]}>
-              {task.recipientAddress || "—"}
-            </Text>
-          </View>
-          <View style={styles.addressRow}>
-            <Text style={[styles.addressLabel, { color: colors.muted }]}>📍 До:</Text>
-            <Text style={[styles.addressValue, { color: colors.muted }]}>
-              {task.deliveryAddress}
-            </Text>
-          </View>
-        </View>
+        {/* Places count (if > 1) */}
+        {hasPlaces && (
+          <Text style={[styles.placesText, { color: colors.muted }]}>
+            📦 {task.placesCount}
+          </Text>
+        )}
 
-        {/* Row 5: Time + Places */}
-        <View style={styles.row5}>
-          {timeRange && (
-            <Text style={[styles.timeText, { color: colors.muted }]}>
-              Время: {timeRange}
+        {/* Status badge */}
+        <StatusBadge status={task.status} size="sm" />
+
+        {/* Courier indicator */}
+        {task.courierName ? (
+          <View style={styles.courierIndicator}>
+            <View style={[styles.courierDot, { backgroundColor: getCourierColor(task.courierName) }]} />
+            <Text style={[styles.courierText, { color: colors.foreground }]} numberOfLines={1}>
+              {shortName(task.courierName)}
             </Text>
-          )}
-          {task.placesCount && task.placesCount > 0 && (
-            <Text style={[styles.placesText, { color: colors.muted }]}>
-              Мест: {task.placesCount}
-            </Text>
-          )}
-        </View>
+          </View>
+        ) : (
+          <Text style={[styles.unassignedText, { color: colors.muted }]}>
+            —
+          </Text>
+        )}
+
+        {/* Chevron */}
+        <Text style={[styles.chevron, { color: colors.muted }]}>›</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   card: {
-    borderLeftWidth: 5,
     borderRadius: 10,
-    padding: 12,
-    marginHorizontal: 12,
-    marginBottom: 8,
+    borderWidth: 0.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginHorizontal: 8,
+    marginBottom: 6,
   },
-  row1: {
+  mainRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
-  },
-  idUrgencyContainer: {
-    flexDirection: "row",
     gap: 8,
+  },
+  idBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
     alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   idText: {
+    color: "#fff",
     fontSize: 12,
-    fontWeight: "500",
-  },
-  urgencyText: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
+    lineHeight: 18,
   },
   recipientName: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 4,
-    lineHeight: 20,
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 18,
+    minWidth: 80,
+    maxWidth: 120,
   },
-  senderText: {
-    fontSize: 13,
-    marginBottom: 8,
-    lineHeight: 16,
-  },
-  addressesContainer: {
-    marginBottom: 8,
-    gap: 4,
-  },
-  addressRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 4,
-  },
-  addressLabel: {
+  addressText: {
     fontSize: 12,
-    fontWeight: "500",
-    minWidth: 30,
-  },
-  addressValue: {
-    fontSize: 12,
-    flex: 1,
     lineHeight: 16,
-  },
-  row5: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    minWidth: 100,
+    maxWidth: 140,
   },
   timeText: {
-    fontSize: 12,
+    fontSize: 11,
     lineHeight: 16,
+    minWidth: 60,
+    maxWidth: 80,
   },
   placesText: {
+    fontSize: 11,
+    lineHeight: 16,
+    minWidth: 35,
+  },
+  courierIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    minWidth: 60,
+    maxWidth: 80,
+  },
+  courierDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    flexShrink: 0,
+  },
+  courierText: {
+    fontSize: 11,
+    fontWeight: "500",
+    lineHeight: 16,
+  },
+  unassignedText: {
     fontSize: 12,
     lineHeight: 16,
+    minWidth: 20,
+  },
+  chevron: {
+    fontSize: 16,
+    lineHeight: 18,
+    marginLeft: 4,
+    flexShrink: 0,
   },
 });
