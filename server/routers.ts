@@ -183,7 +183,7 @@ export const appRouter = router({
       .input(z.object({
         token: z.string(),
         taskId: z.number(),
-        status: z.enum(["assigned", "in_progress", "completed", "cancelled"]),
+        status: z.enum(["pending", "assigned", "in_progress", "completed", "cancelled"]),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);

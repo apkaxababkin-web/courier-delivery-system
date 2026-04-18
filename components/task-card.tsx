@@ -85,98 +85,61 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         {
           backgroundColor: colors.surface,
           borderColor: colors.border,
-          borderLeftColor: accent,
         },
       ]}
       onPress={() => onPress(task)}
-      activeOpacity={0.75}
+      activeOpacity={0.7}
     >
-      {/* Row 1: Number badge + Client name */}
-      <View style={styles.row1}>
-        <View style={[styles.numBadge, { backgroundColor: accent }]}>
-          <Text style={styles.numText}>{task.id}</Text>
+      {/* Main row: ID | Recipient | Address | Time | Places | Status | Courier | Chevron */}
+      <View style={styles.mainRow}>
+        {/* ID Badge */}
+        <View style={[styles.idBadge, { backgroundColor: accent }]}>
+          <Text style={styles.idText}>{task.id}</Text>
         </View>
-        <Text style={[styles.clientName, { color: colors.foreground }]} numberOfLines={1}>
+
+        {/* Recipient name */}
+        <Text style={[styles.recipientName, { color: colors.foreground }]} numberOfLines={1}>
           {task.recipientName}
         </Text>
-      </View>
 
-      {/* Row 2: Sender name (if set) */}
-      {task.senderName ? (
-        <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: colors.muted }]}>👤 ОТПРАВИТЕЛЬ</Text>
-          <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
-            {task.senderName}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* Row 3: Sender address */}
-      <View style={styles.infoRow}>
-        <Text style={[styles.infoLabel, { color: colors.muted }]}>📍 АДРЕС</Text>
-        <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
-          {task.senderAddress ?? task.deliveryAddress}{task.deliveryCity ? `, ${task.deliveryCity}` : ""}
+        {/* Delivery address (compact) */}
+        <Text style={[styles.addressText, { color: colors.muted }]} numberOfLines={1}>
+          {task.deliveryAddress}
         </Text>
-      </View>
 
-      {/* Row 4: Recipient name */}
-      <View style={styles.infoRow}>
-        <Text style={[styles.infoLabel, { color: colors.muted }]}>📦 ПОЛУЧАТЕЛЬ</Text>
-        <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
-          {task.recipientName}
-        </Text>
-      </View>
-
-      {/* Row 5: Recipient address (if set) */}
-      {task.recipientAddress ? (
-        <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: colors.muted }]}>🏠 АДРЕС</Text>
-          <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
-            {task.recipientAddress}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* Row 5: Time interval (if set) */}
-      {timeLabel ? (
-        <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: colors.muted }]}>🕐 ВРЕМЯ</Text>
-          <Text style={[styles.infoValue, { color: colors.foreground }]} numberOfLines={1}>
+        {/* Time interval (if exists) */}
+        {timeLabel && (
+          <Text style={[styles.timeText, { color: colors.muted }]} numberOfLines={1}>
             {timeLabel}
           </Text>
-        </View>
-      ) : null}
+        )}
 
-      {/* Footer: places left | status + courier right */}
-      <View style={[styles.footer, { borderTopColor: colors.border }]}>
-        {/* Left: places count (empty if 1 or not set) */}
-        <View style={styles.footerLeft}>
-          {hasPlaces ? (
-            <Text style={[styles.placesText, { color: colors.muted }]}>
-              📦 {task.placesCount} мест
+        {/* Places count (if > 1) */}
+        {hasPlaces && (
+          <Text style={[styles.placesText, { color: colors.muted }]}>
+            📦 {task.placesCount}
+          </Text>
+        )}
+
+        {/* Status badge */}
+        <StatusBadge status={task.status} size="sm" />
+
+        {/* Courier indicator */}
+        {task.courierName ? (
+          <View style={styles.courierIndicator}>
+            <View style={[styles.courierDot, { backgroundColor: getCourierColor(task.courierName) }]} />
+            <Text style={[styles.courierText, { color: colors.foreground }]} numberOfLines={1}>
+              {shortName(task.courierName)}
             </Text>
-          ) : null}
-        </View>
+          </View>
+        ) : (
+          <Text style={[styles.unassignedText, { color: colors.muted }]}>
+            —
+          </Text>
+        )}
 
-        {/* Right: status badge + courier */}
-        <View style={styles.footerRight}>
-          <StatusBadge status={task.status} size="sm" />
-
-          {task.courierName ? (
-            <View style={styles.courierRow}>
-              <View style={[styles.courierDot, { backgroundColor: getCourierColor(task.courierName) }]} />
-              <Text style={[styles.courierText, { color: colors.foreground }]}>
-                {shortName(task.courierName)}
-              </Text>
-            </View>
-          ) : (
-            <Text style={[styles.unassignedText, { color: colors.muted }]}>
-              Не назначен
-            </Text>
-          )}
-
-          <Text style={[styles.chevron, { color: colors.muted }]}>›</Text>
-        </View>
+        {/* Chevron */}
+        <Text style={[styles.chevron, { color: colors.muted }]}>›</Text>
       </View>
     </TouchableOpacity>
   );
@@ -186,100 +149,83 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderLeftWidth: 3,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 10,
-    marginBottom: 10,
-    gap: 5,
+    borderRadius: 10,
+    borderWidth: 0.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginHorizontal: 8,
+    marginBottom: 6,
   },
-  row1: {
+  mainRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 4,
   },
-  numBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 7,
+  idBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
-  numText: {
+  idText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 18,
   },
-  clientName: {
-    flex: 1,
-    fontSize: 15,
+  recipientName: {
+    fontSize: 14,
     fontWeight: "600",
-    lineHeight: 20,
+    lineHeight: 18,
+    minWidth: 80,
+    maxWidth: 120,
   },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 6,
+  addressText: {
+    fontSize: 12,
+    lineHeight: 16,
+    minWidth: 100,
+    maxWidth: 140,
   },
-  infoLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    lineHeight: 17,
-    width: 90,
-    letterSpacing: 0.2,
-  },
-  infoValue: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 17,
-  },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 0.5,
-  },
-  footerLeft: {
-    flex: 1,
-  },
-  footerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
+  timeText: {
+    fontSize: 11,
+    lineHeight: 16,
+    minWidth: 60,
+    maxWidth: 80,
   },
   placesText: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11,
+    lineHeight: 16,
+    minWidth: 35,
   },
-  // Courier: just dot + name, no background box
-  courierRow: {
+  courierIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
+    minWidth: 60,
+    maxWidth: 80,
   },
   courierDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    flexShrink: 0,
   },
   courierText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
-    lineHeight: 17,
+    lineHeight: 16,
   },
   unassignedText: {
     fontSize: 12,
-    lineHeight: 17,
-    fontStyle: "italic",
+    lineHeight: 16,
+    minWidth: 20,
   },
   chevron: {
-    fontSize: 18,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 18,
+    marginLeft: 4,
+    flexShrink: 0,
   },
 });

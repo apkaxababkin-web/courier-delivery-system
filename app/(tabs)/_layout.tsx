@@ -73,15 +73,8 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Профиль",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("person.fill")} color={color} />
-          ),
-        }}
-      />
     </Tabs>
   );
 }
+
+// Note: Profile screen is accessed via header button, not tab bar
