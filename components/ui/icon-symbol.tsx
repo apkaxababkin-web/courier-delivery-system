@@ -12,18 +12,11 @@ const MAPPING = {
   "clock.fill": "history",
   "person.fill": "person",
   "paperplane.fill": "send",
-  
-  // Tab Bar Icons
-  "list.bullet": "list",
-  "box.2": "inventory-2",
-  "building.2": "domain",
-  "envelope": "mail",
-  
   // Task list
+  "list.bullet": "list",
   "checkmark.circle.fill": "check-circle",
   "xmark.circle.fill": "cancel",
   "clock": "schedule",
-  
   // Task detail
   "mappin.fill": "location-on",
   "phone.fill": "phone",
@@ -32,12 +25,10 @@ const MAPPING = {
   "chevron.right": "chevron-right",
   "chevron.left": "chevron-left",
   "arrow.left": "arrow-back",
-  
   // Status
   "bolt.fill": "flash-on",
   "truck.box.fill": "local-shipping",
   "figure.walk": "directions-walk",
-  
   // General
   "chevron.left.forwardslash.chevron.right": "code",
   "bell.fill": "notifications",
@@ -47,10 +38,6 @@ const MAPPING = {
   "info.circle.fill": "info",
   "plus.circle.fill": "add-circle",
   "tray.full.fill": "inbox",
-  
-  // Theme toggle
-  "moon.fill": "dark-mode",
-  "sun.max.fill": "light-mode",
 } as unknown as IconMapping;
 
 export function IconSymbol({
