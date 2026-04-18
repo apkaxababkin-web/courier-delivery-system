@@ -76,15 +76,77 @@ export default function TaskListScreen() {
     return `${day}.${month}.${year}`;
   };
 
-  const generateDateOptions = () => {
-    const dates = [];
-    const today = new Date();
-    for (let i = -30; i <= 0; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() + i);
-      dates.push(date);
+  const getDaysInMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  const handleDateChange = (day: number) => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(day);
+    setSelectedDate(newDate);
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = getDaysInMonth(selectedDate);
+    const firstDay = getFirstDayOfMonth(selectedDate);
+    const calendarGrid = [];
+    let week = [];
+
+    // Empty cells for days before month starts
+    for (let i = 0; i < firstDay; i++) {
+      week.push(<View key={`empty-${i}`} style={{ flex: 1 }} />);
     }
-    return dates;
+
+    // Days of month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const isSelected = selectedDate.getDate() === day && selectedDate.getMonth() === new Date().getMonth();
+      week.push(
+        <TouchableOpacity
+          key={day}
+          onPress={() => handleDateChange(day)}
+          style={{
+            flex: 1,
+            aspectRatio: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: isSelected ? colors.primary : "transparent",
+            borderRadius: 8,
+          }}
+        >
+          <Text style={{ color: isSelected ? "#fff" : colors.foreground, fontWeight: isSelected ? "700" : "500", fontSize: 14 }}>
+            {day}
+          </Text>
+        </TouchableOpacity>
+      );
+
+      // Push week to grid when it has 7 days
+      if (week.length === 7) {
+        calendarGrid.push(
+          <View key={`week-${calendarGrid.length}`} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+            {week}
+          </View>
+        );
+        week = [];
+      }
+    }
+
+    // Push remaining days if any
+    if (week.length > 0) {
+      while (week.length < 7) {
+        week.push(<View key={`empty-end-${week.length}`} style={{ flex: 1 }} />);
+      }
+      calendarGrid.push(
+        <View key={`week-${calendarGrid.length}`} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+          {week}
+        </View>
+      );
+    }
+
+    return calendarGrid;
   };
 
   if (!token) {
@@ -121,59 +183,62 @@ export default function TaskListScreen() {
         <Text style={styles.logo}>🚚</Text>
       </View>
 
-      {/* Date Picker Modal */}
+      {/* Date Picker Modal - Beautiful Calendar */}
       <Modal
         visible={showDatePicker}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowDatePicker(false)}
       >
-        <View style={[styles.modalOverlay, { backgroundColor: "rgba(0,0,0,0.5)" }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Выберите дату</Text>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Выбор даты</Text>
+            <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите дату для просмотра заявок</Text>
 
-            <View style={styles.dateGrid}>
-              {generateDateOptions().map((date, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[
-                    styles.dateGridButton,
-                    {
-                      backgroundColor:
-                        date.toDateString() === selectedDate.toDateString()
-                          ? colors.primary
-                          : colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  onPress={() => {
-                    setSelectedDate(date);
-                    setShowDatePicker(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.dateGridButtonText,
-                      {
-                        color:
-                          date.toDateString() === selectedDate.toDateString()
-                            ? "white"
-                            : colors.foreground,
-                      },
-                    ]}
-                  >
-                    {date.getDate()}
-                  </Text>
-                </TouchableOpacity>
+            {/* Month/Year Header */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1))}>
+                <Text style={{ fontSize: 20, color: colors.primary }}>‹</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>
+                {selectedDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
+              </Text>
+              <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}>
+                <Text style={{ fontSize: 20, color: colors.primary }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Weekday Headers */}
+            <View style={{ flexDirection: "row", marginBottom: 8, gap: 8 }}>
+              {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
+                <View key={day} style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>{day}</Text>
+                </View>
               ))}
             </View>
 
-            <TouchableOpacity
-              style={[styles.closeButton, { backgroundColor: colors.primary }]}
-              onPress={() => setShowDatePicker(false)}
-            >
-              <Text style={styles.closeButtonText}>Закрыть</Text>
-            </TouchableOpacity>
+            {/* Calendar Grid */}
+            <View style={{ marginBottom: 16 }}>
+              {renderCalendar()}
+            </View>
+
+            {/* Selected Date Display */}
+            <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Выбранная дата:</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>
+                {selectedDate.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              </Text>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
+                <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Применить</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -253,27 +318,6 @@ const styles = StyleSheet.create({
   dateButton: { paddingHorizontal: 12, paddingVertical: 6 },
   dateText: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
   logo: { fontSize: 20 },
-  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center" },
-  modalContent: { borderRadius: 12, padding: 20, width: "85%", maxHeight: "80%" },
-  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  dateGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-around",
-    marginBottom: 16,
-    gap: 8,
-  },
-  dateGridButton: {
-    width: "22%",
-    aspectRatio: 1,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  dateGridButtonText: { fontSize: 14, fontWeight: "600" },
-  closeButton: { paddingVertical: 12, borderRadius: 8, alignItems: "center" },
-  closeButtonText: { color: "white", fontSize: 16, fontWeight: "600" },
   list: { padding: 12, flexGrow: 1, paddingBottom: 20 },
   emptyTitle: { fontSize: 18, fontWeight: "600", textAlign: "center", lineHeight: 24 },
   emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
