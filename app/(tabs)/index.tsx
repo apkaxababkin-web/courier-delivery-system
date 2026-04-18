@@ -97,8 +97,8 @@ export default function TaskListScreen() {
         </View>
         <TouchableOpacity
           style={[styles.seedBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
-          onPress={() => seedMutation.mutate({ token })}
-          disabled={seedMutation.isPending}
+          onPress={() => token && seedMutation.mutate({ token })}
+          disabled={seedMutation.isPending || !token}
         >
           <Text style={[styles.seedBtnText, { color: colors.primary }]}>
             {seedMutation.isPending ? "..." : "+ Демо"}
