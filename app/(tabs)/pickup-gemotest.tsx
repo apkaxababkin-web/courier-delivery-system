@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import { useState } from "react";
 import * as Haptics from "expo-haptics";
+import { useSelectedDate } from "@/lib/date-context";
 
 interface PickupPoint {
   id: number;
@@ -19,7 +20,7 @@ export default function HemotestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { token } = useCourierAuth();
-  const [selectedDate] = useState(new Date());
+  const { selectedDate } = useSelectedDate();
 
   // Fetch pickup points
   const { data: pickupPoints = [], isLoading, refetch } = trpc.hemotest.pickupPoints.useQuery(

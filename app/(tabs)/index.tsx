@@ -20,12 +20,13 @@ import { type TaskStatus } from "@/shared/types";
 import { sortTasks } from "@/lib/task-sorting";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useState, useMemo } from "react";
+import { useSelectedDate } from "@/lib/date-context";
 
 export default function TaskListScreen() {
   const colors = useColors();
   const router = useRouter();
   const { token, courier } = useCourierAuth();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const { selectedDate, setSelectedDate } = useSelectedDate();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
