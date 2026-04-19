@@ -20,7 +20,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.15)",
+        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.12)",
         tabBarAllowFontScaling: false,
         headerShown: false,
         tabBarHideOnKeyboard: false,
@@ -37,8 +37,8 @@ export default function TabLayout() {
           bottom: 12,
           left: 12,
           right: 12,
-          paddingTop: 12,
-          paddingBottom: bottomPadding + 8,
+          paddingTop: 10,
+          paddingBottom: bottomPadding + 6,
           paddingHorizontal: 16,
           height: "auto",
           backgroundColor: colors.surface,
@@ -55,19 +55,19 @@ export default function TabLayout() {
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: "500",
-          marginTop: 4,
+          marginTop: 3,
           maxWidth: 70,
         },
         tabBarItemStyle: {
           borderRadius: 12,
-          marginHorizontal: 4,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
+          marginHorizontal: 3,
+          paddingVertical: 6,
+          paddingHorizontal: 10,
         },
         tabBarIconStyle: {
-          marginBottom: 4,
+          marginBottom: 3,
         },
       }}
     >
@@ -114,5 +114,5 @@ export default function TabLayout() {
 // Note: Profile screen is accessed via header button (👤), not tab bar
 // Note: Tab bar uses same surface color as header bar for unified design
 // Note: Same width as header bar (12px left/right margins, 16px horizontal padding)
-// Note: Padding matches header bar exactly (12px top, 8px bottom) for visual alignment
-// Note: Active tab styling matches header bar proportions
+// Note: Compact padding (10px top, 6px bottom) to match header bar visual size
+// Note: Reduced item padding and spacing for visual balance with header bar
