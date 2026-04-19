@@ -18,8 +18,8 @@ const MAPPING = {
   "box.2": "inventory-2",
   "building.2": "domain",
   "envelope": "mail",
-  "hemotest": "local-hospital",
-  "sberbank": "account-balance",
+  "hemotest": "bloodtype",
+  "sberbank": "store",
   
   // Task list
   "checkmark.circle.fill": "check-circle",
