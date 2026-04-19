@@ -50,7 +50,8 @@ export function HeaderBarV2({
           overflow: "hidden",
           paddingHorizontal: 16,
           paddingVertical: 12,
-          marginHorizontal: 12,
+          marginLeft: 12,
+          marginRight: 12,
           marginVertical: 0,
           marginTop: 4,
           // Shadow effect (iOS)
