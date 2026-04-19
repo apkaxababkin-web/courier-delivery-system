@@ -13,6 +13,9 @@ export type CourierInfo = {
   vehicleType: string;
   isActive: boolean;
   totalDeliveries: number;
+  urgencyThresholdOrange?: number;
+  urgencyThresholdRed?: number;
+  courierName?: string;
 };
 
 type CourierAuthState = {

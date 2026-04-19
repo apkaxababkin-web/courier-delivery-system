@@ -49,8 +49,8 @@ export function HeaderBarV2({
           borderRadius: 16,
           paddingHorizontal: 12,
           paddingVertical: 10,
-          marginHorizontal: 6,
-          marginVertical: 6,
+          marginHorizontal: 4,
+          marginVertical: 4,
           // Shadow effect (iOS)
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 2 },

@@ -30,8 +30,8 @@ export default function TabLayout() {
           borderTopColor: colors.border,
           borderTopWidth: 0.5,
           borderRadius: 20,
-          marginHorizontal: 4,
-          marginBottom: -bottomPadding,
+          marginHorizontal: 0,
+          marginBottom: 0,
           shadowColor: "#000",
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.1,
@@ -39,9 +39,10 @@ export default function TabLayout() {
           elevation: 4,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: "500",
-          marginTop: 2,
+          marginTop: 1,
+          maxWidth: 60,
         },
       }}
     >
