@@ -5,8 +5,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-import { HeaderBar } from "@/components/header-bar";
-import { View } from "react-native";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const icon = (name: string) => name as any;
@@ -18,9 +16,7 @@ export default function TabLayout() {
   const tabBarHeight = 56 + bottomPadding;
 
   return (
-    <View style={{ flex: 1 }}>
-      <HeaderBar />
-      <Tabs
+    <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
@@ -78,7 +74,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-    </View>
   );
 }
 
