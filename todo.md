@@ -126,10 +126,17 @@
 - [x] Frontend: success message and haptic feedback on reschedule
 - [x] Fixed calendar day-of-week calculation for Russian locale
 
+## Toast Notifications & Calendar Close (Session 4)
+- [x] Install react-native-toast-notifications package
+- [x] Add ToastProvider to app/_layout.tsx
+- [x] Replace Alert with toast notifications for reschedule success
+- [x] Add toast notifications for reschedule errors
+- [x] Add close calendar on outside tap (Pressable overlay)
+- [x] Calendar remains unchanged visually
+
 ## Next Features
 - [ ] **Filter "My Tasks"** — show only tasks assigned to current courier on main screen
 - [ ] Task status history — timeline of all status changes with timestamps
-- [ ] Toast notifications instead of Alert for reschedule
 - [ ] Push notifications for new tasks assigned to courier
 - [ ] Proof of delivery — photo capture when marking task complete
 

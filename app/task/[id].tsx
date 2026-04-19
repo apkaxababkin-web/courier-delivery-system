@@ -20,6 +20,7 @@ import * as Clipboard from "expo-clipboard";
 
 import { skipToken } from "@tanstack/react-query";
 import { useState } from "react";
+import { useToast } from "react-native-toast-notifications";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { StatusBadge } from "@/components/status-badge";
@@ -93,6 +94,8 @@ export default function TaskDetailScreen() {
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
+  const toast = useToast();
+
   const rescheduleMutation = trpc.tasks.rescheduleTask.useMutation({
     onSuccess: () => {
       utils.tasks.byId.invalidate();
@@ -100,10 +103,22 @@ export default function TaskDetailScreen() {
       utils.tasks.history.invalidate();
       setDatePickerVisible(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Успешно", `Задание перенесено на ${selectedDate.toLocaleDateString("ru-RU")}`);
+      toast.show({
+        type: "success",
+        text: `Задание перенесено на ${selectedDate.toLocaleDateString("ru-RU")}`,
+        duration: 2000,
+        placement: "top",
+      });
       router.back();
     },
-    onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
+    onError: (e: { message: string }) => {
+      toast.show({
+        type: "danger",
+        text: e.message,
+        duration: 2000,
+        placement: "top",
+      });
+    },
   });
 
   const handleOpenMap = (address: string | null | undefined) => {
@@ -463,8 +478,8 @@ export default function TaskDetailScreen() {
 
       {/* Calendar Date Picker Modal */}
       <Modal visible={datePickerVisible} transparent animationType="slide" onRequestClose={() => setDatePickerVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setDatePickerVisible(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Перенос заявки</Text>
             <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите новую дату доставки</Text>
 
@@ -520,8 +535,8 @@ export default function TaskDetailScreen() {
                 <Text style={{ color: "#fff", fontWeight: "600" }}>Применить</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </ScreenContainer>
   );

@@ -16,6 +16,8 @@ import {
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
+import { ToastProvider } from "react-native-toast-notifications";
+
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { CourierAuthProvider } from "@/lib/courier-auth";
@@ -82,20 +84,22 @@ export default function RootLayout() {
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <FilterProvider>
-            <CourierAuthProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
-              <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
-            </Stack>
-            <StatusBar style="auto" />
-            </CourierAuthProvider>
-          </FilterProvider>
-        </QueryClientProvider>
-      </trpc.Provider>
+      <ToastProvider>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <FilterProvider>
+              <CourierAuthProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
+                <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
+              </Stack>
+              <StatusBar style="auto" />
+              </CourierAuthProvider>
+            </FilterProvider>
+          </QueryClientProvider>
+        </trpc.Provider>
+      </ToastProvider>
     </GestureHandlerRootView>
   );
 
