@@ -34,7 +34,7 @@ export default function TabLayout() {
           paddingBottom: bottomPadding + 8,
           paddingHorizontal: 12,
           height: tabBarHeight + 8,
-          backgroundColor: Platform.OS === "ios" ? "rgba(255, 255, 255, 0.5)" : "rgba(245, 245, 245, 0.6)",
+          backgroundColor: Platform.OS === "ios" ? "rgba(21, 23, 24, 0.6)" : "rgba(30, 32, 34, 0.7)",
           borderTopColor: "transparent",
           borderTopWidth: 0,
           borderRadius: 0,
