@@ -767,8 +767,9 @@ export async function seedDemoHemotestPoints(): Promise<void> {
   const db = await getDb();
   if (!db) return;
 
-  // Delete all existing points
+  // Delete all existing points and their pickups
   await db.delete(hemotestPickupPoints);
+  await db.delete(hemotestPickups);
 
   const demoPoints = [
     { name: "Гемотест на ул. Ленина", address: "ул. Ленина, 15" },
@@ -791,8 +792,9 @@ export async function seedDemoSberbankPoints(): Promise<void> {
   const db = await getDb();
   if (!db) return;
 
-  // Delete all existing points
+  // Delete all existing points and their pickups
   await db.delete(sberbankPickupPoints);
+  await db.delete(sberbankPickups);
 
   const demoPoints = [
     { name: "Сбербанк на ул. Октябрьская", address: "ул. Октябрьская, 8" },
