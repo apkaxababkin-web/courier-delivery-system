@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
@@ -83,8 +83,15 @@ export default function TabLayout() {
         name="pickup-gemotest"
         options={{
           title: "Гемотест",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("hemotest")} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              source={require("@/assets/images/hemotest-icon.png")}
+              style={{
+                width: 28,
+                height: 28,
+                opacity: focused ? 1 : 0.6,
+              }}
+            />
           ),
         }}
       />
@@ -92,8 +99,15 @@ export default function TabLayout() {
         name="pickup-sberbank"
         options={{
           title: "Сбербанк",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("sberbank")} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              source={require("@/assets/images/sberbank-icon.png")}
+              style={{
+                width: 28,
+                height: 28,
+                opacity: focused ? 1 : 0.6,
+              }}
+            />
           ),
         }}
       />
