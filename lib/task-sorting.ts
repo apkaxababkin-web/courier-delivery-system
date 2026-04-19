@@ -69,18 +69,18 @@ export function getUrgencyColor(urgency: UrgencyLevel): string {
 
 /**
  * Status priority for sorting (lower number = higher priority)
+ * New priority: Urgent (red dot, any status) > assigned > in_progress > completed > cancelled
  */
 const STATUS_PRIORITY: Record<TaskStatus, number> = {
-  pending: 1,
-  assigned: 1,
-  in_progress: 2,
-  completed: 3,
-  cancelled: 4,
+  assigned: 2,
+  in_progress: 3,
+  completed: 4,
+  cancelled: 5,
 };
 
 /**
- * Sort tasks by status and urgency
- * Priority: pending/assigned (by urgency) → in_progress (by urgency) → completed → cancelled
+ * Sort tasks by urgency first, then status, then delivery time
+ * Priority: Urgent (red dot, assigned/in_progress) > assigned > in_progress > completed > cancelled
  */
 export function sortTasks(
   tasks: Task[],
@@ -88,14 +88,23 @@ export function sortTasks(
   urgencyThresholdRed: number = 30
 ): Task[] {
   return [...tasks].sort((a, b) => {
-    // First, sort by status priority
+    // First, sort by urgency (red urgent tasks first across all statuses)
+    const urgencyA = calculateUrgency(a, urgencyThresholdOrange, urgencyThresholdRed);
+    const urgencyB = calculateUrgency(b, urgencyThresholdOrange, urgencyThresholdRed);
+
+    // Only prioritize red urgency for assigned and in_progress statuses
+    const isUrgentA = urgencyA === "red" && (a.status === "assigned" || a.status === "in_progress");
+    const isUrgentB = urgencyB === "red" && (b.status === "assigned" || b.status === "in_progress");
+
+    if (isUrgentA !== isUrgentB) {
+      return isUrgentA ? -1 : 1; // Urgent tasks first
+    }
+
+    // Then, sort by status priority
     const statusDiff = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
     if (statusDiff !== 0) return statusDiff;
 
     // Within same status, sort by urgency (more urgent first)
-    const urgencyA = calculateUrgency(a, urgencyThresholdOrange, urgencyThresholdRed);
-    const urgencyB = calculateUrgency(b, urgencyThresholdOrange, urgencyThresholdRed);
-
     const urgencyOrder: Record<UrgencyLevel, number> = { red: 0, orange: 1, normal: 2 };
     const urgencyDiff = urgencyOrder[urgencyA] - urgencyOrder[urgencyB];
     if (urgencyDiff !== 0) return urgencyDiff;

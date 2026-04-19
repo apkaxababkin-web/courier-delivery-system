@@ -133,7 +133,7 @@ export default function TaskDetailScreen() {
     Linking.openURL(`tel:${phone.replace(/\s|\(|\)|-/g, "")}`);
   };
 
-  const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled" | "pending") => {
+  const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled") => {
     // Toggle: if already in this status, revert to 'assigned'
     const statusToSet = task?.status === newStatus ? "assigned" : newStatus;
     statusMutation.mutate({ token: token!, taskId, status: statusToSet });

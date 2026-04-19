@@ -8,7 +8,6 @@ import { calculateUrgencyFromTimeString } from "@/lib/task-sorting";
 // ─── Status border colors (based on status) ────────────────────────────────
 
 const STATUS_BORDER_COLORS: Record<TaskStatus, string> = {
-  pending:     "#9CA3AF", // grey
   assigned:    "#3B82F6", // blue
   in_progress: "#F97316", // orange
   completed:   "#22C55E", // green
@@ -73,6 +72,8 @@ interface TaskCardProps {
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
   const urgency = calculateUrgencyFromTimeString(task.deliveryTimeTo);
+  // Hide urgency dot when task is completed
+  const showUrgencyDot = urgency === "red" && task.status !== "completed";
   const borderColor = urgency === "red" ? "#EF4444" : (urgency === "orange" ? "#FF6D00" : STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
   const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
 
@@ -105,8 +106,8 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
 
   return (
     <View style={{ position: "relative" }}>
-      {/* Red dot for urgent tasks */}
-      {urgency === "red" && (
+      {/* Red dot for urgent tasks (hidden when completed) */}
+      {showUrgencyDot && (
         <View
           style={{
             position: "absolute",
@@ -226,12 +227,16 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
       <View style={styles.bottomRow}>
         <StatusBadge status={task.status} size="sm" />
         
-        {task.courierName && (
+        {task.courierName ? (
           <CourierBadge
             name={shortName(task.courierName)}
             color={courierColor}
             size="sm"
           />
+        ) : (
+          <Text style={[styles.courierWaitingText, { color: colors.muted }]}>
+            В ожидании
+          </Text>
         )}
         
         {task.placesCount != null && (
@@ -334,5 +339,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     marginLeft: "auto",
+  },
+  courierWaitingText: {
+    fontSize: 12,
+    fontWeight: "500",
+    lineHeight: 16,
   },
 });

@@ -4,7 +4,7 @@ import { TASK_STATUS_META, PACKAGE_TYPE_LABELS, type TaskStatus, type PackageTyp
 describe("TASK_STATUS_META", () => {
   it("should have all required statuses", () => {
     const requiredStatuses: TaskStatus[] = [
-      "pending", "assigned", "in_progress", "completed", "cancelled"
+      "assigned", "in_progress", "completed", "cancelled"
     ];
     for (const status of requiredStatuses) {
       expect(TASK_STATUS_META[status]).toBeDefined();
@@ -14,7 +14,7 @@ describe("TASK_STATUS_META", () => {
   });
 
   it("should have Russian labels", () => {
-    expect(TASK_STATUS_META.assigned.label).toBe("Новое");
+    expect(TASK_STATUS_META.assigned.label).toBe("Новая");
     expect(TASK_STATUS_META.in_progress.label).toBe("В работе");
     expect(TASK_STATUS_META.completed.label).toBe("Выполнено");
     expect(TASK_STATUS_META.cancelled.label).toBe("Отменено");
@@ -37,7 +37,7 @@ describe("PACKAGE_TYPE_LABELS", () => {
 
 describe("Task status flow", () => {
   it("should define valid status transitions: assigned → in_progress → completed", () => {
-    const validFlow: TaskStatus[] = ["pending", "assigned", "in_progress", "completed"];
+    const validFlow: TaskStatus[] = ["assigned", "in_progress", "completed"];
     validFlow.forEach((status) => {
       expect(TASK_STATUS_META[status]).toBeDefined();
     });
