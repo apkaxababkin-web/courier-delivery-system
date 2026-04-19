@@ -93,6 +93,19 @@ export default function TaskDetailScreen() {
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
 
+  const rescheduleMutation = trpc.tasks.rescheduleTask.useMutation({
+    onSuccess: () => {
+      utils.tasks.byId.invalidate();
+      utils.tasks.all.invalidate();
+      utils.tasks.history.invalidate();
+      setDatePickerVisible(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Успешно", `Задание перенесено на ${selectedDate.toLocaleDateString("ru-RU")}`);
+      router.back();
+    },
+    onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
+  });
+
   const handleOpenMap = (address: string | null | undefined) => {
     if (!address) return;
     // Copy address to clipboard
@@ -495,7 +508,15 @@ export default function TaskDetailScreen() {
               <TouchableOpacity onPress={() => setDatePickerVisible(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
                 <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setDatePickerVisible(false); Alert.alert("Дата перенесена", `Новая дата: ${selectedDate.toLocaleDateString("ru-RU")}`); }} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
+              <TouchableOpacity onPress={() => {
+                if (task && token) {
+                  rescheduleMutation.mutate({
+                    token,
+                    taskId: task.id,
+                    newDate: selectedDate,
+                  });
+                }
+              }} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
                 <Text style={{ color: "#fff", fontWeight: "600" }}>Применить</Text>
               </TouchableOpacity>
             </View>

@@ -320,6 +320,35 @@ export const appRouter = router({
         return { courierId, username: "demo", password: "demo123" };
       }),
 
+    rescheduleTask: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        taskId: z.number(),
+        newDate: z.date(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+
+        const task = await db.getTaskById(input.taskId);
+        if (!task) throw new Error("Задание не найдено");
+        if (task.status === "completed" || task.status === "cancelled") {
+          throw new Error("Нельзя перенести завершённое задание");
+        }
+
+        const newCreatedAt = new Date(input.newDate);
+        newCreatedAt.setHours(task.createdAt.getHours(), task.createdAt.getMinutes(), task.createdAt.getSeconds());
+        
+        await db.updateTaskDate(input.taskId, newCreatedAt);
+        await db.addTaskStatusHistory({
+          taskId: input.taskId,
+          status: task.status,
+          changedByUserId: null,
+          note: `Задание перенесено на ${newCreatedAt.toLocaleDateString("ru-RU")}`,
+        });
+        return { success: true };
+      }),
+
     seedDemo: publicProcedure
       .input(z.object({ token: z.string() }))
       .mutation(async ({ input }) => {
