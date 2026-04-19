@@ -83,8 +83,8 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
   if (task.taskType === "warehouse_pickup" && task.items) {
     try {
       const items = JSON.parse(task.items);
-      const firstName = items[0]?.name || "Товар";
-      taskTypeLabel = `📦 ${firstName}`;
+      const category = items[0]?.category || "Товар";
+      taskTypeLabel = `📦 ${category}`;
     } catch {
       taskTypeLabel = "📦 Товар";
     }
@@ -181,7 +181,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
           {(() => {
             try {
               const items = JSON.parse(task.items);
-              return items.map((item: {name: string; quantity: number}, idx: number) => (
+              return items.map((item: {category?: string; name: string; quantity: number}, idx: number) => (
                 <Text key={idx} style={[styles.itemText, { color: colors.foreground }]}>
                   • {item.name} — {item.quantity} шт
                 </Text>

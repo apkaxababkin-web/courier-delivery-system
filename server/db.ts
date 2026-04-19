@@ -452,7 +452,7 @@ export async function seedDemoTasks(): Promise<void> {
       placesCount: 1,
       deliveryTimeFrom: "15:00",
       deliveryTimeTo: "16:00",
-      items: JSON.stringify([{ name: "Письма и посылки", quantity: 15 }]),
+      items: JSON.stringify([{ category: "Письма и посылки", name: "Письма и посылки", quantity: 15 }]),
     }  ];
 
   for (const task of demoTasks) {

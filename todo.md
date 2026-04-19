@@ -214,3 +214,9 @@
 - [x] Update label to show first item name ("📦 Орехи 200г" instead of "📦 Со склада")
 - [ ] Test all task types end-to-end
 - [ ] Verify warehouse_pickup card layout matches design
+
+## Warehouse Pickup Label Fix
+- [x] Add category field to items JSON (e.g., "category": "Орехи")
+- [x] Update demo data items with categories
+- [x] Update TaskCard label to show category instead of first item name
+- [x] Verify all items display in list (not just first item)
