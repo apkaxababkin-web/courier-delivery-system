@@ -28,12 +28,17 @@ import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import type { TaskStatus } from "@/shared/types";
 
-export default function TaskDetailScreen() {
+interface TaskDetailScreenProps {
+  taskId?: number | null;
+  onBack?: () => void;
+}
+
+export default function TaskDetailScreen({ taskId: propTaskId, onBack }: TaskDetailScreenProps = {}) {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const colors = useColors();
   const { token } = useCourierAuth();
-  const taskId = parseInt(id ?? "0", 10);
+  const taskId = propTaskId || parseInt(id ?? "0", 10);
 
   const [courierPickerVisible, setCourierPickerVisible] = useState(false);
   const [placesModalVisible, setPlacesModalVisible] = useState(false);
@@ -234,7 +239,7 @@ export default function TaskDetailScreen() {
     <ScreenContainer className="p-0">
       {/* Header */}
       <View style={{ backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => onBack ? onBack() : router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={{ color: colors.primary, fontSize: 18 }}>←</Text>
         </TouchableOpacity>
         <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground }}>Заявка #{task.id}</Text>
@@ -448,8 +453,9 @@ export default function TaskDetailScreen() {
 
       {/* Calendar Date Picker Modal */}
       <Modal visible={datePickerVisible} transparent animationType="slide" onRequestClose={() => setDatePickerVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setDatePickerVisible(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Перенос заявки</Text>
             <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите новую дату доставки</Text>
 
@@ -497,8 +503,9 @@ export default function TaskDetailScreen() {
                 <Text style={{ color: "#fff", fontWeight: "600" }}>Применить</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </ScreenContainer>
   );

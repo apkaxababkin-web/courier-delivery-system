@@ -1,7 +1,8 @@
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { StatusBadge } from "@/components/status-badge";
 import { type TaskStatus } from "@/shared/types";
 import { useColors } from "@/hooks/use-colors";
+import { calculateUrgency } from "@/lib/task-sorting";
 
 // ─── Status border colors (based on status) ────────────────────────────────
 
@@ -46,21 +47,20 @@ function shortName(name: string): string {
 
 export interface TaskCardData {
   id: number;
-  recipientName: string;
-  deliveryAddress: string;
-  deliveryCity?: string | null;
-  recipientAddress?: string | null;
   senderName?: string | null;
   senderAddress?: string | null;
+  recipientName: string;
+  recipientAddress?: string | null;
+  deliveryAddress: string;
+  deliveryCity?: string | null;
+  deliveryTimeFrom: string | null;
+  deliveryTimeTo: string | null;
   status: TaskStatus;
-  placesCount?: number | null;
-  deliveryTimeFrom?: string | null;
-  deliveryTimeTo?: string | null;
   courierName?: string | null;
+  placesCount?: number | null;
   taskType?: "regular" | "warehouse_pickup" | "courier_call";
   items?: string | null; // JSON array of {name: string, quantity: number}
 }
-
 interface TaskCardProps {
   task: TaskCardData;
   onPress: (task: TaskCardData) => void;
@@ -70,7 +70,9 @@ interface TaskCardProps {
 
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
-  const borderColor = STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF";
+  const urgency = calculateUrgency(task);
+  const isUrgent = urgency === "red" || urgency === "orange";
+  const borderColor = isUrgent ? "#EF4444" : (STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
   const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
@@ -101,235 +103,105 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
   const isCourierCall = task.taskType === "courier_call";
 
   return (
-    <TouchableOpacity
-      style={[
-        styles.card,
+    <Pressable
+      onPress={() => onPress(task)}
+      style={({ pressed }) => [
         {
           backgroundColor: colors.surface,
-          borderLeftColor: borderColor,
-          borderColor: colors.border,
+          borderRadius: 12,
+          borderWidth: 2,
+          borderColor,
+          padding: 12,
+          marginBottom: 3,
+          opacity: pressed ? 0.7 : 1,
         },
       ]}
-      onPress={() => onPress(task)}
-      activeOpacity={0.7}
     >
-      {/* Task type label (if applicable) */}
+      {/* Header: recipient name + status badge */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: "600",
+            color: colors.foreground,
+            flex: 1,
+            marginRight: 8,
+          }}
+          numberOfLines={1}
+        >
+          {task.recipientName}
+        </Text>
+        <StatusBadge status={task.status} />
+      </View>
+
+      {/* Address */}
+      <Text
+        style={{
+          fontSize: 14,
+          color: colors.foreground,
+          marginBottom: 8,
+        }}
+        numberOfLines={2}
+      >
+        {task.deliveryAddress}
+      </Text>
+
+      {/* Time label */}
+      {timeLabel && (
+        <Text
+          style={{
+            fontSize: 13,
+            color: colors.muted,
+            marginBottom: 8,
+          }}
+        >
+          ⏱️ {timeLabel}
+        </Text>
+      )}
+
+      {/* Task type label (for warehouse_pickup) */}
       {taskTypeLabel && (
-        <Text style={[styles.taskTypeLabel, { color: colors.primary }]}>
+        <Text
+          style={{
+            fontSize: 13,
+            color: colors.muted,
+            marginBottom: 8,
+          }}
+        >
           {taskTypeLabel}
         </Text>
       )}
 
-      {/* Top row: Sender name + ID (hide sender name for warehouse_pickup) */}
-      <View style={styles.topRow}>
-        {!isWarehousePickup && (
-          <Text style={[styles.senderName, { color: colors.foreground }]}>
-            {task.senderName || "Отправитель"}
-          </Text>
-        )}
-        <Text style={[styles.idText, { color: colors.muted }]}>
-          ID: {task.id}
-        </Text>
-      </View>
-
-      {/* Sender address - show for regular only, hide for warehouse_pickup and courier_call */}
-      {task.senderAddress && !isCourierCall && !isWarehousePickup && (
-        <View style={styles.addressRow}>
-          <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
-          <Text style={[styles.addressText, { color: colors.muted }]}>
-            {task.senderAddress}
-          </Text>
-        </View>
-      )}
-
-      {/* For courier_call: show address as pickup location */}
-      {isCourierCall && task.senderAddress && (
-        <View style={styles.addressRow}>
-          <Text style={[styles.addressIcon, { color: colors.muted }]}>🏢</Text>
-          <Text style={[styles.addressText, { color: colors.muted }]}>
-            Адрес: {task.senderAddress}
-          </Text>
-        </View>
-      )}
-
-      {/* Recipient name - hide for courier_call and warehouse_pickup */}
-      {!isCourierCall && !isWarehousePickup && (
-        <Text style={[styles.recipientName, { color: colors.foreground }]}>
-          {task.recipientName}
-        </Text>
-      )}
-
-      {/* For warehouse_pickup: show delivery location name */}
-      {isWarehousePickup && (
-        <Text style={[styles.recipientName, { color: colors.foreground }]}>
-          {task.recipientName}
-        </Text>
-      )}
-
-      {/* Recipient address - show for all except courier_call */}
-      {!isCourierCall && (
-        <View style={styles.addressRow}>
-          <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
-          <Text style={[styles.addressText, { color: colors.muted }]}>
-            {task.deliveryAddress}
+      {/* Courier name (if assigned) */}
+      {task.courierName && !isWarehousePickup && !isCourierCall && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingTop: 8,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <View
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: courierColor,
+              marginRight: 6,
+            }}
+          />
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.muted,
+            }}
+          >
+            {shortName(task.courierName)}
           </Text>
         </View>
       )}
-
-      {/* Items list for warehouse_pickup */}
-      {isWarehousePickup && task.items && (
-        <View style={styles.itemsContainer}>
-          {(() => {
-            try {
-              const items = JSON.parse(task.items);
-              return items.map((item: {category?: string; name: string; quantity: number}, idx: number) => (
-                <Text key={idx} style={[styles.itemText, { color: colors.foreground }]}>
-                  • {item.name} — {item.quantity} шт
-                </Text>
-              ));
-            } catch {
-              return null;
-            }
-          })()}
-        </View>
-      )}
-
-      {/* Time interval */}
-      {timeLabel && (
-        <Text style={[styles.timeText, { color: colors.foreground }]}>
-          {timeLabel}
-        </Text>
-      )}
-
-      {/* Bottom row: Status + Courier + Places */}
-      <View style={styles.bottomRow}>
-        <StatusBadge status={task.status} size="sm" />
-        
-        {task.courierName && (
-          <View style={styles.courierBadge}>
-            <View
-              style={[
-                styles.courierDot,
-                { backgroundColor: courierColor },
-              ]}
-            />
-            <Text style={[styles.courierText, { color: colors.muted }]}>
-              {shortName(task.courierName)}
-            </Text>
-          </View>
-        )}
-        
-        {task.placesCount != null && (
-          <Text style={[styles.placesText, { color: colors.muted }]}>
-            Мест: {task.placesCount}
-          </Text>
-        )}
-      </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  taskTypeLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  card: {
-    borderRadius: 20,
-    borderLeftWidth: 6,
-    borderWidth: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginHorizontal: 12,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  idText: {
-    fontSize: 11,
-    fontWeight: "500",
-    lineHeight: 14,
-  },
-  senderName: {
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 20,
-  },
-  recipientName: {
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 20,
-    marginBottom: 2,
-    marginTop: 4,
-  },
-  addressRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 4,
-    marginBottom: 1,
-  },
-  addressIcon: {
-    fontSize: 14,
-    lineHeight: 16,
-    marginTop: 1,
-  },
-  addressText: {
-    fontSize: 12,
-    lineHeight: 16,
-    flex: 1,
-  },
-  timeText: {
-    fontSize: 12,
-    fontWeight: "500",
-    lineHeight: 16,
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  bottomRow: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-  },
-  courierBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  courierDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  courierText: {
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  itemsContainer: {
-    marginTop: 8,
-    paddingLeft: 4,
-    gap: 4,
-  },
-  itemText: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  placesText: {
-    fontSize: 11,
-    lineHeight: 14,
-    marginLeft: "auto",
-  },
-});
