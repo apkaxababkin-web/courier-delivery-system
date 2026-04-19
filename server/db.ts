@@ -322,6 +322,7 @@ export async function seedDemoTasks(): Promise<void> {
       placesCount: 1,
       deliveryTimeFrom: "10:00",
       deliveryTimeTo: "13:00",
+      taskType: "regular",
     },
     {
       // Заявка 2:       // Заявка 4: Основа движения (ул. Чайковского, 33) → клиент
@@ -345,6 +346,7 @@ export async function seedDemoTasks(): Promise<void> {
       placesCount: 2,
       deliveryTimeFrom: "11:00",
       deliveryTimeTo: "14:00",
+      taskType: "regular",
     },
     {
       // Заявка 3: HelloKorea (ул. Терешковой, 12) → клиент
@@ -366,6 +368,7 @@ export async function seedDemoTasks(): Promise<void> {
       comments: "Хрупкий груз. Обращаться осторожно.",
       estimatedMinutes: 25,
       placesCount: 1,
+      taskType: "regular",
     },
     {
       // Заявка 4: HelloKorea (ул. Гагарина, 39) → клиент
@@ -389,6 +392,7 @@ export async function seedDemoTasks(): Promise<void> {
       placesCount: 3,
       deliveryTimeFrom: "14:00",
       deliveryTimeTo: "18:00",
+      taskType: "regular",
     },
     {
       // Заявка 3:      // Заявка 5: Основа движения (ул. Калашникова, 17) → клиент
@@ -412,8 +416,57 @@ export async function seedDemoTasks(): Promise<void> {
       placesCount: 1,
       deliveryTimeFrom: "09:00",
       deliveryTimeTo: "12:00",
+      taskType: "regular",
     },
-  ];
+,
+    {
+      // Заявка 6: Warehouse Pickup - Доставка кедровых орехов со склада
+      courierId: null,
+      status: "pending",
+      taskType: "warehouse_pickup",
+      senderName: "Склад Кедровых Орехов",
+      senderAddress: "ул. Промышленная, 5, Улан-Удэ",
+      senderAddressUrl: "https://2gis.ru/search?queryText=%D1%83%D0%BB.%20%D0%9F%D1%80%D0%BE%D0%BC%D1%8B%D1%88%D0%BB%D0%B5%D0%BD%D0%BD%D0%B0%D1%8F%2C%205",
+      senderPhone: "+7 (914) 555-66-77",
+      recipientName: "Магазин 'Вкусная жизнь'",
+      recipientPhone: "+7 (914) 777-88-99",
+      deliveryAddress: "ул. Ленина, 15",
+      deliveryCity: "Улан-Удэ",
+      recipientAddress: "ул. Ленина, 15, магазин",
+      recipientAddressUrl: "https://2gis.ru/search?queryText=%D1%83%D0%BB.%20%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D0%B0%2C%2015",
+      packageDescription: "Коробки с кедровыми орехами (0.5кг - 36шт, 1кг - 18шт)",
+      packageType: "large",
+      specialInstructions: "Хрупкий груз. Хранить в прохладном месте.",
+      comments: "Доставить в магазин. Требуется подпись. Осторожно с упаковкой!",
+      estimatedMinutes: 45,
+      placesCount: 5,
+      deliveryTimeFrom: "08:00",
+      deliveryTimeTo: "10:00",
+    },
+    {
+      // Заявка 7: Courier Call - Вызов курьера для сбора писем
+      courierId: null,
+      status: "pending",
+      taskType: "courier_call",
+      senderName: "ООО 'Экспресс Логистика'",
+      senderAddress: "ул. Советская, 42, офис 301, Улан-Удэ",
+      senderAddressUrl: "https://2gis.ru/search?queryText=%D1%83%D0%BB.%20%D0%A1%D0%BE%D0%B2%D0%B5%D1%82%D1%81%D0%BA%D0%B0%D1%8F%2C%2042",
+      senderPhone: "+7 (914) 222-33-44",
+      recipientName: "Почтовый центр 'Доставка+'",
+      recipientPhone: "+7 (914) 444-55-66",
+      deliveryAddress: "ул. Октябрьская, 8",
+      deliveryCity: "Улан-Удэ",
+      recipientAddress: "ул. Октябрьская, 8, приемная",
+      recipientAddressUrl: "https://2gis.ru/search?queryText=%D1%83%D0%BB.%20%D0%9E%D0%BA%D1%82%D1%8F%D0%B1%D1%80%D1%8C%D1%81%D0%BA%D0%B0%D1%8F%2C%208",
+      packageDescription: "Сбор писем и посылок для отправки в другие города",
+      packageType: "document",
+      specialInstructions: "Собрать все письма и посылки в офисе. Требуется подпись отправителя.",
+      comments: "Вызов курьера. Время прибытия согласовать с менеджером. Письма готовы к отправке.",
+      estimatedMinutes: 20,
+      placesCount: 1,
+      deliveryTimeFrom: "15:00",
+      deliveryTimeTo: "16:00",
+    }  ];
 
   for (const task of demoTasks) {
     await db.insert(tasks).values(task);

@@ -63,6 +63,8 @@ export const tasks = mysqlTable("tasks", {
     "completed",   // Delivery confirmed — "Доставлено"
     "cancelled",   // Manager cancelled the task
   ]).default("pending").notNull(),
+  /** Task type: regular delivery, warehouse pickup, or courier call */
+  taskType: mysqlEnum("taskType", ["regular", "warehouse_pickup", "courier_call"]).default("regular").notNull(),
   /** Recipient information */
   recipientName: varchar("recipientName", { length: 255 }).notNull(),
   recipientPhone: varchar("recipientPhone", { length: 20 }),

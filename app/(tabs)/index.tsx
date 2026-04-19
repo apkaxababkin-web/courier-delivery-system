@@ -178,7 +178,7 @@ export default function TaskListScreen() {
         </TouchableOpacity>
 
         {/* TODO: Remove this seed function before beta release */}
-        <TouchableOpacity onPress={() => seedMutation.mutate()}>
+        <TouchableOpacity onPress={() => seedMutation.mutate({ token })}>
           <Text style={styles.logo}>🚚</Text>
         </TouchableOpacity>
       </View>
@@ -274,7 +274,7 @@ export default function TaskListScreen() {
               {isToday && (
                 <TouchableOpacity
                   style={[styles.seedButton, { backgroundColor: colors.primary }]}
-                  onPress={() => seedMutation.mutate()}
+                  onPress={() => seedMutation.mutate({ token })}
                 >
                   <Text style={styles.seedButtonText}>
                     {seedMutation.isPending ? "Загрузка..." : "Загрузить демо-данные"}
@@ -297,6 +297,7 @@ export default function TaskListScreen() {
               deliveryTimeFrom: item.deliveryTimeFrom,
               deliveryTimeTo: item.deliveryTimeTo,
               courierName: item.courierName,
+              taskType: item.taskType as "regular" | "warehouse_pickup" | "courier_call" | undefined,
             };
             return (
               <TaskCard

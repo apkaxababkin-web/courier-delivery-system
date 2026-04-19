@@ -189,3 +189,16 @@
 - [ ] Implement Сбербанк tab with pickup list
 - [ ] Add "mark as picked" functionality for pickup tasks
 - [ ] Show pickup task history
+
+## Task Types Implementation (Three Types of Deliveries)
+- [x] Add taskType field to tasks table (enum: 'regular' | 'warehouse_pickup' | 'courier_call')
+- [x] Update database schema with taskType field
+- [x] Update backend API to accept and return taskType
+- [x] Update TaskCard component to show different layouts per type:
+  - Regular: current layout (sender → recipient → time → status)
+  - Warehouse: full info on card (warehouse address → delivery address → items → status)
+  - Courier Call: minimal on card (address + time) → details in modal
+- [ ] Update Task Detail screen for each type
+- [x] Fix demo data loading (seedDemo mutation - added token parameter)
+- [x] Add demo data for all three task types (5 regular + 1 warehouse + 1 courier_call)
+- [ ] Test all task types end-to-end
