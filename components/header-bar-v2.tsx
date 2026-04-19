@@ -33,7 +33,7 @@ export function HeaderBarV2({
     <View
       style={{
         marginTop: -insets.top,
-        paddingTop: insets.top + 4,
+        paddingTop: insets.top,
         paddingHorizontal: 0,
         paddingBottom: 0,
         backgroundColor: colors.background,
@@ -45,12 +45,12 @@ export function HeaderBarV2({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          backgroundColor: colors.surface,
+          backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
           borderRadius: 24,
           paddingHorizontal: 16,
           paddingVertical: 12,
           marginHorizontal: 12,
-          marginVertical: 6,
+          marginVertical: 2,
           // Shadow effect (iOS)
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 6 },
