@@ -68,65 +68,82 @@ export default function SberbankScreen() {
           marginVertical: 2,
           marginHorizontal: 4,
           borderRadius: 8,
-          backgroundColor: item.isPicked ? "#E8F5E9" : colors.background,
+          backgroundColor: item.isPicked ? "rgba(76, 175, 80, 0.15)" : colors.background,
           borderLeftWidth: 4,
-          borderLeftColor: item.isPicked ? colors.success : colors.border,
+          borderLeftColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : colors.border,
           opacity: pressed ? 0.7 : 1,
         },
       ]}
     >
-      <View className="flex-row items-center gap-3">
-        {/* Telegram-style checkbox */}
-        <View
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: 4,
-            borderWidth: 2,
-            borderColor: item.isPicked ? colors.success : colors.border,
-            backgroundColor: item.isPicked ? colors.success : "transparent",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {item.isPicked && (
-            <Text style={{ color: colors.background, fontSize: 14, fontWeight: "bold" }}>✓</Text>
-          )}
+      <View className="flex-row items-center justify-between gap-3">
+        {/* Left side: checkbox + name + address */}
+        <View className="flex-row items-start gap-3 flex-1">
+          {/* Telegram-style checkbox */}
+          <View
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: 4,
+              borderWidth: 2,
+              borderColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : colors.border,
+              backgroundColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 2,
+              flexShrink: 0,
+            }}
+          >
+            {item.isPicked && (
+              <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>✓</Text>
+            )}
+          </View>
+
+          {/* Point info */}
+          <View className="flex-1">
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: "600",
+                color: item.isPicked ? "rgba(76, 175, 80, 0.8)" : colors.foreground,
+              }}
+            >
+              {item.name}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: colors.muted,
+                marginTop: 2,
+              }}
+            >
+              {item.address}
+            </Text>
+          </View>
         </View>
 
-        {/* Point info */}
-        <View className="flex-1">
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "600",
-              color: item.isPicked ? colors.success : colors.foreground,
-            }}
-          >
-            {item.name}
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              color: colors.muted,
-              marginTop: 2,
-            }}
-          >
-            {item.address}
-          </Text>
-          {item.isPicked && item.courierName && (
+        {/* Right side: time + courier name */}
+        {item.isPicked && item.courierName && (
+          <View style={{ alignItems: "flex-end", justifyContent: "flex-start" }}>
             <Text
               style={{
                 fontSize: 11,
-                color: colors.success,
-                marginTop: 4,
+                color: "rgba(76, 175, 80, 0.7)",
                 fontWeight: "500",
               }}
             >
-              ✓ {item.courierName} • {formatTime(item.pickedAt)}
+              {formatTime(item.pickedAt)}
             </Text>
-          )}
-        </View>
+            <Text
+              style={{
+                fontSize: 11,
+                color: "rgba(76, 175, 80, 0.7)",
+                marginTop: 2,
+              }}
+            >
+              {item.courierName}
+            </Text>
+          </View>
+        )}
       </View>
     </Pressable>
   );
