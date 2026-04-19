@@ -35,10 +35,10 @@ export default function TabLayout() {
         tabBarStyle: {
           position: "absolute",
           bottom: 12,
-          left: 40,
-          right: 40,
-          paddingTop: 6,
-          paddingBottom: bottomPadding + 2,
+          left: 12,
+          right: 12,
+          paddingTop: 8,
+          paddingBottom: bottomPadding + 8,
           paddingHorizontal: 16,
           height: "auto",
           backgroundColor: colors.surface,
@@ -62,9 +62,9 @@ export default function TabLayout() {
         },
         tabBarItemStyle: {
           borderRadius: 12,
-          marginHorizontal: 3,
-          paddingVertical: 6,
-          paddingHorizontal: 10,
+          marginHorizontal: 4,
+          paddingVertical: 8,
+          paddingHorizontal: 12,
         },
         tabBarIconStyle: {
           marginBottom: 3,
