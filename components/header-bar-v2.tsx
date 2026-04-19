@@ -33,7 +33,7 @@ export function HeaderBarV2({
     <View
       style={{
         marginTop: -insets.top,
-        paddingTop: insets.top,
+        paddingTop: insets.top - 4,
         paddingHorizontal: 0,
         paddingBottom: 0,
         backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
