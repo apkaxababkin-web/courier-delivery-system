@@ -29,7 +29,7 @@ export default function TabLayout() {
           return null;
         },
         sceneStyle: {
-          paddingBottom: tabBarHeight + 24,
+          paddingBottom: 0,
         },
         tabBarStyle: {
           position: "absolute",
@@ -51,6 +51,7 @@ export default function TabLayout() {
           shadowOpacity: 0,
           shadowRadius: 0,
           elevation: 0,
+          zIndex: 1000,
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -104,4 +105,5 @@ export default function TabLayout() {
 }
 
 // Note: Profile screen is accessed via header button (👤), not tab bar
-// Note: BlurView from expo-blur is automatically applied via tabBarStyle backgroundColor transparency
+// Note: Tab bar overlays on cards with transparent background - paddingBottom: 0 allows full content visibility
+// Note: Cards are visible under the tab bar due to absolute positioning and transparent background
