@@ -58,7 +58,6 @@ export default function TabLayout() {
           fontWeight: "500",
           marginTop: 2,
           maxWidth: 50,
-          numberOfLines: 1,
         },
         tabBarItemStyle: {
           borderRadius: 12,
