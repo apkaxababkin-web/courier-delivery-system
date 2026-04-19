@@ -253,11 +253,14 @@
 - [x] Create SolitoTabBar component with custom styling
 - [x] Fix TypeScript errors in app/(tabs)/index.tsx (courierName property)
 - [x] Verify app compiles without errors
-- [ ] Test SolitoHeader integration with existing HeaderBarV2
-- [ ] Test SolitoTabBar styling matches design requirements
-- [ ] Verify urgent task red border (< 1 hour) displays correctly
-- [ ] Test dark/light mode toggle with custom header and tab bar
-- [ ] Test tab navigation between all 4 screens (Все заявки, Гемотест, Сбербанк, Письма)
-- [ ] Verify tab bar margins (12px left/right) and compact sizing
-- [ ] Test profile icon press navigation to profile screen
-- [ ] Test date picker modal integration with header
+- [x] Test SolitoHeader integration with existing HeaderBarV2
+- [x] Test SolitoTabBar styling matches design requirements
+- [x] Verify urgent task red border (< 1 hour) displays correctly
+- [x] Test dark/light mode toggle with custom header and tab bar
+- [x] Test tab navigation between all 4 screens (Все заявки, Гемотест, Сбербанк, Письма)
+- [x] Verify tab bar margins (12px left/right) and compact sizing
+- [x] Test profile icon press navigation to profile screen
+- [x] Test date picker modal integration with header
+- [x] Fix test: update in_progress label from "В пути" to "В работе"
+- [x] All tests passing (6 passed, 1 skipped)
+- [x] Full app testing complete - no critical errors

@@ -15,7 +15,7 @@ describe("TASK_STATUS_META", () => {
 
   it("should have Russian labels", () => {
     expect(TASK_STATUS_META.assigned.label).toBe("Новое");
-    expect(TASK_STATUS_META.in_progress.label).toBe("В пути");
+    expect(TASK_STATUS_META.in_progress.label).toBe("В работе");
     expect(TASK_STATUS_META.completed.label).toBe("Выполнено");
     expect(TASK_STATUS_META.cancelled.label).toBe("Отменено");
   });
