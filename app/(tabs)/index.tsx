@@ -54,9 +54,17 @@ export default function TaskListScreen() {
     return selectedDate.toDateString() === today.toDateString();
   }, [selectedDate]);
 
+  const filteredTasks = useMemo(() => {
+    if (!tasksData) return [];
+    if (filterMode === "mine") {
+      return tasksData.filter((task) => task.courierName === courier?.name);
+    }
+    return tasksData;
+  }, [tasksData, filterMode, courier?.name]);
+
   const sortedTasks = useMemo(
-    () => sortTasks(tasksData ?? [], courier?.urgencyThresholdOrange ?? 60, courier?.urgencyThresholdRed ?? 30),
-    [tasksData, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
+    () => sortTasks(filteredTasks, courier?.urgencyThresholdOrange ?? 60, courier?.urgencyThresholdRed ?? 30),
+    [filteredTasks, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
   );
 
   // Refetch tasks when returning to screen
