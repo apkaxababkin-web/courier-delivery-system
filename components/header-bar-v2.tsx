@@ -32,8 +32,8 @@ export function HeaderBarV2({
   return (
     <View
       style={{
-        marginTop: -insets.top,
-        paddingTop: insets.top,
+        marginTop: -insets.top - 12,
+        paddingTop: insets.top + 12,
         paddingHorizontal: 0,
         paddingBottom: 0,
         backgroundColor: colors.background,
@@ -46,18 +46,18 @@ export function HeaderBarV2({
           alignItems: "center",
           justifyContent: "space-between",
           backgroundColor: colors.surface,
-          borderRadius: 16,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          marginHorizontal: 4,
-          marginVertical: 4,
+          borderRadius: 24,
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          marginHorizontal: 12,
+          marginVertical: 12,
           // Shadow effect (iOS)
           shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.15,
+          shadowRadius: 16,
           // Elevation (Android)
-          elevation: 4,
+          elevation: 8,
         }}
       >
         {/* Left: Profile icon */}
