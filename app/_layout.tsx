@@ -108,15 +108,13 @@ export default function RootLayout() {
   if (shouldOverrideSafeArea) {
     return (
       <ThemeProvider>
-        <FontSizeProvider>
-          <SafeAreaProvider initialMetrics={providerInitialMetrics}>
-            <SafeAreaFrameContext.Provider value={frame}>
-              <SafeAreaInsetsContext.Provider value={insets}>
-                {content}
-              </SafeAreaInsetsContext.Provider>
-            </SafeAreaFrameContext.Provider>
-          </SafeAreaProvider>
-        </FontSizeProvider>
+        <SafeAreaProvider initialMetrics={providerInitialMetrics}>
+          <SafeAreaFrameContext.Provider value={frame}>
+            <SafeAreaInsetsContext.Provider value={insets}>
+              {content}
+            </SafeAreaInsetsContext.Provider>
+          </SafeAreaFrameContext.Provider>
+        </SafeAreaProvider>
       </ThemeProvider>
     );
   }
