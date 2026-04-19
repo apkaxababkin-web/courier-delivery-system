@@ -20,37 +20,46 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
+        tabBarAllowFontScaling: false,
         headerShown: false,
+        tabBarHideOnKeyboard: false,
         tabBarButton: HapticTab,
+        tabBarBackground: () => {
+          // Transparent background with blur effect
+          return null;
+        },
         sceneStyle: {
-          paddingBottom: tabBarHeight + 32,
+          paddingBottom: tabBarHeight + 24,
         },
         tabBarStyle: {
           position: "absolute",
           bottom: 12,
           left: 12,
           right: 12,
-          paddingTop: 12,
-          paddingBottom: bottomPadding + 8,
+          paddingTop: 8,
+          paddingBottom: bottomPadding + 4,
           paddingHorizontal: 12,
           height: "auto",
-          backgroundColor: colors.surface,
+          backgroundColor: "transparent",
           borderTopColor: "transparent",
           borderTopWidth: 0,
           borderRadius: 24,
           marginHorizontal: 0,
           marginBottom: 0,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.15,
-          shadowRadius: 16,
-          elevation: 8,
+          shadowColor: "transparent",
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
         },
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: "500",
-          marginTop: 1,
+          marginTop: 2,
           maxWidth: 60,
+        },
+        tabBarIconStyle: {
+          marginBottom: 2,
         },
       }}
     >
