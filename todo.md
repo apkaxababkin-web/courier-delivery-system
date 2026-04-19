@@ -159,7 +159,7 @@
 - [x] Backend: add urgencyThresholdOrange and urgencyThresholdRed to couriers table
 - [x] Backend: add updateUrgencyThresholds mutation to tasks router
 - [x] Mobile: add urgency settings to courier profile screen
-- [ ] Mobile: implement smart task sorting (new → in_progress → completed → cancelled, sorted by deadline within each group)
+- [x] Mobile: implement smart task sorting (new → in_progress → completed → cancelled, sorted by deadline within each group)
 - [ ] Mobile: add color-coded urgency indicators (orange/red background on task cards based on time remaining)
 - [x] Mobile: create task-sorting.ts utility with calculateUrgency and sortTasks functions
 
@@ -175,8 +175,10 @@
 - [x] Add courier color dots (stable color per courier name)
 - [x] ID on same line as sender name
 - [x] Status + Courier + Places at bottom of card
+- [x] Fix calendar day-of-week calculation (18 апреля это суббота)
+- [x] Keep completed/cancelled tasks on current day (don't move to past)
+- [x] Load tasks for selected date from server (history)
 - [ ] Add urgency color indicators (orange/red background on task cards)
-- [ ] Load tasks for selected date from server (history)
 
 ## Pickup Points System
 - [ ] Create database schema for pickup points

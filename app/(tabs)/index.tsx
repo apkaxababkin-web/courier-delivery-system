@@ -27,17 +27,20 @@ export default function TaskListScreen() {
   const { token, courier } = useCourierAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Load all tasks (active + completed) for today
   const {
-    data: activeTasks,
-    isLoading: loadingActive,
-    refetch: refetchActive,
-    isRefetching: refreshingActive,
+    data: allTasks,
+    isLoading: loadingAll,
+    refetch: refetchAll,
+    isRefetching: refreshingAll,
   } = trpc.tasks.all.useQuery(token ? { token } : skipToken, {
     placeholderData: (previousData) => previousData,
     enabled: !!token,
   });
 
+  // Load completed tasks for history (past dates)
   const {
     data: historyTasks,
     isLoading: loadingHistory,
@@ -49,7 +52,7 @@ export default function TaskListScreen() {
   });
 
   const seedMutation = trpc.tasks.seedDemo.useMutation({
-    onSuccess: () => { refetchActive(); refetchHistory(); },
+    onSuccess: () => { refetchAll(); refetchHistory(); },
   });
 
   // Filter tasks by selected date
@@ -58,22 +61,23 @@ export default function TaskListScreen() {
     return selectedDate.toDateString() === today.toDateString();
   }, [selectedDate]);
 
-  const rawTasks = isToday ? (activeTasks ?? []) : (historyTasks ?? []);
+  // For today: show all tasks (active + completed)
+  // For past dates: show all tasks from that day
+  const rawTasks = isToday ? (allTasks ?? []) : (historyTasks ?? []);
   const tasks = useMemo(
     () => sortTasks(rawTasks, courier?.urgencyThresholdOrange ?? 60, courier?.urgencyThresholdRed ?? 30),
     [rawTasks, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
   );
-  const isLoading = isToday ? loadingActive : loadingHistory;
-  const isRefreshing = isToday ? refreshingActive : refreshingHistory;
-  const refetch = isToday ? refetchActive : refetchHistory;
+  const isLoading = isToday ? loadingAll : loadingHistory;
+  const isRefetching = isToday ? refreshingAll : refreshingHistory;
+  const refetch = isToday ? refetchAll : refetchHistory;
 
-  // Prevent showing loading spinner when returning from task detail
+  // Refetch all tasks when returning to screen
   useFocusEffect(
     useCallback(() => {
-      if (!tasks || tasks.length === 0) {
-        refetch();
-      }
-    }, [tasks, refetch])
+      refetchAll();
+      refetchHistory();
+    }, [refetchAll, refetchHistory])
   );
 
   const formatDate = (date: Date) => {
@@ -88,7 +92,10 @@ export default function TaskListScreen() {
   };
 
   const getFirstDayOfMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    // getDay() returns 0 for Sunday, we need Monday=0 for calendar grid
+    // So we adjust: if Sunday (0), make it 6; otherwise subtract 1
+    const day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    return day === 0 ? 6 : day - 1;
   };
 
   const handleDateChange = (day: number) => {
@@ -187,7 +194,10 @@ export default function TaskListScreen() {
           </Text>
         </TouchableOpacity>
 
-        <Text style={styles.logo}>🚚</Text>
+        {/* TODO: Remove this seed function before beta release */}
+        <TouchableOpacity onPress={() => seedMutation.mutate()}>
+          <Text style={styles.logo}>🚚</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Date Picker Modal - Beautiful Calendar */}
@@ -260,16 +270,23 @@ export default function TaskListScreen() {
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={refetch} tintColor={colors.primary} />
+            <RefreshControl 
+              refreshing={isRefetching || refreshing} 
+              onRefresh={() => {
+                setRefreshing(true);
+                Promise.all([refetchAll(), refetchHistory()]).finally(() => setRefreshing(false));
+              }} 
+              tintColor={colors.primary} 
+            />
           }
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={{ fontSize: 48 }}>📋</Text>
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {isToday ? "Нет активных заявок" : "История пуста"}
+                {isToday ? "Нет заявок" : "Нет заявок на эту дату"}
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                {isToday ? "Нажмите на дату для выбора другого дня" : "Выполненные заявки появятся здесь"}
+                {isToday ? "Нажмите на логотип или дату для загрузки демо-данных" : "Выберите другую дату"}
               </Text>
               {isToday && (
                 <TouchableOpacity
