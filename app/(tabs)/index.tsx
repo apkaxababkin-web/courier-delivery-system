@@ -20,11 +20,14 @@ import { type TaskStatus } from "@/shared/types";
 import { sortTasks } from "@/lib/task-sorting";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useState, useMemo } from "react";
+import { HeaderBarV2 } from "@/components/header-bar-v2";
+import { useFilter } from "@/lib/filter-context";
 
 export default function TaskListScreen() {
   const colors = useColors();
   const router = useRouter();
   const { token, courier } = useCourierAuth();
+  const { filterMode, setFilterMode } = useFilter();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -161,27 +164,15 @@ export default function TaskListScreen() {
   }
 
   return (
-    <ScreenContainer>
-      {/* New Header: Profile | Date | Logo */}
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.push("/profile" as never)}>
-          <Text style={styles.headerIcon}>👤</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.dateButton}
-          onPress={() => setShowDatePicker(true)}
-        >
-          <Text style={[styles.dateText, { color: colors.foreground }]}>
-            {formatDate(selectedDate)}
-          </Text>
-        </TouchableOpacity>
-
-        {/* TODO: Remove this seed function before beta release */}
-        <TouchableOpacity onPress={() => seedMutation.mutate({ token })}>
-          <Text style={styles.logo}>🚚</Text>
-        </TouchableOpacity>
-      </View>
+    <ScreenContainer className="p-0">
+      {/* New minimalist header bar */}
+      <HeaderBarV2
+        onProfilePress={() => router.push("/profile" as never)}
+        onFilterToggle={setFilterMode}
+        filterMode={filterMode}
+        selectedDate={selectedDate}
+        onDatePress={() => setShowDatePicker(true)}
+      />
 
       {/* Date Picker Modal - Beautiful Calendar */}
       <Modal
@@ -191,7 +182,7 @@ export default function TaskListScreen() {
         onRequestClose={() => setShowDatePicker(false)}
       >
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Выбор даты</Text>
             <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите дату для просмотра заявок</Text>
 
@@ -243,6 +234,8 @@ export default function TaskListScreen() {
         </View>
       </Modal>
 
+      {/* Content area with padding */}
+      <View style={{ flex: 1, paddingHorizontal: 12, paddingVertical: 8 }}>
       {isLoading && sortedTasks.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -308,6 +301,7 @@ export default function TaskListScreen() {
           }}
         />
       )}
+      </View>
     </ScreenContainer>
   );
 }

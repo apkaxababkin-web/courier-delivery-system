@@ -67,7 +67,7 @@ export default function HemotestScreen() {
           paddingHorizontal: 12,
           marginVertical: 2,
           marginHorizontal: 4,
-          borderRadius: 8,
+          borderRadius: 16,
           backgroundColor: item.isPicked ? "rgba(76, 175, 80, 0.15)" : colors.background,
           borderLeftWidth: 4,
           borderLeftColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : colors.border,
