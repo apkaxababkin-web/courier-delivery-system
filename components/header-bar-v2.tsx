@@ -10,6 +10,7 @@ interface HeaderBarV2Props {
   filterMode?: "all" | "mine";
   selectedDate?: Date;
   onDatePress?: () => void;
+  myTasksCount?: number;
 }
 
 export function HeaderBarV2({
@@ -18,6 +19,7 @@ export function HeaderBarV2({
   filterMode = "all",
   selectedDate = new Date(),
   onDatePress,
+  myTasksCount = 0,
 }: HeaderBarV2Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -116,18 +118,31 @@ export function HeaderBarV2({
               size={24}
               color={filterMode === "mine" ? colors.primary : colors.muted}
             />
-            {filterMode === "mine" && (
+            {myTasksCount > 0 && (
               <View
                 style={{
                   position: "absolute",
-                  top: -2,
-                  right: -2,
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: colors.primary,
+                  top: -6,
+                  right: -6,
+                  minWidth: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  backgroundColor: "#EF4444",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  paddingHorizontal: 4,
                 }}
-              />
+              >
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 11,
+                    fontWeight: "700",
+                  }}
+                >
+                  {myTasksCount > 99 ? "99+" : myTasksCount}
+                </Text>
+              </View>
             )}
           </View>
         </Pressable>

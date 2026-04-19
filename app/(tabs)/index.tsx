@@ -67,6 +67,12 @@ export default function TaskListScreen() {
     [filteredTasks, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
   );
 
+  // Count tasks assigned to current courier
+  const myTasksCount = useMemo(() => {
+    if (!tasksData || !courier?.name) return 0;
+    return tasksData.filter((task) => task.courierName === courier.name).length;
+  }, [tasksData, courier?.name]);
+
   // Refetch tasks when returning to screen
   useFocusEffect(
     useCallback(() => {
@@ -180,6 +186,7 @@ export default function TaskListScreen() {
         filterMode={filterMode}
         selectedDate={selectedDate}
         onDatePress={() => setShowDatePicker(true)}
+        myTasksCount={myTasksCount}
       />
 
       {/* Date Picker Modal - Beautiful Calendar */}

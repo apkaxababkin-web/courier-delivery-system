@@ -134,8 +134,12 @@
 - [x] Add close calendar on outside tap (Pressable overlay)
 - [x] Calendar remains unchanged visually
 
+## Badge & Swipe Navigation (Session 5)
+- [x] Add red badge with task count on filter icon
+- [x] Badge shows number of tasks assigned to current courier
+- [x] Swipe navigation between tabs (Все заявки ↔ Гемотест ↔ Сбербанк ↔ Письма)
+
 ## Next Features
-- [x] **Filter "My Tasks"** — show only tasks assigned to current courier on main screen
 - [ ] Task status history — timeline of all status changes with timestamps
 - [ ] Push notifications for new tasks assigned to courier
 - [ ] Proof of delivery — photo capture when marking task complete
