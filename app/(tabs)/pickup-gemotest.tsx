@@ -13,12 +13,13 @@ interface PickupPoint {
   address: string;
   isPicked: boolean;
   pickedAt: Date | null;
+  courierName?: string;
 }
 
 export default function HemotestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { token } = useCourierAuth();
+  const { token, courier } = useCourierAuth();
   const [selectedDate] = useState(new Date());
 
   // Fetch pickup points
@@ -51,6 +52,12 @@ export default function HemotestScreen() {
     });
   };
 
+  const formatTime = (date: Date | null) => {
+    if (!date) return "";
+    const d = new Date(date);
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  };
+
   const renderPickupPoint = ({ item }: { item: PickupPoint }) => (
     <Pressable
       onPress={() => handleTogglePickup(item.id)}
@@ -61,7 +68,7 @@ export default function HemotestScreen() {
           marginVertical: 2,
           marginHorizontal: 4,
           borderRadius: 8,
-          backgroundColor: item.isPicked ? colors.surface : colors.background,
+          backgroundColor: item.isPicked ? "#E8F5E9" : colors.background,
           borderLeftWidth: 4,
           borderLeftColor: item.isPicked ? colors.success : colors.border,
           opacity: pressed ? 0.7 : 1,
@@ -93,8 +100,7 @@ export default function HemotestScreen() {
             style={{
               fontSize: 14,
               fontWeight: "600",
-              color: colors.foreground,
-              textDecorationLine: item.isPicked ? "line-through" : "none",
+              color: item.isPicked ? colors.success : colors.foreground,
             }}
           >
             {item.name}
@@ -104,11 +110,22 @@ export default function HemotestScreen() {
               fontSize: 12,
               color: colors.muted,
               marginTop: 2,
-              textDecorationLine: item.isPicked ? "line-through" : "none",
             }}
           >
             {item.address}
           </Text>
+          {item.isPicked && item.courierName && (
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.success,
+                marginTop: 4,
+                fontWeight: "500",
+              }}
+            >
+              ✓ {item.courierName} • {formatTime(item.pickedAt)}
+            </Text>
+          )}
         </View>
       </View>
     </Pressable>

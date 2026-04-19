@@ -581,6 +581,10 @@ export async function getHemotestPickupPointsForDate(
   
   const pickupMap = new Map(pickups.map((p) => [p.pointId, p]));
   
+  // Get courier name
+  const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
+  const courierName = courierData[0]?.name ?? "Unknown";
+  
   // Combine and sort: unpicked first, then picked
   const result = points.map((point) => {
     const pickup = pickupMap.get(point.id);
@@ -588,6 +592,7 @@ export async function getHemotestPickupPointsForDate(
       ...point,
       isPicked: pickup?.isPicked ?? false,
       pickedAt: pickup?.pickedAt ?? null,
+      courierName: pickup?.isPicked ? courierName : undefined,
     };
   });
   
@@ -684,6 +689,10 @@ export async function getSberbankPickupPointsForDate(
   
   const pickupMap = new Map(pickups.map((p) => [p.pointId, p]));
   
+  // Get courier name
+  const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
+  const courierName = courierData[0]?.name ?? "Unknown";
+  
   // Combine and sort: unpicked first, then picked
   const result = points.map((point) => {
     const pickup = pickupMap.get(point.id);
@@ -691,6 +700,7 @@ export async function getSberbankPickupPointsForDate(
       ...point,
       isPicked: pickup?.isPicked ?? false,
       pickedAt: pickup?.pickedAt ?? null,
+      courierName: pickup?.isPicked ? courierName : undefined,
     };
   });
   
