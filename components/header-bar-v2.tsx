@@ -33,7 +33,7 @@ export function HeaderBarV2({
     <View
       style={{
         paddingTop: insets.top + 2,
-        paddingHorizontal: 12,
+        paddingHorizontal: 6,
         paddingBottom: 6,
         backgroundColor: colors.background,
       }}
