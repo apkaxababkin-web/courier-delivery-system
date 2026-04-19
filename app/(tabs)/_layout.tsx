@@ -20,7 +20,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.15)",
+        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.2)",
         tabBarAllowFontScaling: false,
         headerShown: false,
         tabBarHideOnKeyboard: false,
@@ -37,8 +37,8 @@ export default function TabLayout() {
           bottom: 12,
           left: 12,
           right: 12,
-          paddingTop: 12,
-          paddingBottom: bottomPadding + 8,
+          paddingTop: 14,
+          paddingBottom: bottomPadding + 10,
           paddingHorizontal: 16,
           height: "auto",
           backgroundColor: colors.surface,
@@ -55,19 +55,19 @@ export default function TabLayout() {
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "500",
-          marginTop: 4,
+          fontSize: 12,
+          fontWeight: "600",
+          marginTop: 6,
           maxWidth: 70,
         },
         tabBarItemStyle: {
-          borderRadius: 12,
-          marginHorizontal: 4,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
+          borderRadius: 14,
+          marginHorizontal: 6,
+          paddingVertical: 10,
+          paddingHorizontal: 14,
         },
         tabBarIconStyle: {
-          marginBottom: 4,
+          marginBottom: 6,
         },
       }}
     >
@@ -115,3 +115,4 @@ export default function TabLayout() {
 // Note: Tab bar uses same surface color as header bar for unified design
 // Note: Same width as header bar (12px left/right margins, 16px horizontal padding)
 // Note: Increased padding and spacing to match header bar proportions
+// Note: Active tab has enhanced styling with stronger background color and rounded corners
