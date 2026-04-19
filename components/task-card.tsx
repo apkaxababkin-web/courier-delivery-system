@@ -8,10 +8,10 @@ import { calculateUrgencyFromTimeString } from "@/lib/task-sorting";
 // ─── Status border colors (based on status) ────────────────────────────────
 
 const STATUS_BORDER_COLORS: Record<TaskStatus, string> = {
-  assigned:    "#3B82F6", // blue
-  in_progress: "#F97316", // orange
-  completed:   "#22C55E", // green
-  cancelled:   "#EF4444", // red
+  assigned:    "#3B82F6", // blue (Новая)
+  in_progress: "#F97316", // orange (В работе)
+  completed:   "#22C55E", // green (Выполнено)
+  cancelled:   "#EF4444", // red (Отменена)
 };
 
 // ─── Courier color palette ────────────────────────────────────────────────────
@@ -72,11 +72,10 @@ interface TaskCardProps {
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
   const urgency = calculateUrgencyFromTimeString(task.deliveryTimeTo);
-  // Hide urgency dot when task is completed
-  const showUrgencyDot = urgency === "red" && task.status !== "completed";
-  const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
-  // Border color: red for urgent, courier color if assigned, otherwise status color
-  const borderColor = urgency === "red" ? "#EF4444" : (task.courierName ? courierColor : STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
+  // Red dot disappears only when task is completed or cancelled
+  const showUrgencyDot = urgency === "red" && task.status !== "completed" && task.status !== "cancelled";
+  // Border color depends ONLY on status, not on urgency or courier
+  const borderColor = STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF";
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
   const timeLabel = hasTimeInterval

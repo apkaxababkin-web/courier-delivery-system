@@ -4,11 +4,12 @@ export type UrgencyLevel = "normal" | "orange" | "red";
 
 /**
  * Calculate urgency level based on remaining time until deliveryTimeTo
+ * Red dot appears when ≤1 hour (60 minutes) remaining
  */
 export function calculateUrgency(
   task: Task,
   urgencyThresholdOrange: number = 60,
-  urgencyThresholdRed: number = 30
+  urgencyThresholdRed: number = 60
 ): UrgencyLevel {
   if (!task.deliveryTimeTo) return "normal";
 
@@ -24,11 +25,12 @@ export function calculateUrgency(
 /**
  * Calculate urgency level from time string (HH:MM format)
  * Used for TaskCard display
+ * Red dot appears when ≤1 hour (60 minutes) remaining
  */
 export function calculateUrgencyFromTimeString(
   timeString: string | null | undefined,
   urgencyThresholdOrange: number = 60,
-  urgencyThresholdRed: number = 30
+  urgencyThresholdRed: number = 60
 ): UrgencyLevel {
   if (!timeString) return "normal";
 
