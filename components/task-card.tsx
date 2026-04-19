@@ -58,6 +58,7 @@ export interface TaskCardData {
   deliveryTimeTo?: string | null;
   courierName?: string | null;
   taskType?: "regular" | "warehouse_pickup" | "courier_call";
+  items?: string | null; // JSON array of {name: string, quantity: number}
 }
 
 interface TaskCardProps {
@@ -151,6 +152,24 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
           <Text style={[styles.addressText, { color: colors.muted }]}>
             {task.deliveryAddress}
           </Text>
+        </View>
+      )}
+
+      {/* Items list for warehouse_pickup */}
+      {isWarehousePickup && task.items && (
+        <View style={styles.itemsContainer}>
+          {(() => {
+            try {
+              const items = JSON.parse(task.items);
+              return items.map((item: {name: string; quantity: number}, idx: number) => (
+                <Text key={idx} style={[styles.itemText, { color: colors.foreground }]}>
+                  • {item.name} — {item.quantity} шт
+                </Text>
+              ));
+            } catch {
+              return null;
+            }
+          })()}
         </View>
       )}
 
@@ -271,6 +290,15 @@ const styles = StyleSheet.create({
   courierText: {
     fontSize: 11,
     lineHeight: 14,
+  },
+  itemsContainer: {
+    marginTop: 8,
+    paddingLeft: 4,
+    gap: 4,
+  },
+  itemText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   placesText: {
     fontSize: 11,

@@ -201,4 +201,7 @@
 - [ ] Update Task Detail screen for each type
 - [x] Fix demo data loading (seedDemo mutation - added token parameter)
 - [x] Add demo data for all three task types (5 regular + 1 warehouse + 1 courier_call)
+- [x] Add items JSON field to tasks table for warehouse_pickup product list
+- [x] Update TaskCard to display items list for warehouse_pickup
+- [x] Add demo items for warehouse_pickup (Орехи 200г, 500г, Масло кедровое)
 - [ ] Test all task types end-to-end

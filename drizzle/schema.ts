@@ -91,14 +91,12 @@ export const tasks = mysqlTable("tasks", {
   senderAddress: text("senderAddress"),
   /** Sender phone number */
   senderPhone: varchar("senderPhone", { length: 20 }),
-  /** 2GIS URL for sender address (set by manager) */
-  senderAddressUrl: text("senderAddressUrl"),
-  /** 2GIS URL for recipient/delivery address (set by manager) */
-  recipientAddressUrl: text("recipientAddressUrl"),
   /** Comments from manager with delivery instructions */
   comments: text("comments"),
   /** Comments from courier during delivery */
   courierComments: text("courierComments"),
+  /** JSON array of items for warehouse_pickup tasks: [{"name": "Орехи 200г", "quantity": 5}] */
+  items: text("items"),
   /** Note from courier or manager */
   rejectionReason: text("rejectionReason"),
   /** Timestamps */
