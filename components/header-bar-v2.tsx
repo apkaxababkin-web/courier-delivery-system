@@ -38,7 +38,7 @@ export function HeaderBarV2({
         paddingTop: insets.top - 4,
         paddingHorizontal: 0,
         paddingBottom: 0,
-        backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
+        backgroundColor: colors.surface,
       }}
     >
       {/* Main header bar with rounded corners and elevation */}
@@ -47,7 +47,7 @@ export function HeaderBarV2({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
+          backgroundColor: colors.surface,
           borderRadius: 0,
           overflow: "hidden",
           paddingHorizontal: 16,

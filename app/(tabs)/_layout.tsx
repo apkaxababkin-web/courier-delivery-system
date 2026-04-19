@@ -41,7 +41,7 @@ export default function TabLayout() {
           paddingBottom: 16,
           paddingHorizontal: 0,
           height: "auto",
-          backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
+          backgroundColor: colors.surface,
           borderColor: "transparent",
           borderWidth: 0,
           borderRadius: 0,
