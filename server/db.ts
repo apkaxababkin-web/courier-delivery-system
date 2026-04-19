@@ -10,6 +10,7 @@ import {
   hemotestPickups,
   sberbankPickupPoints,
   sberbankPickups,
+  mails,
   type Courier,
   type InsertCourier,
   type InsertTask,
@@ -20,11 +21,68 @@ import {
   type HemotestPickup,
   type SberbankPickupPoint,
   type SberbankPickup,
+  type Mail,
+  type InsertMail,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 // Re-export drizzle operators for use in this file
 const operators = { eq, and, gte, lte, lt, inArray, desc, sql };
+
+// ─── Mail helpers ─────────────────────────────────────────────────────────────
+
+export async function getAllMails(): Promise<Mail[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(mails).orderBy(desc(mails.createdAt));
+}
+
+export async function getMailByWaybill(waybillNumber: string): Promise<Mail | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(mails).where(eq(mails.waybillNumber, waybillNumber));
+  return result[0];
+}
+
+export async function getNotDeliveredMails(): Promise<Mail[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(mails).where(eq(mails.status, "not_delivered")).orderBy(desc(mails.createdAt));
+}
+
+export async function createMail(mail: InsertMail): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(mails).values(mail);
+  const result = await db.select().from(mails).where(eq(mails.waybillNumber, mail.waybillNumber));
+  return result[0];
+}
+
+export async function updateMailDelivery(
+  waybillNumber: string,
+  recipientSignature: string,
+  courierId: number
+): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(mails)
+    .set({
+      status: "delivered",
+      recipientSignature,
+      courierId,
+      deliveredAt: new Date(),
+    })
+    .where(eq(mails.waybillNumber, waybillNumber));
+  const result = await db.select().from(mails).where(eq(mails.waybillNumber, waybillNumber));
+  return result[0];
+}
+
+export async function bulkCreateMails(mailList: InsertMail[]): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(mails).values(mailList);
+}
 
 // ─── DB connection ─────────────────────────────────────────────────────────────
 

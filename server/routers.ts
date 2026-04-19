@@ -445,7 +445,103 @@ export const appRouter = router({
           await db.createTask(taskData);
         }
 
-        return { success: true, count: demoTasks.length };
+        // Seed demo mails
+        const demoMails = [
+          {
+            waybillNumber: "5376362735",
+            recipientName: "Иван Петров",
+            recipientPhone: "+7 (902) 123-4567",
+            deliveryAddress: "ул. Ленина, 15, кв. 10, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "4829156473",
+            recipientName: "Мария Сидорова",
+            recipientPhone: "+7 (903) 234-5678",
+            deliveryAddress: "ул. Советская, 25, кв. 5, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "7264918352",
+            recipientName: "Алексей Иванов",
+            recipientPhone: "+7 (904) 345-6789",
+            deliveryAddress: "ул. Чайковского, 8, офис 12, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "6183475926",
+            recipientName: "Ольга Кузнецова",
+            recipientPhone: "+7 (905) 456-7890",
+            deliveryAddress: "ул. Красная, 42, кв. 3, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "9547382615",
+            recipientName: "Дмитрий Волков",
+            recipientPhone: "+7 (906) 567-8901",
+            deliveryAddress: "пр. Октябрьской революции, 100, кв. 20, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "3821647590",
+            recipientName: "Елена Морозова",
+            recipientPhone: "+7 (907) 678-9012",
+            deliveryAddress: "ул. Смолина, 18, кв. 7, Улан-Удэ",
+            status: "delivered" as const,
+            recipientSignature: "Е. Морозова",
+            deliveredAt: new Date(Date.now() - 3600000),
+          },
+          {
+            waybillNumber: "5729384601",
+            recipientName: "Сергей Орлов",
+            recipientPhone: "+7 (908) 789-0123",
+            deliveryAddress: "ул. Пролетарская, 55, кв. 12, Улан-Удэ",
+            status: "delivered" as const,
+            recipientSignature: "С. Орлов",
+            deliveredAt: new Date(Date.now() - 7200000),
+          },
+        ];
+
+        for (const mailData of demoMails) {
+          await db.createMail(mailData);
+        }
+
+        return { success: true, count: demoTasks.length + demoMails.length };
+      }),
+  }),
+
+  // Mail router
+  mails: router({
+    all: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getNotDeliveredMails();
+      }),
+
+    getByWaybill: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        waybillNumber: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getMailByWaybill(input.waybillNumber);
+      }),
+
+    markDelivered: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        waybillNumber: z.string(),
+        recipientSignature: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.updateMailDelivery(input.waybillNumber, input.recipientSignature, payload.courierId);
+        return { success: true };
       }),
   }),
 });

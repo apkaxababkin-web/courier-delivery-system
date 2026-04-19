@@ -185,3 +185,32 @@ export const sberbankPickups = mysqlTable("sberbankPickups", {
 
 export type SberbankPickup = typeof sberbankPickups.$inferSelect;
 export type InsertSberbankPickup = typeof sberbankPickups.$inferInsert;
+
+
+/**
+ * Mail/Letters — tracks mail deliveries for couriers
+ */
+export const mails = mysqlTable("mails", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Waybill number — unique identifier for the mail */
+  waybillNumber: varchar("waybillNumber", { length: 50 }).notNull().unique(),
+  /** Recipient name */
+  recipientName: varchar("recipientName", { length: 255 }),
+  /** Recipient phone number */
+  recipientPhone: varchar("recipientPhone", { length: 20 }).notNull(),
+  /** Delivery address */
+  deliveryAddress: text("deliveryAddress").notNull(),
+  /** Status: not_delivered or delivered */
+  status: mysqlEnum("mailStatus", ["not_delivered", "delivered"]).default("not_delivered").notNull(),
+  /** Recipient signature (text input by courier) */
+  recipientSignature: text("recipientSignature"),
+  /** Delivery date/time */
+  deliveredAt: timestamp("deliveredAt"),
+  /** Courier who delivered it */
+  courierId: int("courierId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Mail = typeof mails.$inferSelect;
+export type InsertMail = typeof mails.$inferInsert;

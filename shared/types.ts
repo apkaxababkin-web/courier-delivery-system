@@ -35,3 +35,16 @@ export const PACKAGE_TYPE_LABELS: Record<PackageType, string> = {
   large:    "Крупная посылка",
   fragile:  "Хрупкий груз",
 };
+
+
+export type MailStatus = "not_delivered" | "delivered";
+
+export interface MailStatusMeta {
+  label: string;
+  color: string;
+}
+
+export const MAIL_STATUS_META: Record<MailStatus, MailStatusMeta> = {
+  not_delivered: { label: "Не доставлено", color: "#3B82F6" },
+  delivered:     { label: "Доставлено",    color: "#22C55E" },
+};

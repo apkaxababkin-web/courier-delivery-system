@@ -327,3 +327,18 @@
 - [x] Apply courier color to left border of task card
 - [x] Test all status transitions and urgency indicators
 - [x] Verify sorting works correctly with new priority
+
+
+## Session 8: Mail Delivery Feature (Письма)
+- [x] Update database schema to add mail/letters table
+- [x] Create mail list screen with search by waybill number
+- [x] Implement dynamic filtering with digit-by-digit search
+- [x] Create mail details screen with delivery confirmation
+- [x] Add recipient signature field (text input)
+- [x] Add date/time picker with system defaults
+- [x] Add phone call button for recipient phone
+- [x] Implement server API for mail management (mails.all, mails.getByWaybill, mails.markDelivered)
+- [x] Add demo mail data (7 sample mails with addresses and phone numbers)
+- [ ] Add mail tab to bottom navigation
+- [ ] Test all mail delivery flows
+- [ ] Verify data syncs to server correctly

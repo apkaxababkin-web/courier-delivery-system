@@ -127,6 +127,13 @@
       "when": 1776614991929,
       "tag": "0017_flashy_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1776616523989,
+      "tag": "0018_bizarre_bromley",
+      "breakpoints": true
     }
   ]
 }
