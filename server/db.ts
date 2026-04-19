@@ -1,19 +1,30 @@
-import { and, desc, eq, inArray, gte, lt, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { eq, and, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   couriers,
   tasks,
   taskStatusHistory,
   users,
+  hemotestPickupPoints,
+  hemotestPickups,
+  sberbankPickupPoints,
+  sberbankPickups,
   type Courier,
   type InsertCourier,
   type InsertTask,
   type InsertTaskStatusHistory,
   type InsertUser,
   type Task,
+  type HemotestPickupPoint,
+  type HemotestPickup,
+  type SberbankPickupPoint,
+  type SberbankPickup,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+
+// Re-export drizzle operators for use in this file
+const operators = { eq, and, gte, lte, lt, inArray, desc, sql };
 
 // ─── DB connection ─────────────────────────────────────────────────────────────
 
@@ -540,5 +551,253 @@ export async function updateCourierUrgencyThresholds(
   } catch (error) {
     console.error("[Database] Error updating courier urgency thresholds:", error);
     throw error;
+  }
+}
+
+// ─── Hemotest Pickup Points ────────────────────────────────────────────────────
+
+export type HemotestPickupWithStatus = HemotestPickupPoint & { isPicked: boolean; pickedAt: Date | null };
+
+export async function getHemotestPickupPointsForDate(
+  courierId: number,
+  targetDate: Date
+): Promise<HemotestPickupWithStatus[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Get all pickup points
+  const points = await db.select().from(hemotestPickupPoints).orderBy(hemotestPickupPoints.name);
+  
+  // Get pickups for this courier and date
+  const pickups = await db
+    .select()
+    .from(hemotestPickups)
+    .where(and(
+      eq(hemotestPickups.courierId, courierId),
+      eq(hemotestPickups.date, dateStr)
+    ));
+  
+  const pickupMap = new Map(pickups.map((p) => [p.pointId, p]));
+  
+  // Combine and sort: unpicked first, then picked
+  const result = points.map((point) => {
+    const pickup = pickupMap.get(point.id);
+    return {
+      ...point,
+      isPicked: pickup?.isPicked ?? false,
+      pickedAt: pickup?.pickedAt ?? null,
+    };
+  });
+  
+  // Sort: unpicked first (false), then picked (true)
+  return result.sort((a, b) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
+}
+
+export async function toggleHemotestPickup(
+  courierId: number,
+  pointId: number,
+  targetDate: Date
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Check if pickup record exists
+  const existing = await db
+    .select()
+    .from(hemotestPickups)
+    .where(and(
+      eq(hemotestPickups.courierId, courierId),
+      eq(hemotestPickups.pointId, pointId),
+      eq(hemotestPickups.date, dateStr)
+    ))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    // Toggle the status
+    const pickup = existing[0];
+    await db
+      .update(hemotestPickups)
+      .set({
+        isPicked: !pickup.isPicked,
+        pickedAt: !pickup.isPicked ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(hemotestPickups.id, pickup.id));
+  } else {
+    // Create new pickup record as picked
+    await db.insert(hemotestPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked: true,
+      pickedAt: new Date(),
+    });
+  }
+}
+
+export async function getHemotestPickedCount(courierId: number, targetDate: Date): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  const result = await db
+    .select({ count: sql`COUNT(*)` })
+    .from(hemotestPickups)
+    .where(and(
+      eq(hemotestPickups.courierId, courierId),
+      eq(hemotestPickups.date, dateStr),
+      eq(hemotestPickups.isPicked, true)
+    ));
+  
+  return result[0]?.count as number ?? 0;
+}
+
+// ─── Sberbank Pickup Points ────────────────────────────────────────────────────
+
+export type SberbankPickupWithStatus = SberbankPickupPoint & { isPicked: boolean; pickedAt: Date | null };
+
+export async function getSberbankPickupPointsForDate(
+  courierId: number,
+  targetDate: Date
+): Promise<SberbankPickupWithStatus[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Get all pickup points
+  const points = await db.select().from(sberbankPickupPoints).orderBy(sberbankPickupPoints.name);
+  
+  // Get pickups for this courier and date
+  const pickups = await db
+    .select()
+    .from(sberbankPickups)
+    .where(and(
+      eq(sberbankPickups.courierId, courierId),
+      eq(sberbankPickups.date, dateStr)
+    ));
+  
+  const pickupMap = new Map(pickups.map((p) => [p.pointId, p]));
+  
+  // Combine and sort: unpicked first, then picked
+  const result = points.map((point) => {
+    const pickup = pickupMap.get(point.id);
+    return {
+      ...point,
+      isPicked: pickup?.isPicked ?? false,
+      pickedAt: pickup?.pickedAt ?? null,
+    };
+  });
+  
+  // Sort: unpicked first (false), then picked (true)
+  return result.sort((a, b) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
+}
+
+export async function toggleSberbankPickup(
+  courierId: number,
+  pointId: number,
+  targetDate: Date
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Check if pickup record exists
+  const existing = await db
+    .select()
+    .from(sberbankPickups)
+    .where(and(
+      eq(sberbankPickups.courierId, courierId),
+      eq(sberbankPickups.pointId, pointId),
+      eq(sberbankPickups.date, dateStr)
+    ))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    // Toggle the status
+    const pickup = existing[0];
+    await db
+      .update(sberbankPickups)
+      .set({
+        isPicked: !pickup.isPicked,
+        pickedAt: !pickup.isPicked ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sberbankPickups.id, pickup.id));
+  } else {
+    // Create new pickup record as picked
+    await db.insert(sberbankPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked: true,
+      pickedAt: new Date(),
+    });
+  }
+}
+
+export async function getSberbankPickedCount(courierId: number, targetDate: Date): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  const result = await db
+    .select({ count: sql`COUNT(*)` })
+    .from(sberbankPickups)
+    .where(and(
+      eq(sberbankPickups.courierId, courierId),
+      eq(sberbankPickups.date, dateStr),
+      eq(sberbankPickups.isPicked, true)
+    ));
+  
+  return result[0]?.count as number ?? 0;
+}
+
+// ─── Pickup Points Demo Data ───────────────────────────────────────────────────
+
+/** Seed demo Hemotest pickup points */
+export async function seedDemoHemotestPoints(): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  // Delete all existing points
+  await db.delete(hemotestPickupPoints);
+
+  const demoPoints = [
+    { name: "Гемотест на ул. Ленина", address: "ул. Ленина, 15, Улан-Удэ" },
+    { name: "Гемотест на ул. Смолина", address: "ул. Смолина, 18, Улан-Удэ" },
+    { name: "Гемотест на просп. Буджалаба", address: "просп. Буджалаба, 28, Улан-Удэ" },
+    { name: "Гемотест на ул. Балтахинова", address: "ул. Балтахинова, 32, Улан-Удэ" },
+  ];
+
+  for (const point of demoPoints) {
+    await db.insert(hemotestPickupPoints).values(point);
+  }
+}
+
+/** Seed demo Sberbank pickup points */
+export async function seedDemoSberbankPoints(): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  // Delete all existing points
+  await db.delete(sberbankPickupPoints);
+
+  const demoPoints = [
+    { name: "Сбербанк на ул. Октябрьская", address: "ул. Октябрьская, 8, Улан-Удэ" },
+    { name: "Сбербанк на ул. Ключевская", address: "ул. Ключевская, 40, Улан-Удэ" },
+    { name: "Сбербанк на ул. Павлова", address: "ул. Павлова, 57, Улан-Удэ" },
+    { name: "Сбербанк на ул. Гагарина", address: "ул. Гагарина, 39, Улан-Удэ" },
+  ];
+
+  for (const point of demoPoints) {
+    await db.insert(sberbankPickupPoints).values(point);
   }
 }

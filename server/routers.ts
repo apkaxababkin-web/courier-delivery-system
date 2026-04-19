@@ -326,7 +326,79 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
         await db.seedDemoTasks();
+        await db.seedDemoHemotestPoints();
+        await db.seedDemoSberbankPoints();
         return { success: true };
+      }),
+  }),
+
+  // ─── Hemotest Pickup Points ────────────────────────────────────────────────
+  hemotest: router({
+    pickupPoints: publicProcedure
+      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const targetDate = input.date || new Date();
+        return db.getHemotestPickupPointsForDate(payload.courierId, targetDate);
+      }),
+
+    togglePickup: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.date().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const targetDate = input.date || new Date();
+        await db.toggleHemotestPickup(payload.courierId, input.pointId, targetDate);
+        return { success: true };
+      }),
+
+    pickedCount: publicProcedure
+      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const targetDate = input.date || new Date();
+        return db.getHemotestPickedCount(payload.courierId, targetDate);
+      }),
+  }),
+
+  // ─── Sberbank Pickup Points ────────────────────────────────────────────────
+  sberbank: router({
+    pickupPoints: publicProcedure
+      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const targetDate = input.date || new Date();
+        return db.getSberbankPickupPointsForDate(payload.courierId, targetDate);
+      }),
+
+    togglePickup: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.date().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const targetDate = input.date || new Date();
+        await db.toggleSberbankPickup(payload.courierId, input.pointId, targetDate);
+        return { success: true };
+      }),
+
+    pickedCount: publicProcedure
+      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const targetDate = input.date || new Date();
+        return db.getSberbankPickedCount(payload.courierId, targetDate);
       }),
   }),
 

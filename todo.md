@@ -229,3 +229,14 @@
 - [x] Minimize inter-row spacing (1-4px)
 - [x] Fix seedDemo to clear old tasks before loading new ones
 - [x] Add category field to warehouse_pickup items
+
+## Pickup Points System (Гемотест & Сбербанк)
+- [x] Create database schema: hemotest_pickup_points, sberbank_pickup_points
+- [x] Create database schema: hemotest_pickups, sberbank_pickups (daily tracking)
+- [x] Backend: tRPC procedures for hemotest and sberbank pickup points
+- [x] Backend: toggle pickup status (picked/unpicked) for current day
+- [x] Frontend: Гемотест tab with Telegram-style checkbox UI
+- [x] Frontend: Сбербанк tab with Telegram-style checkbox UI
+- [x] Frontend: Sorting logic (unpicked at top, picked at bottom)
+- [x] Frontend: Counter for picked points today (header)
+- [x] Demo data: Add sample Hemotest and Sberbank pickup points

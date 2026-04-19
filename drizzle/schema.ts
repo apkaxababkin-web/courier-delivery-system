@@ -124,3 +124,65 @@ export const taskStatusHistory = mysqlTable("taskStatusHistory", {
 
 export type TaskStatusHistory = typeof taskStatusHistory.$inferSelect;
 export type InsertTaskStatusHistory = typeof taskStatusHistory.$inferInsert;
+
+/**
+ * Hemotest pickup points — list of Hemotest collection points in Ulan-Ude
+ */
+export const hemotestPickupPoints = mysqlTable("hemotestPickupPoints", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type HemotestPickupPoint = typeof hemotestPickupPoints.$inferSelect;
+export type InsertHemotestPickupPoint = typeof hemotestPickupPoints.$inferInsert;
+
+/**
+ * Hemotest daily pickups — tracks which points were picked up by which courier on which day
+ */
+export const hemotestPickups = mysqlTable("hemotestPickups", {
+  id: int("id").autoincrement().primaryKey(),
+  pointId: int("pointId").notNull(),
+  courierId: int("courierId").notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD format
+  isPicked: boolean("isPicked").default(false).notNull(),
+  pickedAt: timestamp("pickedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type HemotestPickup = typeof hemotestPickups.$inferSelect;
+export type InsertHemotestPickup = typeof hemotestPickups.$inferInsert;
+
+/**
+ * Sberbank pickup points — list of Sberbank collection points in Ulan-Ude
+ */
+export const sberbankPickupPoints = mysqlTable("sberbankPickupPoints", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SberbankPickupPoint = typeof sberbankPickupPoints.$inferSelect;
+export type InsertSberbankPickupPoint = typeof sberbankPickupPoints.$inferInsert;
+
+/**
+ * Sberbank daily pickups — tracks which points were picked up by which courier on which day
+ */
+export const sberbankPickups = mysqlTable("sberbankPickups", {
+  id: int("id").autoincrement().primaryKey(),
+  pointId: int("pointId").notNull(),
+  courierId: int("courierId").notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD format
+  isPicked: boolean("isPicked").default(false).notNull(),
+  pickedAt: timestamp("pickedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SberbankPickup = typeof sberbankPickups.$inferSelect;
+export type InsertSberbankPickup = typeof sberbankPickups.$inferInsert;
