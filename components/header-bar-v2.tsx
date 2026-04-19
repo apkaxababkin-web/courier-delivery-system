@@ -136,8 +136,9 @@ export function HeaderBarV2({
                 <Text
                   style={{
                     color: "#fff",
-                    fontSize: 11,
-                    fontWeight: "700",
+                    fontSize: 12,
+                    fontWeight: "800",
+                    lineHeight: 14,
                   }}
                 >
                   {myTasksCount > 99 ? "99+" : myTasksCount}

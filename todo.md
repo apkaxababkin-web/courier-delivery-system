@@ -137,7 +137,10 @@
 ## Badge & Swipe Navigation (Session 5)
 - [x] Add red badge with task count on filter icon
 - [x] Badge shows number of tasks assigned to current courier
+- [x] Badge font improved (fontSize 12, fontWeight 800)
+- [x] Badge updates in real-time when tasks are completed
 - [x] Swipe navigation between tabs (Все заявки ↔ Гемотест ↔ Сбербанк ↔ Письма)
+- [x] Installed react-native-pager-view for smooth swipe gestures
 
 ## Next Features
 - [ ] Task status history — timeline of all status changes with timestamps
