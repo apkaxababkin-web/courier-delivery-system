@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Platform, Image } from "react-native";
+import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
@@ -74,50 +74,26 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Все заявки",
-          tabBarIcon: ({ color, focused }) => (
-            <Image
-              source={require("@/assets/images/all-tasks-icon.png")}
-              style={{
-                width: 32,
-                height: 32,
-                tintColor: color,
-                opacity: focused ? 1 : 0.6,
-              }}
-            />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name={icon("list.bullet")} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="hemotest"
+        name="pickup-gemotest"
         options={{
           title: "Гемотест",
-          tabBarIcon: ({ color, focused }) => (
-            <Image
-              source={require("@/assets/images/hemotest-icon.png")}
-              style={{
-                width: 32,
-                height: 32,
-                tintColor: color,
-                opacity: focused ? 1 : 0.6,
-              }}
-            />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name={icon("hemotest")} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="sberbank"
+        name="pickup-sberbank"
         options={{
           title: "Сбербанк",
-          tabBarIcon: ({ color, focused }) => (
-            <Image
-              source={require("@/assets/images/sberbank-icon.png")}
-              style={{
-                width: 32,
-                height: 32,
-                tintColor: color,
-                opacity: focused ? 1 : 0.6,
-              }}
-            />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name={icon("sberbank")} color={color} />
           ),
         }}
       />
@@ -125,16 +101,8 @@ export default function TabLayout() {
         name="letters"
         options={{
           title: "Письма",
-          tabBarIcon: ({ color, focused }) => (
-            <Image
-              source={require("@/assets/images/letters-icon.png")}
-              style={{
-                width: 32,
-                height: 32,
-                tintColor: color,
-                opacity: focused ? 1 : 0.6,
-              }}
-            />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name={icon("envelope")} color={color} />
           ),
         }}
       />
