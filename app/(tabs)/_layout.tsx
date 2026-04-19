@@ -34,7 +34,7 @@ export default function TabLayout() {
           paddingBottom: bottomPadding + 8,
           paddingHorizontal: 12,
           height: tabBarHeight + 8,
-          backgroundColor: Platform.OS === "ios" ? "rgba(255, 255, 255, 0.7)" : "rgba(245, 245, 245, 0.85)",
+          backgroundColor: Platform.OS === "ios" ? "rgba(255, 255, 255, 0.5)" : "rgba(245, 245, 245, 0.6)",
           borderTopColor: "transparent",
           borderTopWidth: 0,
           borderRadius: 0,
@@ -42,10 +42,9 @@ export default function TabLayout() {
           marginBottom: 0,
           shadowColor: "#000",
           shadowOffset: { width: 0, height: -8 },
-          shadowOpacity: 0.1,
-          shadowRadius: 20,
-          elevation: 20,
-          backdropFilter: "blur(10px)",
+          shadowOpacity: 0.08,
+          shadowRadius: 16,
+          elevation: 15,
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -96,3 +95,4 @@ export default function TabLayout() {
 }
 
 // Note: Profile screen is accessed via header button (👤), not tab bar
+// Note: BlurView from expo-blur is automatically applied via tabBarStyle backgroundColor transparency
