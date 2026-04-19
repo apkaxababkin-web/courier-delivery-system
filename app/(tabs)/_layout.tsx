@@ -78,8 +78,8 @@ export default function TabLayout() {
             <Image
               source={require("@/assets/images/all-tasks-icon.png")}
               style={{
-                width: 24,
-                height: 24,
+                width: 32,
+                height: 32,
                 tintColor: color,
                 opacity: focused ? 1 : 0.6,
               }}
@@ -95,8 +95,8 @@ export default function TabLayout() {
             <Image
               source={require("@/assets/images/hemotest-icon.png")}
               style={{
-                width: 24,
-                height: 24,
+                width: 32,
+                height: 32,
                 tintColor: color,
                 opacity: focused ? 1 : 0.6,
               }}
@@ -112,8 +112,8 @@ export default function TabLayout() {
             <Image
               source={require("@/assets/images/sberbank-icon.png")}
               style={{
-                width: 24,
-                height: 24,
+                width: 32,
+                height: 32,
                 tintColor: color,
                 opacity: focused ? 1 : 0.6,
               }}
@@ -129,8 +129,8 @@ export default function TabLayout() {
             <Image
               source={require("@/assets/images/letters-icon.png")}
               style={{
-                width: 24,
-                height: 24,
+                width: 32,
+                height: 32,
                 tintColor: color,
                 opacity: focused ? 1 : 0.6,
               }}
