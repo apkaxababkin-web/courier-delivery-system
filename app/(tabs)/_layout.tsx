@@ -20,7 +20,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.12)",
+        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.15)",
         tabBarAllowFontScaling: false,
         headerShown: false,
         tabBarHideOnKeyboard: false,
@@ -37,7 +37,7 @@ export default function TabLayout() {
           bottom: 12,
           left: 12,
           right: 12,
-          paddingTop: 8,
+          paddingTop: 12,
           paddingBottom: bottomPadding + 8,
           paddingHorizontal: 16,
           height: "auto",
@@ -55,9 +55,9 @@ export default function TabLayout() {
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: "500",
-          marginTop: 3,
+          marginTop: 4,
           maxWidth: 70,
         },
         tabBarItemStyle: {
@@ -67,7 +67,7 @@ export default function TabLayout() {
           paddingHorizontal: 12,
         },
         tabBarIconStyle: {
-          marginBottom: 3,
+          marginBottom: 4,
         },
       }}
     >
