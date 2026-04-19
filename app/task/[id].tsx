@@ -156,9 +156,25 @@ export default function TaskDetailScreen() {
     commentsMutation.mutate({ token: token!, taskId, courierComments: commentsInput });
   };
 
+  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
   const handleAssignCourier = (courierId: number | null) => {
+    setSelectedCourierId(courierId);
+    if (courierId === null) {
+      // If unassigning, close immediately
+      setCourierPickerVisible(false);
+      assignMutation.mutate({ token: token!, taskId, courierId });
+    } else {
+      // Show color picker for confirmation
+      setShowColorPicker(true);
+    }
+  };
+
+  const handleConfirmCourierColor = () => {
+    setShowColorPicker(false);
     setCourierPickerVisible(false);
-    assignMutation.mutate({ token: token!, taskId, courierId });
+    assignMutation.mutate({ token: token!, taskId, courierId: selectedCourierId });
   };
 
   const handleDateChange = (day: number) => {
@@ -407,6 +423,28 @@ export default function TaskDetailScreen() {
             <TouchableOpacity onPress={() => setCourierPickerVisible(false)} style={{ marginTop: 16, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
               <Text style={{ color: "#fff", fontWeight: "600" }}>Закрыть</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Courier Color Confirmation Modal */}
+      <Modal visible={showColorPicker} transparent animationType="fade" onRequestClose={() => setShowColorPicker(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" }}>
+          <View style={{ backgroundColor: colors.background, borderRadius: 20, padding: 20, width: "80%", maxWidth: 300 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, marginBottom: 16, textAlign: "center" }}>
+              Подтвердить выбор курьера?
+            </Text>
+            <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 20, textAlign: "center" }}>
+              {couriersList?.find(c => c.id === selectedCourierId)?.name}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowColorPicker(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
+                <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleConfirmCourierColor} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Подтвердить</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

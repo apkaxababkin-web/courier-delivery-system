@@ -76,6 +76,8 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
   const showUrgencyDot = urgency === "red" && task.status !== "completed" && task.status !== "cancelled";
   // Border color depends ONLY on status, not on urgency or courier
   const borderColor = STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF";
+  // Courier color for badge display
+  const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
   const timeLabel = hasTimeInterval
