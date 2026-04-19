@@ -37,21 +37,21 @@ export default function TabLayout() {
           bottom: 12,
           left: 12,
           right: 12,
-          paddingTop: 8,
-          paddingBottom: bottomPadding + 4,
-          paddingHorizontal: 12,
+          paddingTop: 10,
+          paddingBottom: bottomPadding + 6,
+          paddingHorizontal: 16,
           height: "auto",
-          backgroundColor: Platform.OS === "ios" ? "rgba(21, 23, 24, 0.8)" : "rgba(21, 23, 24, 0.85)",
+          backgroundColor: Platform.OS === "ios" ? "rgba(21, 23, 24, 0.6)" : "rgba(21, 23, 24, 0.7)",
           borderTopColor: "transparent",
           borderTopWidth: 0,
           borderRadius: 24,
           marginHorizontal: 0,
           marginBottom: 0,
           shadowColor: "#000",
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.2,
-          shadowRadius: 12,
-          elevation: 6,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.15,
+          shadowRadius: 16,
+          elevation: 8,
           zIndex: 1000,
         },
         tabBarLabelStyle: {
@@ -62,8 +62,8 @@ export default function TabLayout() {
         },
         tabBarItemStyle: {
           borderRadius: 12,
-          marginHorizontal: 4,
-          paddingVertical: 4,
+          marginHorizontal: 2,
+          paddingVertical: 6,
           paddingHorizontal: 8,
         },
         tabBarIconStyle: {
@@ -112,6 +112,6 @@ export default function TabLayout() {
 }
 
 // Note: Profile screen is accessed via header button (👤), not tab bar
-// Note: Tab bar overlays on cards with semi-transparent background (rgba) for visibility
-// Note: Active tab has background highlight to show current selection
-// Note: Cards are visible under the tab bar due to absolute positioning
+// Note: Tab bar uses iOS Liquid Glass effect (rgba with low opacity for transparency)
+// Note: Same width as header bar (12px left/right margins, 16px horizontal padding)
+// Note: Height adjusted for proper spacing around icons (10px top, bottomPadding + 6 bottom)
