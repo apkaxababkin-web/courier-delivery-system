@@ -74,8 +74,9 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
   const urgency = calculateUrgencyFromTimeString(task.deliveryTimeTo);
   // Hide urgency dot when task is completed
   const showUrgencyDot = urgency === "red" && task.status !== "completed";
-  const borderColor = urgency === "red" ? "#EF4444" : (urgency === "orange" ? "#FF6D00" : STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
   const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
+  // Border color: red for urgent, courier color if assigned, otherwise status color
+  const borderColor = urgency === "red" ? "#EF4444" : (task.courierName ? courierColor : STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
   const timeLabel = hasTimeInterval

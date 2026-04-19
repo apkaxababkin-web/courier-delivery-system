@@ -154,7 +154,7 @@ export async function getAllTasksWithCourier(): Promise<TaskWithCourier[]> {
   const allTasks = await db
     .select()
     .from(tasks)
-    .where(inArray(tasks.status, ["pending", "assigned", "in_progress"]))
+    .where(inArray(tasks.status, ["assigned", "in_progress"]))
     .orderBy(desc(tasks.createdAt));
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
   const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
@@ -304,7 +304,7 @@ export async function getTaskStatusHistory(taskId: number) {
 
 // ─── Seed helpers ─────────────────────────────────────────────────────────────
 
-/** Seed demo tasks without assigning to any courier (pending state) */
+/** Seed demo tasks without assigning to any courier (assigned state) */
 export async function seedDemoTasks(): Promise<void> {
   const db = await getDb();
   if (!db) return;
@@ -330,7 +330,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 1: Основа движения (просп. 50 лет Октября, 5) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "Основа движения",
       senderAddress: "просп. 50 лет Октября, 5, Улан-Удэ",
       senderPhone: "+7 (914) 111-22-33",
@@ -352,7 +352,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 2:       // Заявка 4: Основа движения (ул. Чайковского, 33) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "Основа движения",
       senderAddress: "ул. Терешковой, 24, Улан-Удэ",
       senderPhone: "+7 (914) 111-22-33",
@@ -374,7 +374,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 3: HelloKorea (ул. Терешковой, 12) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "HelloKorea",
       senderAddress: "ул. Терешковой, 12, Улан-Удэ",
       senderPhone: "+7 (914) 333-44-55",
@@ -394,7 +394,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 4: HelloKorea (ул. Гагарина, 39) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "HelloKorea",
       senderAddress: "ул. Гагарина, 39, Улан-Удэ",
       senderPhone: "+7 (914) 333-44-55",
@@ -416,7 +416,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 3:      // Заявка 5: Основа движения (ул. Калашникова, 17) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "Основа движения",
       senderAddress: "ул. Калашникова, 17, Улан-Удэ",
       senderPhone: "+7 (914) 111-22-33",
@@ -438,7 +438,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 6: Warehouse Pickup - Доставка кедровых орехов со склада
       courierId: null,
-      status: "pending",
+      status: "assigned",
       taskType: "warehouse_pickup",
       senderName: "Склад Кедровых Орехов",
       senderAddress: "ул. Промышленная, 5, Улан-Удэ",
@@ -461,7 +461,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 7: Courier Call - Вызов курьера для сбора писем
       courierId: null,
-      status: "pending",
+      status: "assigned",
       taskType: "courier_call",
       senderName: "ООО 'Экспресс Логистика'",
       senderAddress: "ул. Советская, 42, офис 301, Улан-Удэ",

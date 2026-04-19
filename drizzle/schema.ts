@@ -57,12 +57,11 @@ export const tasks = mysqlTable("tasks", {
   /** Assigned courier ID (null = unassigned) */
   courierId: int("courierId"),
   status: mysqlEnum("status", [
-    "pending",     // Waiting to be assigned
     "assigned",    // Assigned to courier, waiting for pickup
     "in_progress", // Courier picked up the package — "Я заберу"
     "completed",   // Delivery confirmed — "Доставлено"
     "cancelled",   // Manager cancelled the task
-  ]).default("pending").notNull(),
+  ]).default("assigned").notNull(),
   /** Task type: regular delivery, warehouse pickup, or courier call */
   taskType: mysqlEnum("taskType", ["regular", "warehouse_pickup", "courier_call"]).default("regular").notNull(),
   /** Recipient information */

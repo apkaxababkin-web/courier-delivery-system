@@ -323,5 +323,7 @@
 - [x] Clear courier when reverting from in_progress/completed back to assigned
 - [x] Update server setStatus to handle auto-assignment logic
 - [x] Fix TypeScript errors in routers.ts (bcrypt import, Date types)
-- [ ] Test all status transitions and urgency indicators
-- [ ] Verify sorting works correctly with new priority
+- [x] Remove all 'pending' status references from db.ts and schema
+- [x] Apply courier color to left border of task card
+- [x] Test all status transitions and urgency indicators
+- [x] Verify sorting works correctly with new priority
