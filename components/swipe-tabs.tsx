@@ -1,6 +1,10 @@
 import React, { useRef, useState } from "react";
-import { View, ViewStyle } from "react-native";
-import PagerView, { PagerViewOnPageScrollEventData } from "react-native-pager-view";
+import { View, ViewStyle, Platform } from "react-native";
+
+let PagerView: any;
+if (Platform.OS !== "web") {
+  PagerView = require("react-native-pager-view").default;
+}
 
 interface SwipeTabsProps {
   pages: React.ReactNode[];
@@ -12,11 +16,21 @@ interface SwipeTabsProps {
 /**
  * Custom swipe navigation component using PagerView
  * Allows swiping left/right to navigate between pages
+ * Falls back to single page view on web
  */
-export const SwipeTabs = React.forwardRef<PagerView, SwipeTabsProps>(
+export const SwipeTabs = React.forwardRef<any, SwipeTabsProps>(
   ({ pages, onPageChange, initialPage = 0, style }, ref) => {
     const [currentPage, setCurrentPage] = useState(initialPage);
-    const pagerRef = useRef<PagerView>(null);
+    const pagerRef = useRef<any>(null);
+
+    // Web fallback: render only current page
+    if (Platform.OS === "web") {
+      return (
+        <View style={[{ flex: 1 }, style]}>
+          {pages[currentPage]}
+        </View>
+      );
+    }
 
     const handlePageScroll = (e: any) => {
       const position = e?.position ?? 0;
