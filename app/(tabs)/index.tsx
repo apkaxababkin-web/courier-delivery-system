@@ -39,7 +39,6 @@ export default function TaskListScreen() {
     refetch,
     isRefetching: isRefetchingQuery,
   } = trpc.tasks.all.useQuery(token ? { token, date: selectedDate } : skipToken, {
-    placeholderData: (previousData) => previousData,
     enabled: !!token,
   });
 
