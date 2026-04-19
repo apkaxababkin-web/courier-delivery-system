@@ -260,6 +260,7 @@ export default function TaskListScreen() {
           data={sortedTasks}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
+          scrollEnabled={false}
           refreshControl={
             <RefreshControl 
               refreshing={isRefetchingQuery} 

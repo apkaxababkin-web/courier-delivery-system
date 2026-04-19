@@ -141,6 +141,7 @@
 - [x] Badge updates in real-time when tasks are completed
 - [x] Swipe navigation between tabs (Все заявки ↔ Гемотест ↔ Сбербанк ↔ Письма)
 - [x] Installed react-native-pager-view for smooth swipe gestures
+- [x] Fixed swipe gesture detection by disabling FlatList scroll (scrollEnabled={false})
 
 ## Next Features
 - [ ] Task status history — timeline of all status changes with timestamps
