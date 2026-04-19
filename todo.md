@@ -178,6 +178,7 @@
 - [x] Fix calendar day-of-week calculation (18 апреля это суббота)
 - [x] Keep completed/cancelled tasks on current day (don't move to past)
 - [x] Load tasks for selected date from server (history)
+- [x] Fix task history logic - filter by date instead of status
 - [ ] Add urgency color indicators (orange/red background on task cards)
 
 ## Pickup Points System

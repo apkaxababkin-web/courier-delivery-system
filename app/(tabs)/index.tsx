@@ -29,55 +29,38 @@ export default function TaskListScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load all tasks (active + completed) for today
+  // Load tasks for selected date
   const {
-    data: allTasks,
-    isLoading: loadingAll,
-    refetch: refetchAll,
-    isRefetching: refreshingAll,
-  } = trpc.tasks.all.useQuery(token ? { token } : skipToken, {
-    placeholderData: (previousData) => previousData,
-    enabled: !!token,
-  });
-
-  // Load completed tasks for history (past dates)
-  const {
-    data: historyTasks,
-    isLoading: loadingHistory,
-    refetch: refetchHistory,
-    isRefetching: refreshingHistory,
-  } = trpc.tasks.history.useQuery(token ? { token } : skipToken, {
+    data: tasksData,
+    isLoading,
+    refetch,
+    isRefetching: isRefetchingQuery,
+  } = trpc.tasks.all.useQuery(token ? { token, date: selectedDate } : skipToken, {
     placeholderData: (previousData) => previousData,
     enabled: !!token,
   });
 
   const seedMutation = trpc.tasks.seedDemo.useMutation({
-    onSuccess: () => { refetchAll(); refetchHistory(); },
+    onSuccess: () => { refetch(); },
   });
 
-  // Filter tasks by selected date
+  // Sort tasks by status and urgency
+    // Check if selected date is today
   const isToday = useMemo(() => {
     const today = new Date();
     return selectedDate.toDateString() === today.toDateString();
   }, [selectedDate]);
 
-  // For today: show all tasks (active + completed)
-  // For past dates: show all tasks from that day
-  const rawTasks = isToday ? (allTasks ?? []) : (historyTasks ?? []);
-  const tasks = useMemo(
-    () => sortTasks(rawTasks, courier?.urgencyThresholdOrange ?? 60, courier?.urgencyThresholdRed ?? 30),
-    [rawTasks, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
+  const sortedTasks = useMemo(
+    () => sortTasks(tasksData ?? [], courier?.urgencyThresholdOrange ?? 60, courier?.urgencyThresholdRed ?? 30),
+    [tasksData, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
   );
-  const isLoading = isToday ? loadingAll : loadingHistory;
-  const isRefetching = isToday ? refreshingAll : refreshingHistory;
-  const refetch = isToday ? refetchAll : refetchHistory;
 
-  // Refetch all tasks when returning to screen
+  // Refetch tasks when returning to screen
   useFocusEffect(
     useCallback(() => {
-      refetchAll();
-      refetchHistory();
-    }, [refetchAll, refetchHistory])
+      refetch();
+    }, [refetch])
   );
 
   const formatDate = (date: Date) => {
@@ -260,21 +243,21 @@ export default function TaskListScreen() {
         </View>
       </Modal>
 
-      {isLoading && tasks.length === 0 ? (
+      {isLoading && sortedTasks.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
-          data={tasks}
+          data={sortedTasks}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl 
-              refreshing={isRefetching || refreshing} 
+              refreshing={isRefetchingQuery} 
               onRefresh={() => {
                 setRefreshing(true);
-                Promise.all([refetchAll(), refetchHistory()]).finally(() => setRefreshing(false));
+                refetch().finally(() => setRefreshing(false));
               }} 
               tintColor={colors.primary} 
             />

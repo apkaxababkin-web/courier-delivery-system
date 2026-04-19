@@ -114,26 +114,29 @@ export const appRouter = router({
   // ─── Tasks ─────────────────────────────────────────────────────────────────
   tasks: router({
     /**
-     * ALL tasks — visible to every logged-in courier.
-     * Couriers in the office use this to distribute tasks.
+     * ALL tasks for a specific date — visible to every logged-in courier.
+     * Filters by createdAt date (ignores time).
      */
     all: publicProcedure
-      .input(z.object({ token: z.string() }))
+      .input(z.object({ token: z.string(), date: z.date().optional() }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        return db.getAllTasksWithCourier();
+        const targetDate = input.date || new Date();
+        return db.getTasksByDateWithCourier(targetDate);
       }),
 
     /**
-     * History: completed + cancelled tasks (all couriers).
+     * History: all tasks for a specific past date.
+     * Filters by createdAt date (ignores time).
      */
     history: publicProcedure
-      .input(z.object({ token: z.string() }))
+      .input(z.object({ token: z.string(), date: z.date().optional() }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        return db.getCompletedTasksWithCourier();
+        const targetDate = input.date || new Date();
+        return db.getTasksByDateWithCourier(targetDate);
       }),
 
     byId: publicProcedure
