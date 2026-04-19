@@ -47,6 +47,7 @@ export function HeaderBarV2({
           justifyContent: "space-between",
           backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
           borderRadius: 24,
+          overflow: "hidden",
           paddingHorizontal: 16,
           paddingVertical: 12,
           marginHorizontal: 12,

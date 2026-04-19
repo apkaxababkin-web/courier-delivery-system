@@ -54,19 +54,20 @@ export default function TabLayout() {
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 9,
           fontWeight: "500",
-          marginTop: 4,
-          maxWidth: 70,
+          marginTop: 2,
+          maxWidth: 50,
+          numberOfLines: 1,
         },
         tabBarItemStyle: {
           borderRadius: 12,
           marginHorizontal: 4,
-          paddingVertical: 8,
+          paddingVertical: 4,
           paddingHorizontal: 12,
         },
         tabBarIconStyle: {
-          marginBottom: 4,
+          marginBottom: 2,
         },
       }}
     >
