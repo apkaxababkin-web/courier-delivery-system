@@ -22,6 +22,38 @@ export function calculateUrgency(
 }
 
 /**
+ * Calculate urgency level from time string (HH:MM format)
+ * Used for TaskCard display
+ */
+export function calculateUrgencyFromTimeString(
+  timeString: string | null | undefined,
+  urgencyThresholdOrange: number = 60,
+  urgencyThresholdRed: number = 30
+): UrgencyLevel {
+  if (!timeString) return "normal";
+
+  try {
+    const [hours, minutes] = timeString.split(":").map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return "normal";
+
+    const now = new Date();
+    const deliveryEnd = new Date();
+    deliveryEnd.setHours(hours, minutes, 0, 0);
+
+    // If delivery time is in the past, it's urgent
+    if (deliveryEnd < now) return "red";
+
+    const minutesRemaining = (deliveryEnd.getTime() - now.getTime()) / (1000 * 60);
+
+    if (minutesRemaining <= urgencyThresholdRed) return "red";
+    if (minutesRemaining <= urgencyThresholdOrange) return "orange";
+    return "normal";
+  } catch {
+    return "normal";
+  }
+}
+
+/**
  * Get urgency color for display
  */
 export function getUrgencyColor(urgency: UrgencyLevel): string {
