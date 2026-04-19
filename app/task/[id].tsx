@@ -148,7 +148,9 @@ export default function TaskDetailScreen() {
   };
 
   const getFirstDayOfMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    const day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    // Convert from JS format (0=Sunday) to Russian format (0=Monday)
+    return day === 0 ? 6 : day - 1;
   };
 
   const renderCalendar = () => {
