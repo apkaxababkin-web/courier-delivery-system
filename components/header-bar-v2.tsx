@@ -36,7 +36,7 @@ export function HeaderBarV2({
         paddingTop: insets.top,
         paddingHorizontal: 0,
         paddingBottom: 0,
-        backgroundColor: colors.background,
+        backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
       }}
     >
       {/* Main header bar with rounded corners and elevation */}
@@ -46,14 +46,14 @@ export function HeaderBarV2({
           alignItems: "center",
           justifyContent: "space-between",
           backgroundColor: colors.surface === "#f5f5f5" ? "#e8e8e8" : "#2a2d31",
-          borderRadius: 24,
+          borderRadius: 0,
           overflow: "hidden",
           paddingHorizontal: 16,
           paddingVertical: 12,
-          marginLeft: 12,
-          marginRight: 12,
+          marginLeft: 0,
+          marginRight: 0,
           marginVertical: 0,
-          marginTop: 4,
+          marginTop: 0,
           // Shadow effect (iOS)
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 6 },
