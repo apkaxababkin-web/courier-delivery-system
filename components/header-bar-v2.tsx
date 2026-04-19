@@ -32,8 +32,8 @@ export function HeaderBarV2({
   return (
     <View
       style={{
-        marginTop: -insets.top - 12,
-        paddingTop: insets.top + 12,
+        marginTop: -insets.top,
+        paddingTop: insets.top + 4,
         paddingHorizontal: 0,
         paddingBottom: 0,
         backgroundColor: colors.background,
@@ -48,9 +48,9 @@ export function HeaderBarV2({
           backgroundColor: colors.surface,
           borderRadius: 24,
           paddingHorizontal: 16,
-          paddingVertical: 14,
+          paddingVertical: 12,
           marginHorizontal: 12,
-          marginVertical: 12,
+          marginVertical: 6,
           // Shadow effect (iOS)
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 6 },

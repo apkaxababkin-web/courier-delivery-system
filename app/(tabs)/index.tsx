@@ -242,8 +242,8 @@ export default function TaskListScreen() {
         </View>
       </Modal>
 
-      {/* Content area with padding */}
-      <View style={{ flex: 1, paddingHorizontal: 12, paddingVertical: 8 }}>
+      {/* Content area - no padding to allow cards to stretch to edges */}
+      <View style={{ flex: 1, paddingHorizontal: 0, paddingVertical: 0 }}>
       {isLoading && sortedTasks.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   dateButton: { paddingHorizontal: 12, paddingVertical: 6 },
   dateText: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
   logo: { fontSize: 20 },
-  list: { padding: 12, flexGrow: 1, paddingBottom: 20 },
+  list: { padding: 0, flexGrow: 1, paddingBottom: 100 },
   emptyTitle: { fontSize: 18, fontWeight: "600", textAlign: "center", lineHeight: 24 },
   emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
   seedButton: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, marginTop: 16 },
