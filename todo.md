@@ -181,6 +181,12 @@
 - [x] Fix task history logic - filter by date instead of status
 - [ ] Add urgency color indicators (orange/red background on task cards)
 
+## Warehouse Pickup UI Refinement
+- [x] Hide sender name and sender address for warehouse_pickup
+- [x] Show only delivery location name and address
+- [x] Display items list on card
+- [x] Label shows first item name instead of generic "Со склада"
+
 ## Pickup Points System
 - [ ] Create database schema for pickup points
 - [ ] Create database schema for daily pickup schedules
@@ -204,4 +210,7 @@
 - [x] Add items JSON field to tasks table for warehouse_pickup product list
 - [x] Update TaskCard to display items list for warehouse_pickup
 - [x] Add demo items for warehouse_pickup (Орехи 200г, 500г, Масло кедровое)
+- [x] Fix warehouse_pickup layout: hide sender address, show only delivery address + items
+- [x] Update label to show first item name ("📦 Орехи 200г" instead of "📦 Со склада")
 - [ ] Test all task types end-to-end
+- [ ] Verify warehouse_pickup card layout matches design

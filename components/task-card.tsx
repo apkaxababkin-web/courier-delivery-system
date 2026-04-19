@@ -78,10 +78,21 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
     ? `${task.deliveryTimeFrom ?? "?"} – ${task.deliveryTimeTo ?? "?"}`
     : null;
 
-  // Get task type label
-  const taskTypeLabel = task.taskType === "warehouse_pickup" ? "📦 Со склада" 
-    : task.taskType === "courier_call" ? "📞 Вызов курьера"
-    : null;
+  // Get task type label - for warehouse_pickup, use first item name if available
+  let taskTypeLabel = null;
+  if (task.taskType === "warehouse_pickup" && task.items) {
+    try {
+      const items = JSON.parse(task.items);
+      const firstName = items[0]?.name || "Товар";
+      taskTypeLabel = `📦 ${firstName}`;
+    } catch {
+      taskTypeLabel = "📦 Товар";
+    }
+  } else if (task.taskType === "warehouse_pickup") {
+    taskTypeLabel = "📦 Товар";
+  } else if (task.taskType === "courier_call") {
+    taskTypeLabel = "📞 Вызов курьера";
+  }
 
   // For warehouse_pickup: show all info on card
   // For courier_call: show minimal info (address + time)
@@ -108,18 +119,20 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         </Text>
       )}
 
-      {/* Top row: Sender name + ID */}
+      {/* Top row: Sender name + ID (hide sender name for warehouse_pickup) */}
       <View style={styles.topRow}>
-        <Text style={[styles.senderName, { color: colors.foreground }]}>
-          {task.senderName || "Отправитель"}
-        </Text>
+        {!isWarehousePickup && (
+          <Text style={[styles.senderName, { color: colors.foreground }]}>
+            {task.senderName || "Отправитель"}
+          </Text>
+        )}
         <Text style={[styles.idText, { color: colors.muted }]}>
           ID: {task.id}
         </Text>
       </View>
 
-      {/* Sender address - show for regular and warehouse_pickup, hide for courier_call */}
-      {task.senderAddress && !isCourierCall && (
+      {/* Sender address - show for regular only, hide for warehouse_pickup and courier_call */}
+      {task.senderAddress && !isCourierCall && !isWarehousePickup && (
         <View style={styles.addressRow}>
           <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
           <Text style={[styles.addressText, { color: colors.muted }]}>
@@ -138,14 +151,21 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         </View>
       )}
 
-      {/* Recipient name - hide for courier_call */}
-      {!isCourierCall && (
+      {/* Recipient name - hide for courier_call and warehouse_pickup */}
+      {!isCourierCall && !isWarehousePickup && (
         <Text style={[styles.recipientName, { color: colors.foreground }]}>
           {task.recipientName}
         </Text>
       )}
 
-      {/* Recipient address - hide for courier_call */}
+      {/* For warehouse_pickup: show delivery location name */}
+      {isWarehousePickup && (
+        <Text style={[styles.recipientName, { color: colors.foreground }]}>
+          {task.recipientName}
+        </Text>
+      )}
+
+      {/* Recipient address - show for all except courier_call */}
       {!isCourierCall && (
         <View style={styles.addressRow}>
           <Text style={[styles.addressIcon, { color: colors.muted }]}>📍</Text>
