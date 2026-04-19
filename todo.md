@@ -117,10 +117,19 @@
 - [x] Mobile: auto-fill login/password fields when demo courier is created
 - [x] Backend: seedDemo mutation to load demo tasks (requires valid courier token)
 
+## Task Reschedule Feature (Session 3)
+- [x] Backend: add rescheduleTask mutation to tasks router
+- [x] Backend: add updateTaskDate function to db.ts
+- [x] Frontend: integrate reschedule mutation in app/task/[id].tsx
+- [x] Frontend: task moves to new date and removed from old date
+- [x] Frontend: TRPC cache properly invalidated
+- [x] Frontend: success message and haptic feedback on reschedule
+- [x] Fixed calendar day-of-week calculation for Russian locale
+
 ## Next Features
 - [ ] **Filter "My Tasks"** — show only tasks assigned to current courier on main screen
 - [ ] Task status history — timeline of all status changes with timestamps
-- [ ] Save reschedule date to API when calendar date selected
+- [ ] Toast notifications instead of Alert for reschedule
 - [ ] Push notifications for new tasks assigned to courier
 - [ ] Proof of delivery — photo capture when marking task complete
 
@@ -179,7 +188,7 @@
 - [x] Keep completed/cancelled tasks on current day (don't move to past)
 - [x] Load tasks for selected date from server (history)
 - [x] Fix task history logic - filter by date instead of status
-- [ ] Add urgency color indicators (orange/red background on task cards)
+- [x] Add urgency color indicators (red border on task cards for < 1 hour)
 
 ## Warehouse Pickup UI Refinement
 - [x] Hide sender name and sender address for warehouse_pickup
