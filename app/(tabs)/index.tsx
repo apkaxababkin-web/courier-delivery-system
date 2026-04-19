@@ -2,6 +2,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -188,8 +189,8 @@ export default function TaskListScreen() {
         animationType="slide"
         onRequestClose={() => setShowDatePicker(false)}
       >
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16 }}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setShowDatePicker(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16 }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Выбор даты</Text>
             <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите дату для просмотра заявок</Text>
 
@@ -237,8 +238,8 @@ export default function TaskListScreen() {
                 <Text style={{ color: "#fff", fontWeight: "600" }}>Применить</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Content area - no padding to allow cards to stretch to edges */}

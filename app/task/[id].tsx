@@ -103,18 +103,14 @@ export default function TaskDetailScreen() {
       utils.tasks.history.invalidate();
       setDatePickerVisible(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.show({
-        type: "success",
-        text: `Задание перенесено на ${selectedDate.toLocaleDateString("ru-RU")}`,
+      toast.show(`✓ Задание перенесено на ${selectedDate.toLocaleDateString("ru-RU")}`, {
         duration: 2000,
         placement: "top",
       });
       router.back();
     },
     onError: (e: { message: string }) => {
-      toast.show({
-        type: "danger",
-        text: e.message,
+      toast.show(`✗ ${e.message}`, {
         duration: 2000,
         placement: "top",
       });
