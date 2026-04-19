@@ -89,12 +89,14 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <FilterProvider>
               <CourierAuthProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
-                <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
-              </Stack>
-              <StatusBar style="auto" />
+                <FontSizeProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
+                  </Stack>
+                  <StatusBar style="auto" />
+                </FontSizeProvider>
               </CourierAuthProvider>
             </FilterProvider>
           </QueryClientProvider>
@@ -108,13 +110,15 @@ export default function RootLayout() {
   if (shouldOverrideSafeArea) {
     return (
       <ThemeProvider>
-        <SafeAreaProvider initialMetrics={providerInitialMetrics}>
-          <SafeAreaFrameContext.Provider value={frame}>
-            <SafeAreaInsetsContext.Provider value={insets}>
-              {content}
-            </SafeAreaInsetsContext.Provider>
-          </SafeAreaFrameContext.Provider>
-        </SafeAreaProvider>
+        <FontSizeProvider>
+          <SafeAreaProvider initialMetrics={providerInitialMetrics}>
+            <SafeAreaFrameContext.Provider value={frame}>
+              <SafeAreaInsetsContext.Provider value={insets}>
+                {content}
+              </SafeAreaInsetsContext.Provider>
+            </SafeAreaFrameContext.Provider>
+          </SafeAreaProvider>
+        </FontSizeProvider>
       </ThemeProvider>
     );
   }

@@ -103,19 +103,37 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
   const isCourierCall = task.taskType === "courier_call";
 
   return (
-    <TouchableOpacity
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.surface,
-          borderLeftColor: borderColor,
-          borderColor: colors.border,
-        },
-      ]}
-      onPress={() => onPress(task)}
-      activeOpacity={0.7}
-    >
-      {/* Task type label (if applicable) */}
+    <View style={{ position: "relative" }}>
+      {/* Red dot for urgent tasks */}
+      {urgency === "red" && (
+        <View
+          style={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            marginLeft: -4,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: "#EF4444",
+            zIndex: 10,
+          }}
+        />
+      )}
+
+      <TouchableOpacity
+        style={[
+          styles.card,
+          {
+            backgroundColor: colors.surface,
+            borderLeftColor: borderColor,
+            borderColor: colors.border,
+          },
+        ]}
+        onPress={() => onPress(task)}
+        activeOpacity={0.7}
+      >
+        {/* Task type label (if applicable) */}
       {taskTypeLabel && (
         <Text style={[styles.taskTypeLabel, { color: colors.primary }]}>
           {taskTypeLabel}
@@ -228,6 +246,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         )}
       </View>
     </TouchableOpacity>
+    </View>
   );
 }
 

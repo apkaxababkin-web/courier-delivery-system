@@ -287,3 +287,12 @@
 - [x] Fix test: update in_progress label from "В пути" to "В работе"
 - [x] All tests passing (6 passed, 1 skipped)
 - [x] Full app testing complete - no critical errors
+
+
+## Profile & UI Improvements (Session 6)
+- [x] Remove "Login" and "Vehicle Type" tabs from courier profile
+- [x] Add font size selector (Normal, Large, Very Large) with AsyncStorage persistence
+- [x] Add red urgency dot at top center of urgent task cards (< 30 min remaining)
+- [x] Red dot positioned absolutely, doesn't interfere with task info
+- [x] Sorting logic verified - urgent tasks appear first
+- [x] Fixed light mode tab bar colors (use dynamic theme colors instead of hardcoded)
