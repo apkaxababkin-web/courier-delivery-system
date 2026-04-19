@@ -240,3 +240,8 @@
 - [x] Frontend: Sorting logic (unpicked at top, picked at bottom)
 - [x] Frontend: Counter for picked points today (header)
 - [x] Demo data: Add sample Hemotest and Sberbank pickup points
+- [x] Demo data: Expand to 8 points per network
+- [x] Icons: Create outline-style Hemotest icon (test tube with blood drop)
+- [x] Icons: Create outline-style Sberbank icon (bank building with safe)
+- [x] Icons: Add icon mappings to icon-symbol.tsx
+- [x] Icons: Update tab bar to use new icons

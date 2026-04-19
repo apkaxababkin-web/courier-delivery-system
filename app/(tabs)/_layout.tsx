@@ -51,7 +51,7 @@ export default function TabLayout() {
         options={{
           title: "Гемотест",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("box.2")} color={color} />
+            <IconSymbol size={26} name={icon("hemotest")} color={color} />
           ),
         }}
       />
@@ -60,7 +60,7 @@ export default function TabLayout() {
         options={{
           title: "Сбербанк",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("building.2")} color={color} />
+            <IconSymbol size={26} name={icon("sberbank")} color={color} />
           ),
         }}
       />
