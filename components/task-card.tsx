@@ -2,7 +2,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBadge } from "@/components/status-badge";
 import { type TaskStatus } from "@/shared/types";
 import { useColors } from "@/hooks/use-colors";
-import { calculateUrgency } from "@/lib/task-sorting";
 
 // ─── Status border colors (based on status) ────────────────────────────────
 
@@ -71,9 +70,7 @@ interface TaskCardProps {
 
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
-  const urgency = calculateUrgency(task);
-  const isUrgent = urgency === "red" || urgency === "orange";
-  const borderColor = isUrgent ? "#EF4444" : (STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
+  const borderColor = STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF";
   const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
