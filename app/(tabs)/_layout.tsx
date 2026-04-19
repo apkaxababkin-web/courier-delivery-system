@@ -20,7 +20,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.12)",
+        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.15)",
         tabBarAllowFontScaling: false,
         headerShown: false,
         tabBarHideOnKeyboard: false,
@@ -35,10 +35,10 @@ export default function TabLayout() {
         tabBarStyle: {
           position: "absolute",
           bottom: 12,
-          left: 40,
-          right: 40,
-          paddingTop: 6,
-          paddingBottom: bottomPadding + 2,
+          left: 12,
+          right: 12,
+          paddingTop: 12,
+          paddingBottom: bottomPadding + 8,
           paddingHorizontal: 16,
           height: "auto",
           backgroundColor: colors.surface,
@@ -55,19 +55,19 @@ export default function TabLayout() {
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: "500",
-          marginTop: 3,
+          marginTop: 4,
           maxWidth: 70,
         },
         tabBarItemStyle: {
           borderRadius: 12,
-          marginHorizontal: 3,
-          paddingVertical: 6,
-          paddingHorizontal: 10,
+          marginHorizontal: 4,
+          paddingVertical: 8,
+          paddingHorizontal: 12,
         },
         tabBarIconStyle: {
-          marginBottom: 3,
+          marginBottom: 4,
         },
       }}
     >
@@ -114,5 +114,4 @@ export default function TabLayout() {
 // Note: Profile screen is accessed via header button (👤), not tab bar
 // Note: Tab bar uses same surface color as header bar for unified design
 // Note: Same width as header bar (12px left/right margins, 16px horizontal padding)
-// Note: Compact padding (10px top, 6px bottom) to match header bar visual size
-// Note: Reduced item padding and spacing for visual balance with header bar
+// Note: Increased padding and spacing to match header bar proportions

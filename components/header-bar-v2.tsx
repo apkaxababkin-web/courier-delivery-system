@@ -50,7 +50,7 @@ export function HeaderBarV2({
           paddingHorizontal: 16,
           paddingVertical: 12,
           marginHorizontal: 12,
-          marginVertical: 8,
+          marginVertical: 6,
           // Shadow effect (iOS)
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 6 },
@@ -134,8 +134,7 @@ export function HeaderBarV2({
       {filterMode === "mine" && (
         <View
           style={{
-            marginTop: 6,
-            marginHorizontal: 12,
+            marginTop: 8,
             paddingHorizontal: 12,
             paddingVertical: 6,
             backgroundColor: "rgba(10, 126, 164, 0.1)",
