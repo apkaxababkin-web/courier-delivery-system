@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, gte, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, gte, lt, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import bcrypt from "bcryptjs";
 import {
@@ -292,12 +292,22 @@ export async function seedDemoTasks(): Promise<void> {
   const db = await getDb();
   if (!db) return;
 
-  // Delete all existing demo tasks (pending status) to avoid clutter
-  await db.delete(tasks).where(eq(tasks.status, "pending"));
+  // Delete all tasks created today (for demo reset)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Start of today
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1); // Start of tomorrow
+  
+  await db.delete(tasks).where(
+    and(
+      gte(tasks.createdAt, today),
+      lt(tasks.createdAt, tomorrow)
+    )
+  );
 
   // Get today's date to calculate task number
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const taskNumberOffset = parseInt(today.replace(/-/g, '')) % 1000; // Use date to vary numbering
+  const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+  const taskNumberOffset = parseInt(todayStr.replace(/-/g, '')) % 1000; // Use date to vary numbering
 
   const demoTasks: InsertTask[] = [
     {
@@ -415,7 +425,7 @@ export async function seedDemoTasks(): Promise<void> {
       taskType: "warehouse_pickup",
       senderName: "Склад Кедровых Орехов",
       senderAddress: "ул. Промышленная, 5, Улан-Удэ",
-      items: JSON.stringify([{ name: "Орехи 200г", quantity: 5 }, { name: "Орехи 500г", quantity: 3 }, { name: "Масло кедровое", quantity: 2 }]),
+      items: JSON.stringify([{ category: "Орехи", name: "Орехи 200г", quantity: 5 }, { category: "Орехи", name: "Орехи 500г", quantity: 3 }, { category: "Масло кедровое", name: "Масло кедровое", quantity: 2 }]),
       senderPhone: "+7 (914) 555-66-77",
       recipientName: "Магазин 'Вкусная жизнь'",
       recipientPhone: "+7 (914) 777-88-99",

@@ -107,6 +107,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         {
           backgroundColor: colors.surface,
           borderLeftColor: borderColor,
+          borderColor: colors.border,
         },
       ]}
       onPress={() => onPress(task)}
@@ -237,12 +238,18 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   card: {
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginHorizontal: 8,
-    marginBottom: 8,
+    borderRadius: 8,
+    borderLeftWidth: 5,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginHorizontal: 6,
+    marginBottom: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   topRow: {
     flexDirection: "row",
@@ -256,22 +263,22 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   senderName: {
-    fontSize: 14,
-    fontWeight: "600",
-    lineHeight: 18,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 20,
   },
   recipientName: {
-    fontSize: 14,
-    fontWeight: "600",
-    lineHeight: 18,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 20,
     marginBottom: 2,
     marginTop: 4,
   },
   addressRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 6,
-    marginBottom: 2,
+    gap: 4,
+    marginBottom: 1,
   },
   addressIcon: {
     fontSize: 14,

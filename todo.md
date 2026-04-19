@@ -220,3 +220,12 @@
 - [x] Update demo data items with categories
 - [x] Update TaskCard label to show category instead of first item name
 - [x] Verify all items display in list (not just first item)
+
+## Light Theme & Card Styling
+- [x] Add 3D shadow effect to TaskCard (shadowOpacity 0.15, elevation 6)
+- [x] Improve light theme background color
+- [x] Add border to cards for better separation
+- [x] Ultra-compact card sizing (padding 10x8px, margin 4px between cards)
+- [x] Minimize inter-row spacing (1-4px)
+- [x] Fix seedDemo to clear old tasks before loading new ones
+- [x] Add category field to warehouse_pickup items
