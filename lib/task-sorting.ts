@@ -4,41 +4,21 @@ export type UrgencyLevel = "normal" | "orange" | "red";
 
 /**
  * Calculate urgency level based on remaining time until deliveryTimeTo
- * Accepts either Task object or object with deliveryTimeTo string (HH:MM format)
  */
 export function calculateUrgency(
-  task: Task | { deliveryTimeTo: string | null | undefined },
+  task: Task,
   urgencyThresholdOrange: number = 60,
   urgencyThresholdRed: number = 30
 ): UrgencyLevel {
   if (!task.deliveryTimeTo) return "normal";
 
-  try {
-    // Handle time string format (HH:MM)
-    if (typeof task.deliveryTimeTo === "string" && task.deliveryTimeTo.includes(":")) {
-      const [hours, minutes] = task.deliveryTimeTo.split(":").map(Number);
-      const deliveryTime = new Date();
-      deliveryTime.setHours(hours, minutes, 0);
-      
-      const now = new Date();
-      const minutesRemaining = (deliveryTime.getTime() - now.getTime()) / (1000 * 60);
-      
-      if (minutesRemaining <= urgencyThresholdRed) return "red";
-      if (minutesRemaining <= urgencyThresholdOrange) return "orange";
-      return "normal";
-    }
-    
-    // Handle full date format
-    const now = new Date();
-    const deliveryEnd = new Date(task.deliveryTimeTo);
-    const minutesRemaining = (deliveryEnd.getTime() - now.getTime()) / (1000 * 60);
+  const now = new Date();
+  const deliveryEnd = new Date(task.deliveryTimeTo);
+  const minutesRemaining = (deliveryEnd.getTime() - now.getTime()) / (1000 * 60);
 
-    if (minutesRemaining <= urgencyThresholdRed) return "red";
-    if (minutesRemaining <= urgencyThresholdOrange) return "orange";
-    return "normal";
-  } catch {
-    return "normal";
-  }
+  if (minutesRemaining <= urgencyThresholdRed) return "red";
+  if (minutesRemaining <= urgencyThresholdOrange) return "orange";
+  return "normal";
 }
 
 /**

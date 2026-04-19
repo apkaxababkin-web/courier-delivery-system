@@ -6,11 +6,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
 
-interface ProfileScreenProps {
-  onBack?: () => void;
-}
-
-export default function ProfileModal({ onBack }: ProfileScreenProps = {}) {
+export default function ProfileModal() {
   const router = useRouter();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -60,7 +56,7 @@ export default function ProfileModal({ onBack }: ProfileScreenProps = {}) {
               Профиль
             </Text>
             <Pressable
-              onPress={() => onBack ? onBack() : router.back()}
+              onPress={() => router.back()}
               style={({ pressed }) => ({
                 opacity: pressed ? 0.6 : 1,
                 padding: 8,

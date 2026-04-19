@@ -160,10 +160,7 @@
 - [x] Backend: add updateUrgencyThresholds mutation to tasks router
 - [x] Mobile: add urgency settings to courier profile screen
 - [x] Mobile: implement smart task sorting (new → in_progress → completed → cancelled, sorted by deadline within each group)
-- [x] Mobile: add color-coded urgency indicators (red border on task cards for urgent tasks < 1 hour)
-- [x] Mobile: update TaskCard to use calculateUrgency and show red border for urgent tasks
-- [x] Mobile: write unit tests for urgency calculation and sorting
-- [x] Mobile: verify urgent task visibility (unassigned = visible to all, assigned = visible to assigned courier)
+- [ ] Mobile: add color-coded urgency indicators (orange/red background on task cards based on time remaining)
 - [x] Mobile: create task-sorting.ts utility with calculateUrgency and sortTasks functions
 
 
