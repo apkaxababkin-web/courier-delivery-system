@@ -20,6 +20,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
+        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.15)",
         tabBarAllowFontScaling: false,
         headerShown: false,
         tabBarHideOnKeyboard: false,
@@ -40,17 +41,17 @@ export default function TabLayout() {
           paddingBottom: bottomPadding + 4,
           paddingHorizontal: 12,
           height: "auto",
-          backgroundColor: "transparent",
+          backgroundColor: Platform.OS === "ios" ? "rgba(21, 23, 24, 0.8)" : "rgba(21, 23, 24, 0.85)",
           borderTopColor: "transparent",
           borderTopWidth: 0,
           borderRadius: 24,
           marginHorizontal: 0,
           marginBottom: 0,
-          shadowColor: "transparent",
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0,
-          shadowRadius: 0,
-          elevation: 0,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.2,
+          shadowRadius: 12,
+          elevation: 6,
           zIndex: 1000,
         },
         tabBarLabelStyle: {
@@ -58,6 +59,12 @@ export default function TabLayout() {
           fontWeight: "500",
           marginTop: 2,
           maxWidth: 60,
+        },
+        tabBarItemStyle: {
+          borderRadius: 12,
+          marginHorizontal: 4,
+          paddingVertical: 4,
+          paddingHorizontal: 8,
         },
         tabBarIconStyle: {
           marginBottom: 2,
@@ -105,5 +112,6 @@ export default function TabLayout() {
 }
 
 // Note: Profile screen is accessed via header button (👤), not tab bar
-// Note: Tab bar overlays on cards with transparent background - paddingBottom: 0 allows full content visibility
-// Note: Cards are visible under the tab bar due to absolute positioning and transparent background
+// Note: Tab bar overlays on cards with semi-transparent background (rgba) for visibility
+// Note: Active tab has background highlight to show current selection
+// Note: Cards are visible under the tab bar due to absolute positioning
