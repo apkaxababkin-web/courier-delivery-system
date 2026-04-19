@@ -28,7 +28,7 @@ export default function SberbankScreen() {
   );
 
   // Fetch picked count
-  const { data: pickedCount = 0 } = trpc.sberbank.pickedCount.useQuery(
+  const { data: pickedCount = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(
     { token: token || "", date: selectedDate },
     { enabled: !!token }
   );
@@ -37,6 +37,7 @@ export default function SberbankScreen() {
   const toggleMutation = trpc.sberbank.togglePickup.useMutation({
     onSuccess: () => {
       refetch();
+      refetchCount();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     },
   });

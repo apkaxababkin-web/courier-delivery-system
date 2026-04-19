@@ -28,7 +28,7 @@ export default function HemotestScreen() {
   );
 
   // Fetch picked count
-  const { data: pickedCount = 0 } = trpc.hemotest.pickedCount.useQuery(
+  const { data: pickedCount = 0, refetch: refetchCount } = trpc.hemotest.pickedCount.useQuery(
     { token: token || "", date: selectedDate },
     { enabled: !!token }
   );
@@ -37,6 +37,7 @@ export default function HemotestScreen() {
   const toggleMutation = trpc.hemotest.togglePickup.useMutation({
     onSuccess: () => {
       refetch();
+      refetchCount();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     },
   });
