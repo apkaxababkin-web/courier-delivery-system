@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
-import { useFontSize, type FontSizeScale } from "@/lib/font-size-provider";
 
 export default function ProfileModal() {
   const router = useRouter();
@@ -13,7 +12,6 @@ export default function ProfileModal() {
   const insets = useSafeAreaInsets();
   const { courier, logout } = useCourierAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
-  const { fontSizeScale, setFontSizeScale } = useFontSize();
 
   const isDarkMode = colorScheme === "dark";
 
@@ -161,48 +159,7 @@ export default function ProfileModal() {
             />
           </View>
 
-          {/* Font Size Selector */}
-          <View
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              padding: 16,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground, marginBottom: 12 }}>
-              Размер шрифта
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              {(["normal", "large", "xlarge"] as FontSizeScale[]).map((scale) => (
-                <Pressable
-                  key={scale}
-                  onPress={() => setFontSizeScale(scale)}
-                  style={({ pressed }) => ({
-                    flex: 1,
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    backgroundColor:
-                      fontSizeScale === scale ? colors.primary : colors.border,
-                    opacity: pressed ? 0.8 : 1,
-                  })}
-                >
-                  <Text
-                    style={{
-                      textAlign: "center",
-                      fontSize: scale === "normal" ? 12 : scale === "large" ? 14 : 16,
-                      fontWeight: "600",
-                      color: fontSizeScale === scale ? "white" : colors.foreground,
-                    }}
-                  >
-                    {scale === "normal" ? "Обычный" : scale === "large" ? "Большой" : "Очень большой"}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
+
         </View>
 
         {/* Spacer */}
