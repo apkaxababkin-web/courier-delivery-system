@@ -297,7 +297,7 @@ export default function TaskListScreen() {
               placesCount: item.placesCount,
               deliveryTimeFrom: item.deliveryTimeFrom,
               deliveryTimeTo: item.deliveryTimeTo,
-              courierName: item.courierName,
+              courierName: (item as any).courierName || "",
               taskType: item.taskType as "regular" | "warehouse_pickup" | "courier_call" | undefined,
             };
             return (

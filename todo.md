@@ -245,3 +245,19 @@
 - [x] Icons: Create outline-style Sberbank icon (bank building with safe)
 - [x] Icons: Add icon mappings to icon-symbol.tsx
 - [x] Icons: Update tab bar to use new icons
+
+
+## Solito Navigation Integration (Current Sprint)
+- [x] Install Solito package (v5.0.0)
+- [x] Create SolitoHeader component with profile icon and date display
+- [x] Create SolitoTabBar component with custom styling
+- [x] Fix TypeScript errors in app/(tabs)/index.tsx (courierName property)
+- [x] Verify app compiles without errors
+- [ ] Test SolitoHeader integration with existing HeaderBarV2
+- [ ] Test SolitoTabBar styling matches design requirements
+- [ ] Verify urgent task red border (< 1 hour) displays correctly
+- [ ] Test dark/light mode toggle with custom header and tab bar
+- [ ] Test tab navigation between all 4 screens (Все заявки, Гемотест, Сбербанк, Письма)
+- [ ] Verify tab bar margins (12px left/right) and compact sizing
+- [ ] Test profile icon press navigation to profile screen
+- [ ] Test date picker modal integration with header

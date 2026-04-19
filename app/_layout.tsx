@@ -1,6 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -87,9 +87,9 @@ export default function RootLayout() {
           <FilterProvider>
             <CourierAuthProvider>
             <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="task/[id]" />
-              <Stack.Screen name="oauth/callback" />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
+              <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
             </Stack>
             <StatusBar style="auto" />
             </CourierAuthProvider>
