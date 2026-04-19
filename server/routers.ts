@@ -5,7 +5,7 @@ import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import * as db from "./db";
+import * as db from "./db.ts";
 
 // ─── Courier JWT helpers ──────────────────────────────────────────────────────
 
@@ -507,6 +507,82 @@ export const appRouter = router({
         }
 
         return { success: true, count: demoTasks.length + demoMails.length };
+      }),
+  }),
+
+  // Hemotest pickup points
+  hemotest: router({
+    pickupPoints: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getHemotestPickupPointsForDate(payload.courierId, input.date);
+      }),
+
+    pickedCount: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getHemotestPickedCount(payload.courierId, input.date);
+      }),
+
+    togglePickup: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.date(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.toggleHemotestPickup(payload.courierId, input.pointId, input.date);
+        return { success: true };
+      }),
+  }),
+
+  // Sberbank pickup points
+  sberbank: router({
+    pickupPoints: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getSberbankPickupPointsForDate(payload.courierId, input.date);
+      }),
+
+    pickedCount: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getSberbankPickedCount(payload.courierId, input.date);
+      }),
+
+    togglePickup: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.date(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.toggleSberbankPickup(payload.courierId, input.pointId, input.date);
+        return { success: true };
       }),
   }),
 
