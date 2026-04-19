@@ -120,6 +120,13 @@
       "when": 1776578876169,
       "tag": "0016_dapper_leo",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1776614991929,
+      "tag": "0017_flashy_molten_man",
+      "breakpoints": true
     }
   ]
 }
