@@ -16,7 +16,21 @@ export type CourierInfo = {
   urgencyThresholdOrange?: number;
   urgencyThresholdRed?: number;
   courierName?: string;
+  courierColor?: string;
 };
+
+export const COURIER_COLORS = [
+  "#007AFF",
+  "#34C759",
+  "#FF9500",
+  "#FF3B30",
+  "#AF52DE",
+  "#00B0FF",
+  "#FF2D55",
+  "#A2845E",
+];
+
+export const DEFAULT_COURIER_COLOR = "#007AFF";
 
 type CourierAuthState = {
   token: string | null;
@@ -28,6 +42,7 @@ type CourierAuthState = {
 type CourierAuthActions = {
   setSession: (token: string, courier: CourierInfo) => Promise<void>;
   logout: () => Promise<void>;
+  updateCourierColor: (color: string) => Promise<void>;
 };
 
 type CourierAuthContextType = CourierAuthState & CourierAuthActions;
@@ -117,6 +132,13 @@ export function CourierAuthProvider({ children }: { children: React.ReactNode })
     setCourier(null);
   }, []);
 
+  const updateCourierColor = useCallback(async (color: string) => {
+    if (!courier) return;
+    const updatedCourier = { ...courier, courierColor: color };
+    await storeItem(COURIER_INFO_KEY, JSON.stringify(updatedCourier));
+    setCourier(updatedCourier);
+  }, [courier]);
+
   return (
     <CourierAuthContext.Provider
       value={{
@@ -126,6 +148,7 @@ export function CourierAuthProvider({ children }: { children: React.ReactNode })
         isAuthenticated: !!token && !!courier,
         setSession,
         logout,
+        updateCourierColor,
       }}
     >
       {children}

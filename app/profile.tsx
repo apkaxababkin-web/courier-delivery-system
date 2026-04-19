@@ -3,14 +3,14 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/use-colors";
-import { useCourierAuth } from "@/lib/courier-auth";
+import { useCourierAuth, COURIER_COLORS, DEFAULT_COURIER_COLOR } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
 
 export default function ProfileModal() {
   const router = useRouter();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { courier, logout } = useCourierAuth();
+  const { courier, logout, updateCourierColor } = useCourierAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
 
   const isDarkMode = colorScheme === "dark";
@@ -157,6 +157,38 @@ export default function ProfileModal() {
               trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor={colors.foreground}
             />
+          </View>
+
+          {/* Courier Color Picker */}
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground, marginBottom: 12 }}>
+              Цвет рамки курьера
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {COURIER_COLORS.map((color) => (
+                <Pressable
+                  key={color}
+                  onPress={() => updateCourierColor(color)}
+                  style={({ pressed }) => ({
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    backgroundColor: color,
+                    borderWidth: courier?.courierColor === color ? 3 : 0,
+                    borderColor: colors.foreground,
+                    opacity: pressed ? 0.8 : 1,
+                  })}
+                />
+              ))}
+            </View>
           </View>
 
 
