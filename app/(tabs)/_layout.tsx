@@ -87,8 +87,8 @@ export default function TabLayout() {
             <Image
               source={require("@/assets/images/hemotest-icon.png")}
               style={{
-                width: 28,
-                height: 28,
+                width: 36,
+                height: 36,
                 opacity: focused ? 1 : 0.6,
               }}
             />
@@ -103,8 +103,8 @@ export default function TabLayout() {
             <Image
               source={require("@/assets/images/sberbank-icon.png")}
               style={{
-                width: 28,
-                height: 28,
+                width: 36,
+                height: 36,
                 opacity: focused ? 1 : 0.6,
               }}
             />
