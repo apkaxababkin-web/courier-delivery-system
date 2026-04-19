@@ -74,21 +74,13 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Все заявки",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("list.bullet")} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="pickup-gemotest"
-        options={{
-          title: "Гемотест",
           tabBarIcon: ({ color, focused }) => (
             <Image
-              source={require("@/assets/images/hemotest-icon.png")}
+              source={require("@/assets/images/all-tasks-icon.png")}
               style={{
-                width: 36,
-                height: 36,
+                width: 24,
+                height: 24,
+                tintColor: color,
                 opacity: focused ? 1 : 0.6,
               }}
             />
@@ -96,15 +88,33 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="pickup-sberbank"
+        name="hemotest"
+        options={{
+          title: "Гемотест",
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              source={require("@/assets/images/hemotest-icon.png")}
+              style={{
+                width: 24,
+                height: 24,
+                tintColor: color,
+                opacity: focused ? 1 : 0.6,
+              }}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="sberbank"
         options={{
           title: "Сбербанк",
           tabBarIcon: ({ color, focused }) => (
             <Image
               source={require("@/assets/images/sberbank-icon.png")}
               style={{
-                width: 36,
-                height: 36,
+                width: 24,
+                height: 24,
+                tintColor: color,
                 opacity: focused ? 1 : 0.6,
               }}
             />
@@ -115,8 +125,16 @@ export default function TabLayout() {
         name="letters"
         options={{
           title: "Письма",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("envelope")} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Image
+              source={require("@/assets/images/letters-icon.png")}
+              style={{
+                width: 24,
+                height: 24,
+                tintColor: color,
+                opacity: focused ? 1 : 0.6,
+              }}
+            />
           ),
         }}
       />
