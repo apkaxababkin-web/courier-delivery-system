@@ -37,11 +37,11 @@ export default function TabLayout() {
           bottom: 12,
           left: 12,
           right: 12,
-          paddingTop: 10,
-          paddingBottom: bottomPadding + 6,
+          paddingTop: 12,
+          paddingBottom: bottomPadding + 8,
           paddingHorizontal: 16,
           height: "auto",
-          backgroundColor: Platform.OS === "ios" ? "rgba(21, 23, 24, 0.6)" : "rgba(21, 23, 24, 0.7)",
+          backgroundColor: colors.surface,
           borderTopColor: "transparent",
           borderTopWidth: 0,
           borderRadius: 24,
@@ -55,19 +55,19 @@ export default function TabLayout() {
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: "500",
-          marginTop: 2,
-          maxWidth: 60,
+          marginTop: 4,
+          maxWidth: 70,
         },
         tabBarItemStyle: {
           borderRadius: 12,
-          marginHorizontal: 2,
-          paddingVertical: 6,
-          paddingHorizontal: 8,
+          marginHorizontal: 4,
+          paddingVertical: 8,
+          paddingHorizontal: 12,
         },
         tabBarIconStyle: {
-          marginBottom: 2,
+          marginBottom: 4,
         },
       }}
     >
@@ -112,6 +112,6 @@ export default function TabLayout() {
 }
 
 // Note: Profile screen is accessed via header button (👤), not tab bar
-// Note: Tab bar uses iOS Liquid Glass effect (rgba with low opacity for transparency)
+// Note: Tab bar uses same surface color as header bar for unified design
 // Note: Same width as header bar (12px left/right margins, 16px horizontal padding)
-// Note: Height adjusted for proper spacing around icons (10px top, bottomPadding + 6 bottom)
+// Note: Increased padding and spacing to match header bar proportions
