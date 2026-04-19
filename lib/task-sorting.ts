@@ -74,29 +74,29 @@ export function getUrgencyColor(urgency: UrgencyLevel): string {
  * New priority: Urgent (red dot, any status) > assigned > in_progress > completed > cancelled
  */
 const STATUS_PRIORITY: Record<TaskStatus, number> = {
-  assigned: 2,
-  in_progress: 3,
-  completed: 4,
-  cancelled: 5,
+  assigned: 1,      // Новая
+  in_progress: 2,   // В работе
+  completed: 3,     // Выполнено
+  cancelled: 4,     // Отменена
 };
 
 /**
  * Sort tasks by urgency first, then status, then delivery time
- * Priority: Urgent (red dot, assigned/in_progress) > assigned > in_progress > completed > cancelled
+ * Priority: Urgent (red dot) > assigned > in_progress > completed > cancelled
  */
 export function sortTasks(
   tasks: Task[],
   urgencyThresholdOrange: number = 60,
-  urgencyThresholdRed: number = 30
+  urgencyThresholdRed: number = 60
 ): Task[] {
   return [...tasks].sort((a, b) => {
-    // First, sort by urgency (red urgent tasks first across all statuses)
+    // Calculate urgency using correct thresholds (both 60 minutes for red dot)
     const urgencyA = calculateUrgency(a, urgencyThresholdOrange, urgencyThresholdRed);
     const urgencyB = calculateUrgency(b, urgencyThresholdOrange, urgencyThresholdRed);
 
-    // Only prioritize red urgency for assigned and in_progress statuses
-    const isUrgentA = urgencyA === "red" && (a.status === "assigned" || a.status === "in_progress");
-    const isUrgentB = urgencyB === "red" && (b.status === "assigned" || b.status === "in_progress");
+    // Prioritize red urgent tasks first (regardless of status)
+    const isUrgentA = urgencyA === "red";
+    const isUrgentB = urgencyB === "red";
 
     if (isUrgentA !== isUrgentB) {
       return isUrgentA ? -1 : 1; // Urgent tasks first
