@@ -5,7 +5,7 @@ import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import * as db from "./db.ts";
+import * as db from "./db";
 
 // ─── Courier JWT helpers ──────────────────────────────────────────────────────
 
@@ -90,6 +90,26 @@ export const appRouter = router({
           vehicleType: courier.vehicleType,
           isActive: courier.isActive,
           totalDeliveries: courier.totalDeliveries,
+        };
+      }),
+
+    getDemoToken: publicProcedure
+      .mutation(async () => {
+        const courierId = await db.seedDemoCourier();
+        const token = await signCourierToken(courierId);
+        const courier = await db.getCourierById(courierId);
+        if (!courier) throw new Error("Курьер не найден");
+        return {
+          token,
+          courier: {
+            id: courier.id,
+            name: courier.name,
+            username: courier.username,
+            phone: courier.phone,
+            vehicleType: courier.vehicleType,
+            isActive: courier.isActive,
+            totalDeliveries: courier.totalDeliveries,
+          },
         };
       }),
   }),
@@ -512,6 +532,22 @@ export const appRouter = router({
 
   // Hemotest pickup points
   hemotest: router({
+    points: publicProcedure
+      .query(async () => {
+        return await db.getAllHemotestPoints();
+      }),
+
+    create: publicProcedure
+      .input(z.object({
+        name: z.string(),
+        address: z.string(),
+        phone: z.string().optional(),
+        contactPerson: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return await db.createHemotestPoint(input);
+      }),
+
     pickupPoints: publicProcedure
       .input(z.object({
         token: z.string(),
@@ -617,6 +653,54 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
         await db.updateMailDelivery(input.waybillNumber, input.recipientSignature, payload.courierId);
+        return { success: true };
+      }),
+  }),
+
+  // ─── Clients router ──────────────────────────────────────────────────────────
+  clients: router({
+    all: publicProcedure.query(async () => {
+      return await db.getAllClients();
+    }),
+    
+    byId: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return await db.getClientById(input.id);
+      }),
+    
+    create: publicProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        address: z.string().min(1),
+        contactPerson: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await db.createClient(input);
+        return { id, success: true };
+      }),
+    
+    update: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        address: z.string().min(1).optional(),
+        contactPerson: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await db.updateClient(id, data);
+        return { success: true };
+      }),
+    
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteClient(input.id);
         return { success: true };
       }),
   }),

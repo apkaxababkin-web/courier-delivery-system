@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import React from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -15,10 +16,24 @@ export default function MailsScreen() {
   const [token] = useState("demo_token"); // TODO: Get from auth context
 
   // Fetch all undelivered mails
-  const { data: mails = [], isLoading } = trpc.mails.all.useQuery(
+  const { data: mails = [], isLoading, error, refetch } = trpc.mails.all.useQuery(
     { token },
     { enabled: !!token }
   );
+
+  // Seed demo data
+  const seedMutation = trpc.tasks.seedDemo.useMutation({
+    onSuccess: () => { 
+      if (token) {
+        refetch(); 
+      }
+    },
+  });
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[MailsScreen] Mails loaded:', mails.length, 'isLoading:', isLoading, 'error:', error);
+  }, [mails, isLoading, error]);
 
   // Filter mails by search query (waybill number)
   const filteredMails = useMemo(() => {
@@ -91,6 +106,25 @@ export default function MailsScreen() {
 
   return (
     <ScreenContainer className="p-4" edges={["top", "left", "right"]}>
+      {/* Header with seed button */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <Text style={{ fontSize: 18, fontWeight: "600", color: colors.foreground }}>Письма</Text>
+        <Pressable
+          onPress={() => seedMutation.mutate({ token })}
+          style={({ pressed }) => [{
+            backgroundColor: colors.primary,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 6,
+            opacity: pressed ? 0.8 : 1,
+          }]}
+        >
+          <Text style={{ color: colors.background, fontWeight: "600", fontSize: 12 }}>
+            {seedMutation.isPending ? "..." : "Демо"}
+          </Text>
+        </Pressable>
+      </View>
+
       {/* Search bar */}
       <View
         style={[
@@ -115,6 +149,22 @@ export default function MailsScreen() {
       ) : notDeliveredMails.length === 0 && deliveredMails.length === 0 ? (
         <View style={styles.centerContainer}>
           <Text style={{ color: colors.muted }}>Письма не найдены</Text>
+          {error && <Text style={{ color: colors.error, marginTop: 8 }}>Ошибка: {String(error)}</Text>}
+          <Pressable
+            onPress={() => seedMutation.mutate({ token })}
+            style={({ pressed }) => [{
+              backgroundColor: colors.primary,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              borderRadius: 8,
+              marginTop: 16,
+              opacity: pressed ? 0.8 : 1,
+            }]}
+          >
+            <Text style={{ color: colors.background, fontWeight: "600", textAlign: "center" }}>
+              {seedMutation.isPending ? "Загрузка..." : "Загрузить демо-данные"}
+            </Text>
+          </Pressable>
         </View>
       ) : (
         <FlatList

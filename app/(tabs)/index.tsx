@@ -78,8 +78,10 @@ export default function TaskListScreen() {
   // Refetch tasks when returning to screen
   useFocusEffect(
     useCallback(() => {
-      refetch();
-    }, [refetch])
+      if (token) {
+        refetch();
+      }
+    }, [refetch, token])
   );
 
   const formatDate = (date: Date) => {

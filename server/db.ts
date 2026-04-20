@@ -10,7 +10,9 @@ import {
   hemotestPickups,
   sberbankPickupPoints,
   sberbankPickups,
+  sberbankPickupSchedule,
   mails,
+  clients,
   type Courier,
   type InsertCourier,
   type InsertTask,
@@ -21,8 +23,12 @@ import {
   type HemotestPickup,
   type SberbankPickupPoint,
   type SberbankPickup,
+  type SberbankPickupSchedule,
+  type InsertSberbankPickupSchedule,
   type Mail,
   type InsertMail,
+  type Client,
+  type InsertClient,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -884,4 +890,203 @@ export async function seedDemoSberbankPoints(): Promise<void> {
   for (const point of demoPoints) {
     await db.insert(sberbankPickupPoints).values(point);
   }
+}
+
+
+// ─── Client helpers ──────────────────────────────────────────────────────────
+
+export async function getAllClients(): Promise<Client[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(clients).orderBy(desc(clients.createdAt));
+}
+
+export async function getClientById(id: number): Promise<Client | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
+  return result[0] || null;
+}
+
+export async function createClient(data: InsertClient): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not initialized");
+  const result = await db.insert(clients).values(data);
+  return result[0].insertId;
+}
+
+export async function updateClient(id: number, data: Partial<InsertClient>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not initialized");
+  await db.update(clients).set(data).where(eq(clients.id, id));
+}
+
+export async function deleteClient(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not initialized");
+  await db.delete(clients).where(eq(clients.id, id));
+}
+
+
+// ─── Sberbank Schedule Management ─────────────────────────────────────────────
+
+/**
+ * Get all points scheduled for a specific day of week
+ * @param dayOfWeek 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday
+ */
+export async function getSberbankScheduleForDay(dayOfWeek: number): Promise<SberbankPickupPoint[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get point IDs for this day
+  const scheduleEntries = await db
+    .select({ pointId: sberbankPickupSchedule.pointId })
+    .from(sberbankPickupSchedule)
+    .where(eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek));
+
+  if (scheduleEntries.length === 0) return [];
+
+  const pointIds = scheduleEntries.map(e => e.pointId);
+
+  // Get actual point data
+  return await db
+    .select()
+    .from(sberbankPickupPoints)
+    .where(inArray(sberbankPickupPoints.id, pointIds))
+    .orderBy(sberbankPickupPoints.name);
+}
+
+/**
+ * Set points for a specific day of week (replaces existing schedule)
+ */
+export async function setSberbankScheduleForDay(dayOfWeek: number, pointIds: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Delete existing schedule for this day
+  await db
+    .delete(sberbankPickupSchedule)
+    .where(eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek));
+
+  // Insert new schedule entries
+  if (pointIds.length > 0) {
+    await db.insert(sberbankPickupSchedule).values(
+      pointIds.map(pointId => ({
+        dayOfWeek,
+        pointId,
+      }))
+    );
+  }
+}
+
+/**
+ * Add a single point to a day's schedule
+ */
+export async function addPointToSberbankSchedule(dayOfWeek: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check if already exists
+  const existing = await db
+    .select()
+    .from(sberbankPickupSchedule)
+    .where(and(
+      eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek),
+      eq(sberbankPickupSchedule.pointId, pointId)
+    ))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(sberbankPickupSchedule).values({
+      dayOfWeek,
+      pointId,
+    });
+  }
+}
+
+/**
+ * Remove a single point from a day's schedule
+ */
+export async function removePointFromSberbankSchedule(dayOfWeek: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .delete(sberbankPickupSchedule)
+    .where(and(
+      eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek),
+      eq(sberbankPickupSchedule.pointId, pointId)
+    ));
+}
+
+// ─── Hemotest and Sberbank Point Management ───────────────────────────────────
+
+/**
+ * Create a new Hemotest pickup point
+ */
+export async function createHemotestPoint(data: {
+  name: string;
+  address: string;
+  phone?: string;
+  contactPerson?: string;
+}): Promise<HemotestPickupPoint> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(hemotestPickupPoints).values(data);
+  const id = result[0]?.insertId;
+  if (!id) throw new Error("Failed to create point");
+
+  const point = await db
+    .select()
+    .from(hemotestPickupPoints)
+    .where(eq(hemotestPickupPoints.id, id))
+    .limit(1);
+
+  return point[0]!;
+}
+
+/**
+ * Get all Hemotest pickup points
+ */
+export async function getAllHemotestPoints(): Promise<HemotestPickupPoint[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(hemotestPickupPoints).orderBy(hemotestPickupPoints.name);
+}
+
+/**
+ * Create a new Sberbank pickup point
+ */
+export async function createSberbankPoint(data: {
+  name: string;
+  address: string;
+  phone?: string;
+  contactPerson?: string;
+}): Promise<SberbankPickupPoint> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(sberbankPickupPoints).values(data);
+  const id = result[0]?.insertId;
+  if (!id) throw new Error("Failed to create point");
+
+  const point = await db
+    .select()
+    .from(sberbankPickupPoints)
+    .where(eq(sberbankPickupPoints.id, id))
+    .limit(1);
+
+  return point[0]!;
+}
+
+/**
+ * Get all Sberbank pickup points
+ */
+export async function getAllSberbankPoints(): Promise<SberbankPickupPoint[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(sberbankPickupPoints).orderBy(sberbankPickupPoints.name);
 }

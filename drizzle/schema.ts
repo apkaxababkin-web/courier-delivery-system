@@ -214,3 +214,43 @@ export const mails = mysqlTable("mails", {
 
 export type Mail = typeof mails.$inferSelect;
 export type InsertMail = typeof mails.$inferInsert;
+
+/**
+ * Sberbank pickup schedule — templates for which points to pick up on each day of the week (Mon-Fri)
+ * This allows managers to set recurring schedules like "always pick up points 1,3,5 on Monday"
+ */
+export const sberbankPickupSchedule = mysqlTable("sberbankPickupSchedule", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Day of week: 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday */
+  dayOfWeek: int("dayOfWeek").notNull(), // 1-5 for Mon-Fri
+  /** Pickup point ID */
+  pointId: int("pointId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SberbankPickupSchedule = typeof sberbankPickupSchedule.$inferSelect;
+export type InsertSberbankPickupSchedule = typeof sberbankPickupSchedule.$inferInsert;
+
+/**
+ * Clients table — stores client information for creating regular delivery tasks
+ * Clients like "Основа движения", "Hello Korea", etc.
+ */
+export const clients = mysqlTable("clients", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Client name (required) */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Client address (required) - used as sender address for tasks */
+  address: text("address").notNull(),
+  /** Contact person name (optional) */
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  /** Phone number (optional) */
+  phone: varchar("phone", { length: 20 }),
+  /** Email (optional) */
+  email: varchar("email", { length: 320 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Client = typeof clients.$inferSelect;
+export type InsertClient = typeof clients.$inferInsert;
