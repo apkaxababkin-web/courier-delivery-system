@@ -15,6 +15,7 @@ import {
   initialWindowMetrics,
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
+import * as Notifications from "expo-notifications";
 
 import { ToastProvider } from "react-native-toast-notifications";
 
@@ -40,6 +41,17 @@ export default function RootLayout() {
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
+    
+    // Set up notification handler
+    if (Platform.OS !== "web") {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
+    }
   }, []);
 
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {
@@ -68,6 +80,24 @@ export default function RootLayout() {
       }),
   );
   const [trpcClient] = useState(() => createTRPCClient());
+
+  // Register push token when app starts
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    
+    const registerPushToken = async () => {
+      try {
+        const token = await Notifications.getExpoPushTokenAsync();
+        console.log("[App] Expo Push Token:", token.data);
+        // Note: We'll send this token to the server from the profile screen
+        // after the courier logs in
+      } catch (error) {
+        console.warn("[App] Failed to get push token:", error);
+      }
+    };
+    
+    registerPushToken();
+  }, []);
 
   // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {

@@ -6,6 +6,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
+import { sendBulkPushNotifications, notifyNewTask } from "./_core/push-service";
 
 // ─── Courier JWT helpers ──────────────────────────────────────────────────────
 
@@ -27,6 +28,31 @@ export async function verifyCourierToken(token: string): Promise<{ courierId: nu
     const { payload } = await jwtVerify(token, COURIER_JWT_SECRET);
     if (payload.type !== "courier" || typeof payload.courierId !== "number") return null;
     return { courierId: payload.courierId };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Manager JWT helpers ──────────────────────────────────────────────────────
+
+const MANAGER_JWT_SECRET = new TextEncoder().encode(
+  process.env.MANAGER_JWT_SECRET ?? "manager-secret-key-change-in-production"
+);
+const MANAGER_TOKEN_EXPIRY = "7d";
+
+async function signManagerToken(managerId: number): Promise<string> {
+  return new SignJWT({ managerId, type: "manager" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime(MANAGER_TOKEN_EXPIRY)
+    .setIssuedAt()
+    .sign(MANAGER_JWT_SECRET);
+}
+
+export async function verifyManagerToken(token: string): Promise<{ managerId: number } | null> {
+  try {
+    const { payload } = await jwtVerify(token, MANAGER_JWT_SECRET);
+    if (payload.type !== "manager" || typeof payload.managerId !== "number") return null;
+    return { managerId: payload.managerId };
   } catch {
     return null;
   }
@@ -92,6 +118,78 @@ export const appRouter = router({
           totalDeliveries: courier.totalDeliveries,
         };
       }),
+
+    getDemoToken: publicProcedure
+      .mutation(async () => {
+        const courierId = await db.seedDemoCourier();
+        const token = await signCourierToken(courierId);
+        const courier = await db.getCourierById(courierId);
+        if (!courier) throw new Error("Курьер не найден");
+        return {
+          token,
+          courier: {
+            id: courier.id,
+            name: courier.name,
+            username: courier.username,
+            phone: courier.phone,
+            vehicleType: courier.vehicleType,
+            isActive: courier.isActive,
+            totalDeliveries: courier.totalDeliveries,
+          },
+        };
+      }),
+  }),
+
+  // ─── Manager authentication (login/password) ──────────────────────────────
+  managerAuth: router({
+    login: publicProcedure
+      .input(z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          console.log("[managerAuth.login] Attempting login for:", input.username);
+          const manager = await db.getManagerByUsername(input.username);
+          if (!manager) throw new Error("Неверный логин или пароль");
+          if (!manager.isActive) throw new Error("Аккаунт менеджера деактивирован");
+          const valid = await bcrypt.compare(input.password, manager.passwordHash);
+          if (!valid) throw new Error("Неверный логин или пароль");
+          const token = await signManagerToken(manager.id);
+          console.log("[managerAuth.login] Login successful for:", input.username);
+          return {
+            token,
+            manager: {
+              id: manager.id,
+              name: manager.name,
+              username: manager.username,
+              email: manager.email,
+              isActive: manager.isActive,
+            },
+          };
+        } catch (error) {
+          console.error("[managerAuth.login] Error:", error);
+          throw error;
+        }
+      }),
+
+    getDemoToken: publicProcedure
+      .mutation(async () => {
+        const managerId = await db.seedDemoManager();
+        const token = await signManagerToken(managerId);
+        const manager = await db.getManagerById(managerId);
+        if (!manager) throw new Error("Менеджер не найден");
+        return {
+          token,
+          manager: {
+            id: manager.id,
+            name: manager.name,
+            username: manager.username,
+            email: manager.email,
+            isActive: manager.isActive,
+          },
+        };
+      }),
   }),
 
   // ─── Couriers list (for picker in task card) ───────────────────────────────
@@ -108,6 +206,18 @@ export const appRouter = router({
         return all
           .filter((c) => c.isActive)
           .map((c) => ({ id: c.id, name: c.name, username: c.username }));
+      }),
+
+    /**
+     * Register Expo push token for a courier
+     */
+    registerPushToken: publicProcedure
+      .input(z.object({ token: z.string(), pushToken: z.string() }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        await db.updateCourierPushToken(payload.courierId, input.pushToken);
+        return { success: true };
       }),
   }),
 
@@ -509,6 +619,19 @@ export const appRouter = router({
           changedByUserId: ctx.user.id,
           note: "Задание создано менеджером",
         });
+        
+        // Send push notification if courier is assigned
+        if (input.courierId) {
+          try {
+            const pushToken = await db.getCourierPushToken(input.courierId);
+            if (pushToken) {
+              await notifyNewTask(pushToken, taskId, input.recipientName);
+            }
+          } catch (error) {
+            console.warn("[Push] Failed to send notification:", error);
+          }
+        }
+        
         return { taskId };
       }),
 
@@ -530,6 +653,28 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return db.getTaskStatusHistory(input.taskId);
       }),
+
+    notificationSettings: router({
+      get: protectedProcedure
+        .query(async () => {
+          const settings = await db.getNotificationSettings(1);
+          if (!settings) {
+            return await db.createDefaultNotificationSettings(1);
+          }
+          return settings;
+        }),
+
+      update: protectedProcedure
+        .input(z.object({
+          enabled: z.boolean().optional(),
+          newTasks: z.boolean().optional(),
+          statusChanges: z.boolean().optional(),
+          messages: z.boolean().optional(),
+        }))
+        .mutation(async ({ input }) => {
+          return await db.upsertNotificationSettings(1, input);
+        }),
+    }),
   }),
 });
 

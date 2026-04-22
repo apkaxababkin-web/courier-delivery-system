@@ -3,6 +3,7 @@ import { eq, and, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   couriers,
+  managers,
   tasks,
   taskStatusHistory,
   users,
@@ -10,6 +11,7 @@ import {
   hemotestPickups,
   sberbankPickupPoints,
   sberbankPickups,
+  notificationSettings,
   type Courier,
   type InsertCourier,
   type InsertTask,
@@ -20,6 +22,10 @@ import {
   type HemotestPickup,
   type SberbankPickupPoint,
   type SberbankPickup,
+  type Manager,
+  type InsertManager,
+  type NotificationSettings,
+  type InsertNotificationSettings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -825,5 +831,186 @@ export async function seedDemoSberbankPoints(): Promise<void> {
 
   for (const point of demoPoints) {
     await db.insert(sberbankPickupPoints).values(point);
+  }
+}
+
+
+// ─── Функции менеджера ───────────────────────────────────────────────────────
+
+/**
+ * Получить менеджера по имени пользователя
+ */
+export async function getManagerByUsername(username: string): Promise<Manager | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(managers).where(eq(managers.username, username)).limit(1);
+  return result[0] || null;
+}
+
+/**
+ * Получить менеджера по ID
+ */
+export async function getManagerById(id: number): Promise<Manager | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(managers).where(eq(managers.id, id)).limit(1);
+  return result[0] || null;
+}
+
+/**
+ * Создать демо-менеджера
+ */
+export async function seedDemoManager(): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("База данных недоступна");
+
+  // Проверить, существует ли уже демо-менеджер
+  const existing = await getManagerByUsername("manager");
+  if (existing) return existing.id;
+
+  // Создать демо-менеджера
+  const passwordHash = await bcrypt.hash("manager123", 10);
+  const result = await db.insert(managers).values({
+    name: "Демо Менеджер",
+    username: "manager",
+    email: "manager@courier.local",
+    passwordHash,
+    phone: "+7 (999) 111-11-11",
+    isActive: true,
+  });
+
+  return result[0].insertId as number;
+}
+
+
+// ─── Notification Settings helpers ─────────────────────────────────────────
+
+/**
+ * Получить настройки уведомлений курьера
+ */
+export async function getNotificationSettings(courierId: number): Promise<NotificationSettings | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(notificationSettings)
+    .where(eq(notificationSettings.courierId, courierId))
+    .limit(1);
+  return result[0] || null;
+}
+
+/**
+ * Создать или обновить настройки уведомлений
+ */
+export async function upsertNotificationSettings(
+  courierId: number,
+  settings: Partial<InsertNotificationSettings>
+): Promise<NotificationSettings> {
+  const db = await getDb();
+  if (!db) throw new Error("База данных недоступна");
+
+  // Проверить, существуют ли уже настройки
+  const existing = await getNotificationSettings(courierId);
+
+  if (existing) {
+    // Обновить существующие настройки
+    await db
+      .update(notificationSettings)
+      .set(settings)
+      .where(eq(notificationSettings.courierId, courierId));
+    const updated = await getNotificationSettings(courierId);
+    return updated!;
+  } else {
+    // Создать новые настройки
+    await db.insert(notificationSettings).values({
+      courierId,
+      enabled: settings.enabled ?? true,
+      newTasks: settings.newTasks ?? true,
+      statusChanges: settings.statusChanges ?? true,
+      messages: settings.messages ?? true,
+    });
+    const created = await getNotificationSettings(courierId);
+    return created!;
+  }
+}
+
+/**
+ * Создать настройки уведомлений по умолчанию для курьера
+ */
+export async function createDefaultNotificationSettings(courierId: number): Promise<NotificationSettings> {
+  return upsertNotificationSettings(courierId, {
+    enabled: true,
+    newTasks: true,
+    statusChanges: true,
+    messages: true,
+  });
+}
+
+
+// ─── Push Notification Token Management ────────────────────────────────────
+
+/**
+ * Сохранить Expo push token для курьера
+ */
+export async function updateCourierPushToken(courierId: number, token: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("База данных недоступна");
+
+  try {
+    await db
+      .update(couriers)
+      .set({
+        expoPushToken: token,
+        updatedAt: new Date(),
+      })
+      .where(eq(couriers.id, courierId));
+    console.log(`[Database] Push token updated for courier ${courierId}`);
+  } catch (error) {
+    console.error("[Database] Failed to update push token:", error);
+    throw error;
+  }
+}
+
+/**
+ * Получить Expo push token курьера
+ */
+export async function getCourierPushToken(courierId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const result = await db
+      .select({ token: couriers.expoPushToken })
+      .from(couriers)
+      .where(eq(couriers.id, courierId))
+      .limit(1);
+    
+    return result[0]?.token ?? null;
+  } catch (error) {
+    console.error("[Database] Failed to get push token:", error);
+    return null;
+  }
+}
+
+/**
+ * Получить все курьеры с активными push токенами
+ */
+export async function getCouriersPushTokens(): Promise<Array<{ id: number; token: string }>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const result = await db
+      .select({ id: couriers.id, token: couriers.expoPushToken })
+      .from(couriers)
+      .where(and(
+        eq(couriers.isActive, true),
+        sql`${couriers.expoPushToken} IS NOT NULL`
+      ));
+    
+    return result.filter((r) => r.token !== null) as Array<{ id: number; token: string }>;
+  } catch (error) {
+    console.error("[Database] Failed to get couriers push tokens:", error);
+    return [];
   }
 }

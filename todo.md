@@ -296,3 +296,11 @@
 - [x] Red dot positioned absolutely, doesn't interfere with task info
 - [x] Sorting logic verified - urgent tasks appear first
 - [x] Fixed light mode tab bar colors (use dynamic theme colors instead of hardcoded)
+
+## Push Notifications Implementation (Session 7)
+- [x] Register mobile app for push tokens with Expo
+- [x] Send push token to backend API
+- [x] Implement push notification settings save in profile screen
+- [x] Add notification service to backend
+- [x] Send push when task is created (check user settings)
+- [ ] Test end-to-end: create task in web portal → receive push on mobile
