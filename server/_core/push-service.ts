@@ -4,6 +4,8 @@
  */
 
 import axios from "axios";
+import { logPushEvent } from "./push-analytics";
+import { sendPushWithRetry, DEFAULT_RETRY_CONFIG } from "./push-retry";
 
 const EXPO_PUSH_API_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -33,11 +35,30 @@ export async function sendPushNotification(payload: PushNotificationPayload): Pr
 
     if (response.status === 200) {
       console.log(`[Push] Notification sent to ${payload.to}`);
+      logPushEvent({
+        type: "sent",
+        courierToken: payload.to,
+        taskId: payload.data?.taskId ? parseInt(payload.data.taskId) : undefined,
+        message: payload.title,
+      });
       return true;
     }
+    logPushEvent({
+      type: "failed",
+      courierToken: payload.to,
+      taskId: payload.data?.taskId ? parseInt(payload.data.taskId) : undefined,
+      message: `HTTP ${response.status}`,
+    });
     return false;
   } catch (error) {
     console.error("[Push] Failed to send notification:", error);
+    logPushEvent({
+      type: "error",
+      courierToken: payload.to,
+      taskId: payload.data?.taskId ? parseInt(payload.data.taskId) : undefined,
+      message: payload.title,
+      errorDetails: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
@@ -89,7 +110,7 @@ export async function notifyNewTask(
   taskId: number,
   recipientName: string
 ): Promise<boolean> {
-  return sendPushNotification({
+  const payload = {
     to: courierToken,
     title: "Новая заявка",
     body: `Новая доставка для ${recipientName}`,
@@ -98,8 +119,15 @@ export async function notifyNewTask(
       type: "new_task",
       url: `task/${taskId}`,
     },
-    priority: "high",
+    priority: "high" as const,
     sound: "default",
+  };
+
+  // Use retry logic for new task notifications (important)
+  return sendPushWithRetry({
+    payload,
+    maxRetries: DEFAULT_RETRY_CONFIG.maxRetries,
+    initialDelayMs: DEFAULT_RETRY_CONFIG.initialDelayMs,
   });
 }
 
@@ -118,7 +146,7 @@ export async function notifyTaskStatusChange(
     "cancelled": "Отменена",
   }[status] || status;
 
-  return sendPushNotification({
+  const payload = {
     to: courierToken,
     title: "Изменение статуса",
     body: `Статус заявки изменился на: ${statusText}`,
@@ -128,7 +156,14 @@ export async function notifyTaskStatusChange(
       type: "status_change",
       url: `task/${taskId}`,
     },
-    priority: "high",
+    priority: "high" as const,
     sound: "default",
+  };
+
+  // Use retry logic for status change notifications
+  return sendPushWithRetry({
+    payload,
+    maxRetries: DEFAULT_RETRY_CONFIG.maxRetries,
+    initialDelayMs: DEFAULT_RETRY_CONFIG.initialDelayMs,
   });
 }

@@ -16,6 +16,7 @@ import {
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
+import { useRouter } from "expo-router";
 
 import { ToastProvider } from "react-native-toast-notifications";
 
@@ -81,6 +82,8 @@ export default function RootLayout() {
   );
   const [trpcClient] = useState(() => createTRPCClient());
 
+  const router = useRouter();
+
   // Register push token when app starts
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -98,6 +101,26 @@ export default function RootLayout() {
     
     registerPushToken();
   }, []);
+
+  // Handle push notification responses (when user taps on notification)
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data;
+        console.log("[App] Push notification tapped:", data);
+        
+        // Handle deep link navigation
+        if (data.url) {
+          console.log("[App] Navigating to:", data.url);
+          router.push(`/${data.url}`);
+        }
+      }
+    );
+
+    return () => subscription.remove();
+  }, [router]);
 
   // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {
