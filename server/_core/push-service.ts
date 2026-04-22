@@ -43,7 +43,8 @@ export async function sendPushNotification(payload: PushNotificationPayload): Pr
 }
 
 /**
- * Send push notifications to multiple devices
+ * Send push notifications to multiple devices with batching and concurrency control
+ * Sends up to 10 notifications concurrently to avoid overwhelming the API
  */
 export async function sendBulkPushNotifications(
   tokens: string[],
@@ -51,21 +52,29 @@ export async function sendBulkPushNotifications(
   body: string,
   data?: Record<string, string>
 ): Promise<number> {
+  const BATCH_SIZE = 10; // Send 10 notifications concurrently
   let successCount = 0;
 
-  for (const token of tokens) {
-    const success = await sendPushNotification({
-      to: token,
-      title,
-      body,
-      data,
-      priority: "high",
-      sound: "default",
-    });
+  // Process tokens in batches
+  for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+    const batch = tokens.slice(i, i + BATCH_SIZE);
+    
+    // Send all notifications in this batch concurrently
+    const results = await Promise.all(
+      batch.map((token) =>
+        sendPushNotification({
+          to: token,
+          title,
+          body,
+          data,
+          priority: "high",
+          sound: "default",
+        })
+      )
+    );
 
-    if (success) {
-      successCount++;
-    }
+    // Count successes
+    successCount += results.filter((success) => success).length;
   }
 
   console.log(`[Push] Sent ${successCount}/${tokens.length} notifications`);
@@ -87,6 +96,7 @@ export async function notifyNewTask(
     data: {
       taskId: taskId.toString(),
       type: "new_task",
+      url: `task/${taskId}`,
     },
     priority: "high",
     sound: "default",
@@ -116,6 +126,7 @@ export async function notifyTaskStatusChange(
       taskId: taskId.toString(),
       status,
       type: "status_change",
+      url: `task/${taskId}`,
     },
     priority: "high",
     sound: "default",

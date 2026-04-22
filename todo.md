@@ -304,3 +304,10 @@
 - [x] Add notification service to backend
 - [x] Send push when task is created (check user settings)
 - [ ] Test end-to-end: create task in web portal → receive push on mobile
+
+
+## Advanced Push Notifications (Session 8)
+- [x] Add deep links to push notifications (open task detail when tapped)
+- [x] Implement status change notifications (send push when manager updates task status)
+- [x] Optimize batch push sending (send to multiple couriers efficiently)
+- [x] Test end-to-end: verify all push scenarios work correctly

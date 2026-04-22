@@ -334,6 +334,19 @@ export const appRouter = router({
             ? "Доставка выполнена"
             : "Задание отменено",
         });
+        
+        // Send push notification about status change
+        if (task.courierId) {
+          try {
+            const pushToken = await db.getCourierPushToken(task.courierId);
+            if (pushToken) {
+              await notifyTaskStatusChange(pushToken, input.taskId, input.status);
+            }
+          } catch (error) {
+            console.warn("[Push] Failed to send status change notification:", error);
+          }
+        }
+        
         return { success: true };
       }),
 
