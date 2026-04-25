@@ -296,3 +296,47 @@
 - [x] Red dot positioned absolutely, doesn't interfere with task info
 - [x] Sorting logic verified - urgent tasks appear first
 - [x] Fixed light mode tab bar colors (use dynamic theme colors instead of hardcoded)
+
+## Push Notifications Implementation (Session 7)
+- [x] Register mobile app for push tokens with Expo
+- [x] Send push token to backend API
+- [x] Implement push notification settings save in profile screen
+- [x] Add notification service to backend
+- [x] Send push when task is created (check user settings)
+- [ ] Test end-to-end: create task in web portal → receive push on mobile
+
+
+## Advanced Push Notifications (Session 8)
+- [x] Add deep links to push notifications (open task detail when tapped)
+- [x] Implement status change notifications (send push when manager updates task status)
+- [x] Optimize batch push sending (send to multiple couriers efficiently)
+- [x] Test end-to-end: verify all push scenarios work correctly
+
+
+## Push Notifications Enhancements (Session 9)
+- [x] Implement deep link handling in mobile app (open task when push tapped)
+- [x] Add push analytics logging (track send success/failure)
+- [x] Implement retry logic with exponential backoff (retry failed sends)
+
+
+## Battery Optimization (Session 10)
+- [x] Implement smart caching with React Query (staleTime, gcTime)
+- [x] Add network-aware data fetching (check internet before sync)
+- [x] Implement intelligent GPS tracking (only when in_progress)
+- [x] Add background sync with expo-background-fetch
+- [x] Replace ScrollView with FlatList in task lists
+- [x] Memoize TaskCard and other expensive components
+- [x] Implement dark mode optimization for OLED screens
+- [x] Add adaptive screen brightness
+- [x] Test battery drain scenarios
+
+
+## Offline Mode Implementation (Session 11)
+- [x] Create local database layer with SQLite/MMKV
+- [x] Implement sync queue for offline changes
+- [x] Add conflict resolution (last-write-wins, server-wins, manual)
+- [x] Implement reconnection handler with exponential backoff
+- [x] Add offline UI indicators (banner, sync status)
+- [x] Sync local data when internet reconnects
+- [x] Handle partial sync failures gracefully
+- [x] Test offline scenarios (no internet, slow connection, reconnection)

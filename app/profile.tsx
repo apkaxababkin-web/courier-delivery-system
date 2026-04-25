@@ -1,11 +1,14 @@
-import { ScrollView, Text, View, Pressable, Switch, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Alert, ScrollView, Text, View, Switch, Pressable } from "react-native";
+import * as Notifications from "expo-notifications";
 
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
-import { useFontSize, type FontSizeScale } from "@/lib/font-size-provider";
+import { trpc } from "@/lib/trpc";
 
 export default function ProfileModal() {
   const router = useRouter();
@@ -13,7 +16,13 @@ export default function ProfileModal() {
   const insets = useSafeAreaInsets();
   const { courier, logout } = useCourierAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
-  const { fontSizeScale, setFontSizeScale } = useFontSize();
+  
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationTypes, setNotificationTypes] = useState({
+    newTasks: true,
+    statusChanges: true,
+    messages: true,
+  });
 
   const isDarkMode = colorScheme === "dark";
 
@@ -22,12 +31,92 @@ export default function ProfileModal() {
     setColorScheme(newScheme);
   };
 
+  // Load notification settings on mount and register for push notifications
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const saved = await AsyncStorage.getItem("notificationSettings");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setNotificationsEnabled(parsed.enabled ?? true);
+          setNotificationTypes(parsed.types ?? {
+            newTasks: true,
+            statusChanges: true,
+            messages: true,
+          });
+        }
+        
+        // Register for push notifications and send to server
+        try {
+          const token = await Notifications.getExpoPushTokenAsync();
+          console.log("Expo Push Token:", token.data);
+          await AsyncStorage.setItem("pushToken", token.data);
+          
+          // Send push token to server
+          try {
+            const courierToken = await AsyncStorage.getItem("courier_session_token");
+            if (courierToken) {
+              await trpc.couriers.registerPushToken.mutate({
+                token: courierToken,
+                pushToken: token.data,
+              });
+              console.log("Push token registered with server");
+            }
+          } catch (apiError) {
+            console.warn("Failed to register push token with server:", apiError);
+          }
+        } catch (error) {
+          console.warn("Failed to get push token:", error);
+        }
+      } catch (error) {
+        console.error("Failed to load notification settings:", error);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  // Save notification settings when they change
+  useEffect(() => {
+    const saveSettings = async () => {
+      try {
+        // Save to local storage
+        await AsyncStorage.setItem(
+          "notificationSettings",
+          JSON.stringify({
+            enabled: notificationsEnabled,
+            types: notificationTypes,
+          })
+        );
+        
+        // Save to backend
+        try {
+          await trpc.manager.notificationSettings.update.mutate({
+            enabled: notificationsEnabled,
+            newTasks: notificationTypes.newTasks,
+            statusChanges: notificationTypes.statusChanges,
+            messages: notificationTypes.messages,
+          });
+          console.log("Notification settings saved to backend");
+        } catch (apiError) {
+          console.warn("Failed to save notification settings to backend:", apiError);
+          // Continue even if API fails - local storage is still saved
+        }
+      } catch (error) {
+        console.error("Failed to save notification settings:", error);
+      }
+    };
+    saveSettings();
+  }, [notificationsEnabled, notificationTypes]);
+
   const handleLogout = () => {
     Alert.alert("Выход", "Вы уверены, что хотите выйти?", [
       { text: "Отмена", onPress: () => {}, style: "cancel" },
       {
         text: "Выход",
-        onPress: () => {
+        onPress: async () => {
+          // Очистить сохраненные настройки
+          await AsyncStorage.removeItem("notificationSettings");
+          await AsyncStorage.removeItem("pushToken");
           logout();
           router.replace("/");
         },
@@ -160,8 +249,15 @@ export default function ProfileModal() {
               thumbColor={colors.foreground}
             />
           </View>
+        </View>
 
-          {/* Font Size Selector */}
+        {/* Notifications Section */}
+        <View style={{ paddingHorizontal: 16, paddingVertical: 16, gap: 12 }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>
+            УВЕДОМЛЕНИЯ
+          </Text>
+
+          {/* Enable Notifications */}
           <View
             style={{
               backgroundColor: colors.surface,
@@ -169,40 +265,115 @@ export default function ProfileModal() {
               padding: 16,
               borderWidth: 1,
               borderColor: colors.border,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
-            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground, marginBottom: 12 }}>
-              Размер шрифта
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              {(["normal", "large", "xlarge"] as FontSizeScale[]).map((scale) => (
-                <Pressable
-                  key={scale}
-                  onPress={() => setFontSizeScale(scale)}
-                  style={({ pressed }) => ({
-                    flex: 1,
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    backgroundColor:
-                      fontSizeScale === scale ? colors.primary : colors.border,
-                    opacity: pressed ? 0.8 : 1,
-                  })}
-                >
-                  <Text
-                    style={{
-                      textAlign: "center",
-                      fontSize: scale === "normal" ? 12 : scale === "large" ? 14 : 16,
-                      fontWeight: "600",
-                      color: fontSizeScale === scale ? "white" : colors.foreground,
-                    }}
-                  >
-                    {scale === "normal" ? "Обычный" : scale === "large" ? "Большой" : "Очень большой"}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>
+                Включить уведомления
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+                {notificationsEnabled ? "Включены" : "Отключены"}
+              </Text>
             </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={setNotificationsEnabled}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.foreground}
+            />
           </View>
+
+          {/* Notification Types */}
+          {notificationsEnabled && (
+            <>
+              {/* New Tasks */}
+              <View
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: 12,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>
+                    Новые заявки
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationTypes.newTasks}
+                  onValueChange={(value) =>
+                    setNotificationTypes({ ...notificationTypes, newTasks: value })
+                  }
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.foreground}
+                />
+              </View>
+
+              {/* Status Changes */}
+              <View
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: 12,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>
+                    Изменение статуса
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationTypes.statusChanges}
+                  onValueChange={(value) =>
+                    setNotificationTypes({ ...notificationTypes, statusChanges: value })
+                  }
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.foreground}
+                />
+              </View>
+
+              {/* Messages */}
+              <View
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: 12,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>
+                    Сообщения
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationTypes.messages}
+                  onValueChange={(value) =>
+                    setNotificationTypes({ ...notificationTypes, messages: value })
+                  }
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.foreground}
+                />
+              </View>
+            </>
+          )}
         </View>
 
         {/* Spacer */}
@@ -229,4 +400,3 @@ export default function ProfileModal() {
     </View>
   );
 }
-
