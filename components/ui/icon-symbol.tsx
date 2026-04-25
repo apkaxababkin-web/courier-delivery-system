@@ -1,3 +1,5 @@
+// Fallback for using MaterialIcons on Android and web.
+
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SymbolWeight, SymbolViewProps } from "expo-symbols";
 import { ComponentProps } from "react";
@@ -6,55 +8,23 @@ import { OpaqueColorValue, type StyleProp, type TextStyle } from "react-native";
 type IconMapping = Record<SymbolViewProps["name"], ComponentProps<typeof MaterialIcons>["name"]>;
 type IconSymbolName = keyof typeof MAPPING;
 
+/**
+ * Add your SF Symbols to Material Icons mappings here.
+ * - see Material Icons in the [Icons Directory](https://icons.expo.fyi).
+ * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
+ */
 const MAPPING = {
-  // Navigation
   "house.fill": "home",
-  "clock.fill": "history",
-  "person.fill": "person",
   "paperplane.fill": "send",
-  
-  // Tab Bar Icons
-  "list.bullet": "list",
-  "box.2": "inventory-2",
-  "building.2": "domain",
-  "envelope": "mail",
-  "hemotest": "bloodtype",
-  "sberbank": "store",
-  
-  // Task list
-  "checkmark.circle.fill": "check-circle",
-  "xmark.circle.fill": "cancel",
-  "clock": "schedule",
-  
-  // Task detail
-  "mappin.fill": "location-on",
-  "phone.fill": "phone",
-  "shippingbox.fill": "inventory-2",
-  "exclamationmark.triangle.fill": "warning",
-  "chevron.right": "chevron-right",
-  "chevron.left": "chevron-left",
-  "arrow.left": "arrow-back",
-  
-  // Status
-  "bolt.fill": "flash-on",
-  "truck.box.fill": "local-shipping",
-  "figure.walk": "directions-walk",
-  
-  // General
   "chevron.left.forwardslash.chevron.right": "code",
-  "bell.fill": "notifications",
-  "gearshape.fill": "settings",
-  "arrow.right.square.fill": "logout",
-  "star.fill": "star",
-  "info.circle.fill": "info",
-  "plus.circle.fill": "add-circle",
-  "tray.full.fill": "inbox",
-  
-  // Theme toggle
-  "moon.fill": "dark-mode",
-  "sun.max.fill": "light-mode",
-} as unknown as IconMapping;
+  "chevron.right": "chevron-right",
+} as IconMapping;
 
+/**
+ * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.
+ * This ensures a consistent look across platforms, and optimal resource usage.
+ * Icon `name`s are based on SF Symbols and require manual mapping to Material Icons.
+ */
 export function IconSymbol({
   name,
   size = 24,

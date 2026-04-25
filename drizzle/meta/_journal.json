@@ -148,6 +148,13 @@
       "when": 1776645480659,
       "tag": "0020_striped_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1776759946364,
+      "tag": "0021_light_alex_wilder",
+      "breakpoints": true
     }
   ]
 }
