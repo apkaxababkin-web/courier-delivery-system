@@ -1,6 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBadge } from "@/components/status-badge";
-import { CourierBadge } from "@/components/courier-badge";
 import { type TaskStatus } from "@/shared/types";
 import { useColors } from "@/hooks/use-colors";
 import { calculateUrgencyFromTimeString } from "@/lib/task-sorting";
@@ -227,11 +226,17 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         <StatusBadge status={task.status} size="sm" />
         
         {task.courierName && (
-          <CourierBadge
-            name={shortName(task.courierName)}
-            color={courierColor}
-            size="sm"
-          />
+          <View style={styles.courierBadge}>
+            <View
+              style={[
+                styles.courierDot,
+                { backgroundColor: courierColor },
+              ]}
+            />
+            <Text style={[styles.courierText, { color: colors.muted }]}>
+              {shortName(task.courierName)}
+            </Text>
+          </View>
         )}
         
         {task.placesCount != null && (
@@ -320,7 +325,20 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 6,
   },
-
+  courierBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  courierDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  courierText: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
   itemsContainer: {
     marginTop: 8,
     paddingLeft: 4,

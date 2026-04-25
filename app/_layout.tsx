@@ -15,8 +15,6 @@ import {
   initialWindowMetrics,
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
-import * as Notifications from "expo-notifications";
-import { useRouter } from "expo-router";
 
 import { ToastProvider } from "react-native-toast-notifications";
 
@@ -24,6 +22,7 @@ import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { CourierAuthProvider } from "@/lib/courier-auth";
 import { FilterProvider } from "@/lib/filter-context";
+import { FontSizeProvider } from "@/lib/font-size-provider";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -42,17 +41,6 @@ export default function RootLayout() {
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
-    
-    // Set up notification handler
-    if (Platform.OS !== "web") {
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: true,
-        }),
-      });
-    }
   }, []);
 
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {
@@ -82,46 +70,6 @@ export default function RootLayout() {
   );
   const [trpcClient] = useState(() => createTRPCClient());
 
-  const router = useRouter();
-
-  // Register push token when app starts
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    
-    const registerPushToken = async () => {
-      try {
-        const token = await Notifications.getExpoPushTokenAsync();
-        console.log("[App] Expo Push Token:", token.data);
-        // Note: We'll send this token to the server from the profile screen
-        // after the courier logs in
-      } catch (error) {
-        console.warn("[App] Failed to get push token:", error);
-      }
-    };
-    
-    registerPushToken();
-  }, []);
-
-  // Handle push notification responses (when user taps on notification)
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data;
-        console.log("[App] Push notification tapped:", data);
-        
-        // Handle deep link navigation
-        if (data.url) {
-          console.log("[App] Navigating to:", data.url);
-          router.push(`/${data.url}`);
-        }
-      }
-    );
-
-    return () => subscription.remove();
-  }, [router]);
-
   // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {
     const metrics = initialWindowMetrics ?? { insets: initialInsets, frame: initialFrame };
@@ -142,12 +90,14 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <FilterProvider>
               <CourierAuthProvider>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
-                </Stack>
-                <StatusBar style="auto" />
+                <FontSizeProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
+                  </Stack>
+                  <StatusBar style="auto" />
+                </FontSizeProvider>
               </CourierAuthProvider>
             </FilterProvider>
           </QueryClientProvider>
@@ -161,13 +111,15 @@ export default function RootLayout() {
   if (shouldOverrideSafeArea) {
     return (
       <ThemeProvider>
-        <SafeAreaProvider initialMetrics={providerInitialMetrics}>
-          <SafeAreaFrameContext.Provider value={frame}>
-            <SafeAreaInsetsContext.Provider value={insets}>
-              {content}
-            </SafeAreaInsetsContext.Provider>
-          </SafeAreaFrameContext.Provider>
-        </SafeAreaProvider>
+        <FontSizeProvider>
+          <SafeAreaProvider initialMetrics={providerInitialMetrics}>
+            <SafeAreaFrameContext.Provider value={frame}>
+              <SafeAreaInsetsContext.Provider value={insets}>
+                {content}
+              </SafeAreaInsetsContext.Provider>
+            </SafeAreaFrameContext.Provider>
+          </SafeAreaProvider>
+        </FontSizeProvider>
       </ThemeProvider>
     );
   }
