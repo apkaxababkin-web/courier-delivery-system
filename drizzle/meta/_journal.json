@@ -155,6 +155,69 @@
       "when": 1776759946364,
       "tag": "0021_light_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1776767438744,
+      "tag": "0022_volatile_maelstrom",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1776858233985,
+      "tag": "0023_gorgeous_vertigo",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1776862773609,
+      "tag": "0024_oval_edwin_jarvis",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1776866224761,
+      "tag": "0025_far_daimon_hellstrom",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1777097154407,
+      "tag": "0026_red_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1777097208032,
+      "tag": "0027_puzzling_pretty_boy",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1777097426504,
+      "tag": "0028_glamorous_maddog",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1777097505779,
+      "tag": "0029_plain_zarda",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1777097638866,
+      "tag": "0030_clean_korath",
+      "breakpoints": true
     }
   ]
 }
