@@ -92,6 +92,26 @@ export const appRouter = router({
           totalDeliveries: courier.totalDeliveries,
         };
       }),
+
+    getDemoToken: publicProcedure
+      .mutation(async () => {
+        const courierId = await db.seedDemoCourier();
+        const token = await signCourierToken(courierId);
+        const courier = await db.getCourierById(courierId);
+        if (!courier) throw new Error("Курьер не найден");
+        return {
+          token,
+          courier: {
+            id: courier.id,
+            name: courier.name,
+            username: courier.username,
+            phone: courier.phone,
+            vehicleType: courier.vehicleType,
+            isActive: courier.isActive,
+            totalDeliveries: courier.totalDeliveries,
+          },
+        };
+      }),
   }),
 
   // ─── Couriers list (for picker in task card) ───────────────────────────────
@@ -104,51 +124,60 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        const all = await db.getAllCouriers();
-        return all
-          .filter((c) => c.isActive)
-          .map((c) => ({ id: c.id, name: c.name, username: c.username }));
+        return db.getAllCouriers();
       }),
   }),
 
-  // ─── Tasks ─────────────────────────────────────────────────────────────────
+  // ─── Tasks ────────────────────────────────────────────────────────────────────
   tasks: router({
     /**
-     * ALL tasks for a specific date — visible to every logged-in courier.
-     * Filters by createdAt date (ignores time).
+     * All tasks for a given date (visible to all couriers)
      */
     all: publicProcedure
-      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .input(z.object({
+        token: z.string(),
+        date: z.date().optional(),
+      }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        return db.getTasksByDateWithCourier(targetDate);
+
+        const date = input.date ?? new Date();
+        return db.getTasksByDateWithCourier(date);
       }),
 
     /**
-     * History: all tasks for a specific past date.
-     * Filters by createdAt date (ignores time).
+     * Task history (completed/cancelled tasks)
      */
     history: publicProcedure
-      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .input(z.object({
+        token: z.string(),
+        date: z.date().optional(),
+      }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        return db.getTasksByDateWithCourier(targetDate);
+
+        return db.getCompletedTasksWithCourier();
       }),
 
+    /**
+     * Get single task by ID
+     */
     byId: publicProcedure
-      .input(z.object({ token: z.string(), id: z.number() }))
+      .input(z.object({
+        token: z.string(),
+        id: z.number(),
+      }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+
         return db.getTaskWithCourierById(input.id);
       }),
 
     /**
-     * Assign a courier to a task (any courier can assign any courier).
+     * Assign courier to task
      */
     assignCourier: publicProcedure
       .input(z.object({
@@ -162,31 +191,24 @@ export const appRouter = router({
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
-        if (task.status === "completed" || task.status === "cancelled") {
-          throw new Error("Нельзя изменить завершённое задание");
-        }
 
-        const newStatus = input.courierId ? "assigned" : "pending";
+        // If assigning a courier, set status to assigned; if removing, keep current status
+        const newStatus = input.courierId ? "assigned" : task.status;
+
         await db.assignTaskToCourier(input.taskId, input.courierId, newStatus);
-        await db.addTaskStatusHistory({
-          taskId: input.taskId,
-          status: newStatus,
-          changedByUserId: null,
-          note: input.courierId
-            ? `Назначен курьер #${input.courierId}`
-            : "Курьер снят с задания",
-        });
         return { success: true };
       }),
 
     /**
-     * Set task status: in_progress | completed | cancelled
+     * Set task status: in_progress | completed | cancelled | assigned
+     * Auto-assigns current courier if task is unassigned and status is in_progress/completed
+     * Clears courier if reverting from in_progress/completed back to assigned
      */
     setStatus: publicProcedure
       .input(z.object({
         token: z.string(),
         taskId: z.number(),
-        status: z.enum(["pending", "assigned", "in_progress", "completed", "cancelled"]),
+        status: z.enum(["assigned", "in_progress", "completed", "cancelled"]),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -201,11 +223,25 @@ export const appRouter = router({
         }
 
         const extra: Record<string, unknown> = {};
+        let courierId = task.courierId;
+
+        // Auto-assign current courier if task is unassigned and status is being set to in_progress or completed
+        if (!task.courierId && (input.status === "in_progress" || input.status === "completed")) {
+          courierId = payload.courierId;
+          extra.courierId = courierId;
+        }
+
+        // Clear courier assignment if reverting from in_progress/completed back to assigned
+        if (input.status === "assigned" && task.status !== "assigned") {
+          courierId = null;
+          extra.courierId = null;
+        }
+
         if (input.status === "completed") {
           extra.completedAt = new Date();
           // Increment deliveries for assigned courier
-          if (task.courierId) {
-            await db.incrementCourierDeliveries(task.courierId);
+          if (courierId) {
+            await db.incrementCourierDeliveries(courierId);
           }
         } else if (input.status === "assigned") {
           // Clear completed timestamp when reverting
@@ -228,84 +264,18 @@ export const appRouter = router({
       }),
 
     /**
-     * Update places count for a task.
+     * Update urgency thresholds for current courier
      */
-    updatePlaces: publicProcedure
-      .input(z.object({
-        token: z.string(),
-        taskId: z.number(),
-        placesCount: z.number().int().min(1).max(999),
-      }))
-      .mutation(async ({ input }) => {
-        const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-
-        const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Задание не найдено");
-        if (task.status === "completed" || task.status === "cancelled") {
-          throw new Error("Нельзя изменить завершённое задание");
-        }
-
-        await db.updateTaskPlaces(input.taskId, input.placesCount);
-        return { success: true };
-      }),
-
-    /**
-     * Update delivery time interval for a task.
-     */
-    updateTimeInterval: publicProcedure
-      .input(z.object({
-        token: z.string(),
-        taskId: z.number(),
-        deliveryTimeFrom: z.string().nullable(),
-        deliveryTimeTo: z.string().nullable(),
-      }))
-      .mutation(async ({ input }) => {
-        const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-
-        const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Задание не найдено");
-        if (task.status === "completed" || task.status === "cancelled") {
-          throw new Error("Нельзя изменить завершённое задание");
-        }
-
-        await db.updateTaskTimeInterval(input.taskId, input.deliveryTimeFrom, input.deliveryTimeTo);
-        return { success: true };
-      }),
-
-    updateComments: publicProcedure
-      .input(z.object({
-        token: z.string(),
-        taskId: z.number(),
-        courierComments: z.string().min(1).max(1000),
-      }))
-      .mutation(async ({ input }) => {
-        const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-
-        const task = await db.getTaskById(input.taskId);
-        if (!task) throw new Error("Задание не найдено");
-        if (task.status === "completed" || task.status === "cancelled") {
-          throw new Error("Нельзя изменить завершённое задание");
-        }
-
-        await db.updateTaskCourierComments(input.taskId, input.courierComments);
-        return { success: true };
-      }),
-
     updateUrgencyThresholds: publicProcedure
       .input(z.object({
         token: z.string(),
-        urgencyThresholdOrange: z.number().min(1).max(1440),
-        urgencyThresholdRed: z.number().min(1).max(1440),
+        urgencyThresholdOrange: z.number().min(1),
+        urgencyThresholdRed: z.number().min(1),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        if (input.urgencyThresholdRed >= input.urgencyThresholdOrange) {
-          throw new Error("Красный порог должен быть меньше оранжевого");
-        }
+
         await db.updateCourierUrgencyThresholds(
           payload.courierId,
           input.urgencyThresholdOrange,
@@ -314,12 +284,49 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    seedDemoCourier: publicProcedure
-      .mutation(async () => {
-        const courierId = await db.seedDemoCourier();
-        return { courierId, username: "demo", password: "demo123" };
+    /**
+     * Update places count for a task
+     */
+    updatePlaces: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        taskId: z.number(),
+        placesCount: z.number().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+
+        const task = await db.getTaskById(input.taskId);
+        if (!task) throw new Error("Задание не найдено");
+
+        await db.updateTaskStatus(input.taskId, task.status, { placesCount: input.placesCount });
+        return { success: true };
       }),
 
+    /**
+     * Update courier comments for a task
+     */
+    updateComments: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        taskId: z.number(),
+        courierComments: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+
+        const task = await db.getTaskById(input.taskId);
+        if (!task) throw new Error("Задание не найдено");
+
+        await db.updateTaskCourierComments(input.taskId, input.courierComments);
+        return { success: true };
+      }),
+
+    /**
+     * Reschedule task to a different date
+     */
     rescheduleTask: publicProcedure
       .input(z.object({
         token: z.string(),
@@ -332,203 +339,369 @@ export const appRouter = router({
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
-        if (task.status === "completed" || task.status === "cancelled") {
-          throw new Error("Нельзя перенести завершённое задание");
-        }
 
-        const newCreatedAt = new Date(input.newDate);
-        newCreatedAt.setHours(task.createdAt.getHours(), task.createdAt.getMinutes(), task.createdAt.getSeconds());
-        
-        await db.updateTaskDate(input.taskId, newCreatedAt);
-        await db.addTaskStatusHistory({
-          taskId: input.taskId,
-          status: task.status,
-          changedByUserId: null,
-          note: `Задание перенесено на ${newCreatedAt.toLocaleDateString("ru-RU")}`,
-        });
+        const newDateStr = input.newDate.toISOString().split("T")[0];
+        await db.updateTaskDate(input.taskId, input.newDate);
         return { success: true };
       }),
 
+    /**
+     * Seed demo data (create demo tasks)
+     */
     seedDemo: publicProcedure
       .input(z.object({ token: z.string() }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        await db.seedDemoTasks();
-        await db.seedDemoHemotestPoints();
-        await db.seedDemoSberbankPoints();
-        return { success: true };
+
+        const today = new Date().toISOString().split("T")[0];
+        const demoTasks = [
+          {
+            status: "assigned" as const,
+            senderName: "ООО Основа движения",
+            senderAddress: "ул. Ленина, 5, Улан-Удэ",
+            senderPhone: "+7 (301) 234-5678",
+            recipientName: "Иван Петров",
+            recipientAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            deliveryAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            recipientPhone: "+7 (901) 234-5678",
+            deliveryTimeFrom: "09:00",
+            deliveryTimeTo: "11:00",
+            placesCount: 1,
+            taskType: "regular" as const,
+          },
+          {
+            status: "assigned" as const,
+            senderName: "HelloKorea Café",
+            senderAddress: "ул. Ленина, 15, Улан-Удэ",
+            senderPhone: "+7 (301) 234-5679",
+            recipientName: "Мария Сидорова",
+            recipientAddress: "ул. Красная, 8, кв. 20, Улан-Удэ",
+            deliveryAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            recipientPhone: "+7 (902) 345-6789",
+            deliveryTimeFrom: "14:00",
+            deliveryTimeTo: "16:00",
+            placesCount: 2,
+            taskType: "regular" as const,
+          },
+          {
+            status: "assigned" as const,
+            senderName: "Гемотест Лаборатория",
+            senderAddress: "ул. Октябрьская, 1, Улан-Удэ",
+            senderPhone: "+7 (301) 234-5680",
+            recipientName: "Клиника №1",
+            recipientAddress: "ул. Чайковского, 5, Улан-Удэ",
+            deliveryAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            recipientPhone: "+7 (301) 234-5681",
+            deliveryTimeFrom: "10:00",
+            deliveryTimeTo: "12:00",
+            placesCount: 1,
+            taskType: "regular" as const,
+          },
+          {
+            status: "assigned" as const,
+            senderName: "Сбербанк Отделение",
+            senderAddress: "ул. Ленина, 25, Улан-Удэ",
+            senderPhone: "+7 (301) 234-5682",
+            recipientName: "Офис ООО Компания",
+            recipientAddress: "ул. Пролетарская, 10, Улан-Удэ",
+            deliveryAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            recipientPhone: "+7 (301) 234-5683",
+            deliveryTimeFrom: "15:00",
+            deliveryTimeTo: "17:00",
+            placesCount: 3,
+            taskType: "regular" as const,
+          },
+          {
+            status: "assigned" as const,
+            senderName: "Склад Товаров",
+            senderAddress: "ул. Промышленная, 1, Улан-Удэ",
+            senderPhone: "+7 (301) 234-5684",
+            recipientName: "Магазин Электроники",
+            recipientAddress: "ул. Сухэ-Батора, 3, Улан-Удэ",
+            deliveryAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            recipientPhone: "+7 (301) 234-5685",
+            deliveryTimeFrom: "11:00",
+            deliveryTimeTo: "13:00",
+            placesCount: 5,
+            taskType: "regular" as const,
+          },
+          {
+            status: "assigned" as const,
+            senderName: "Гемотест Склад",
+            senderAddress: "ул. Промышленная, 5, Улан-Удэ",
+            senderPhone: "+7 (301) 234-5686",
+            recipientName: "Аптека Здоровье",
+            recipientAddress: "ул. Ленина, 30, Улан-Удэ",
+            deliveryAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            recipientPhone: "+7 (301) 234-5687",
+            deliveryTimeFrom: "12:00",
+            deliveryTimeTo: "14:00",
+            placesCount: 2,
+            taskType: "warehouse_pickup" as const,
+            items: JSON.stringify([
+              { category: "Орехи 200г", quantity: 10 },
+              { category: "Орехи 500г", quantity: 5 },
+              { category: "Масло кедровое", quantity: 3 },
+            ]),
+          },
+          {
+            status: "assigned" as const,
+            senderName: "Вызов курьера",
+            senderAddress: "ул. Советская, 50, офис 100, Улан-Удэ",
+            senderPhone: "+7 (903) 456-7890",
+            recipientName: "Документы",
+            recipientAddress: "Адрес отправки",
+            deliveryAddress: "ул. Советская, 12, кв. 45, Улан-Удэ",
+            recipientPhone: "",
+            deliveryTimeFrom: "13:00",
+            deliveryTimeTo: "14:00",
+            placesCount: 1,
+            taskType: "courier_call" as const,
+          },
+        ];
+
+        for (const taskData of demoTasks) {
+          await db.createTask(taskData);
+        }
+
+        // Seed demo mails
+        const demoMails = [
+          {
+            waybillNumber: "5376362735",
+            recipientName: "Иван Петров",
+            recipientPhone: "+7 (902) 123-4567",
+            deliveryAddress: "ул. Ленина, 15, кв. 10, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "4829156473",
+            recipientName: "Мария Сидорова",
+            recipientPhone: "+7 (903) 234-5678",
+            deliveryAddress: "ул. Советская, 25, кв. 5, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "7264918352",
+            recipientName: "Алексей Иванов",
+            recipientPhone: "+7 (904) 345-6789",
+            deliveryAddress: "ул. Чайковского, 8, офис 12, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "6183475926",
+            recipientName: "Ольга Кузнецова",
+            recipientPhone: "+7 (905) 456-7890",
+            deliveryAddress: "ул. Красная, 42, кв. 3, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "9547382615",
+            recipientName: "Дмитрий Волков",
+            recipientPhone: "+7 (906) 567-8901",
+            deliveryAddress: "пр. Октябрьской революции, 100, кв. 20, Улан-Удэ",
+            status: "not_delivered" as const,
+          },
+          {
+            waybillNumber: "3821647590",
+            recipientName: "Елена Морозова",
+            recipientPhone: "+7 (907) 678-9012",
+            deliveryAddress: "ул. Смолина, 18, кв. 7, Улан-Удэ",
+            status: "delivered" as const,
+            recipientSignature: "Е. Морозова",
+            deliveredAt: new Date(Date.now() - 3600000),
+          },
+          {
+            waybillNumber: "5729384601",
+            recipientName: "Сергей Орлов",
+            recipientPhone: "+7 (908) 789-0123",
+            deliveryAddress: "ул. Пролетарская, 55, кв. 12, Улан-Удэ",
+            status: "delivered" as const,
+            recipientSignature: "С. Орлов",
+            deliveredAt: new Date(Date.now() - 7200000),
+          },
+        ];
+
+        for (const mailData of demoMails) {
+          await db.createMail(mailData);
+        }
+
+        return { success: true, count: demoTasks.length + demoMails.length };
       }),
   }),
 
-  // ─── Hemotest Pickup Points ────────────────────────────────────────────────
+  // Hemotest pickup points
   hemotest: router({
+    points: publicProcedure
+      .query(async () => {
+        return await db.getAllHemotestPoints();
+      }),
+
+    create: publicProcedure
+      .input(z.object({
+        name: z.string(),
+        address: z.string(),
+        phone: z.string().optional(),
+        contactPerson: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return await db.createHemotestPoint(input);
+      }),
+
     pickupPoints: publicProcedure
-      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        return db.getHemotestPickupPointsForDate(payload.courierId, targetDate);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getHemotestPickupPointsForDate(payload.courierId, input.date);
+      }),
+
+    pickedCount: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getHemotestPickedCount(payload.courierId, input.date);
       }),
 
     togglePickup: publicProcedure
       .input(z.object({
         token: z.string(),
         pointId: z.number(),
-        date: z.date().optional(),
+        date: z.date(),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        await db.toggleHemotestPickup(payload.courierId, input.pointId, targetDate);
+        if (!payload) throw new Error("Invalid token");
+        await db.toggleHemotestPickup(payload.courierId, input.pointId, input.date);
         return { success: true };
-      }),
-
-    pickedCount: publicProcedure
-      .input(z.object({ token: z.string(), date: z.date().optional() }))
-      .query(async ({ input }) => {
-        const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        return db.getHemotestPickedCount(payload.courierId, targetDate);
       }),
   }),
 
-  // ─── Sberbank Pickup Points ────────────────────────────────────────────────
+  // Sberbank pickup points
   sberbank: router({
     pickupPoints: publicProcedure
-      .input(z.object({ token: z.string(), date: z.date().optional() }))
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        return db.getSberbankPickupPointsForDate(payload.courierId, targetDate);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getSberbankPickupPointsForDate(payload.courierId, input.date);
+      }),
+
+    pickedCount: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        date: z.date(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getSberbankPickedCount(payload.courierId, input.date);
       }),
 
     togglePickup: publicProcedure
       .input(z.object({
         token: z.string(),
         pointId: z.number(),
-        date: z.date().optional(),
+        date: z.date(),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        await db.toggleSberbankPickup(payload.courierId, input.pointId, targetDate);
+        if (!payload) throw new Error("Invalid token");
+        await db.toggleSberbankPickup(payload.courierId, input.pointId, input.date);
         return { success: true };
-      }),
-
-    pickedCount: publicProcedure
-      .input(z.object({ token: z.string(), date: z.date().optional() }))
-      .query(async ({ input }) => {
-        const payload = await verifyCourierToken(input.token);
-        if (!payload) throw new Error("Недействительный токен");
-        const targetDate = input.date || new Date();
-        return db.getSberbankPickedCount(payload.courierId, targetDate);
       }),
   }),
 
-  // ─── Manager API ─────────────────────────────────────────────────────────────
-  manager: router({
-    allTasks: protectedProcedure.query(async () => {
-      return db.getAllTasksWithCourier();
-    }),
+  // Mail router
+  mails: router({
+    all: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getNotDeliveredMails();
+      }),
 
-    allCouriers: protectedProcedure.query(async () => {
-      return db.getAllCouriers();
-    }),
-
-    createCourier: protectedProcedure
+    getByWaybill: publicProcedure
       .input(z.object({
-        name: z.string().min(1),
-        username: z.string().min(3).max(50),
-        password: z.string().min(4),
-        phone: z.string().optional(),
-        vehicleType: z.enum(["bicycle", "scooter", "car", "foot"]).default("scooter"),
+        token: z.string(),
+        waybillNumber: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        return await db.getMailByWaybill(input.waybillNumber);
+      }),
+
+    markDelivered: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        waybillNumber: z.string(),
+        recipientSignature: z.string(),
       }))
       .mutation(async ({ input }) => {
-        const existing = await db.getCourierByUsername(input.username);
-        if (existing) throw new Error("Логин уже занят");
-        const passwordHash = await bcrypt.hash(input.password, 10);
-        const id = await db.createCourier({
-          name: input.name,
-          username: input.username,
-          passwordHash,
-          phone: input.phone ?? null,
-          vehicleType: input.vehicleType,
-          isActive: true,
-          totalDeliveries: 0,
-        });
-        return { id };
-      }),
-
-    createTask: protectedProcedure
-      .input(z.object({
-        recipientName: z.string().min(1),
-        recipientPhone: z.string().optional(),
-        deliveryAddress: z.string().min(1),
-        deliveryCity: z.string().optional(),
-        recipientAddress: z.string().optional(),
-        senderName: z.string().optional(),
-        senderAddress: z.string().optional(),
-        packageDescription: z.string().optional(),
-        packageType: z.enum(["document", "small", "medium", "large", "fragile"]).default("small"),
-        specialInstructions: z.string().optional(),
-        estimatedMinutes: z.number().optional(),
-        placesCount: z.number().int().min(1).default(1),
-        deliveryTimeFrom: z.string().optional(),
-        deliveryTimeTo: z.string().optional(),
-        courierId: z.number().optional(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const taskId = await db.createTask({
-          createdByUserId: ctx.user.id,
-          courierId: input.courierId ?? null,
-          status: input.courierId ? "assigned" : "pending",
-          recipientName: input.recipientName,
-          recipientPhone: input.recipientPhone ?? null,
-          deliveryAddress: input.deliveryAddress,
-          deliveryCity: input.deliveryCity ?? null,
-          recipientAddress: input.recipientAddress ?? null,
-          senderName: input.senderName ?? null,
-          senderAddress: input.senderAddress ?? null,
-          packageDescription: input.packageDescription ?? null,
-          packageType: input.packageType,
-          specialInstructions: input.specialInstructions ?? null,
-          estimatedMinutes: input.estimatedMinutes ?? null,
-          placesCount: input.placesCount,
-          deliveryTimeFrom: input.deliveryTimeFrom ?? null,
-          deliveryTimeTo: input.deliveryTimeTo ?? null,
-        });
-        await db.addTaskStatusHistory({
-          taskId,
-          status: input.courierId ? "assigned" : "pending",
-          changedByUserId: ctx.user.id,
-          note: "Задание создано менеджером",
-        });
-        return { taskId };
-      }),
-
-    assignTask: protectedProcedure
-      .input(z.object({ taskId: z.number(), courierId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        await db.assignTaskToCourier(input.taskId, input.courierId, "assigned");
-        await db.addTaskStatusHistory({
-          taskId: input.taskId,
-          status: "assigned",
-          changedByUserId: ctx.user.id,
-          note: `Задание назначено курьеру #${input.courierId}`,
-        });
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.updateMailDelivery(input.waybillNumber, input.recipientSignature, payload.courierId);
         return { success: true };
       }),
+  }),
 
-    taskHistory: protectedProcedure
-      .input(z.object({ taskId: z.number() }))
+  // ─── Clients router ──────────────────────────────────────────────────────────
+  clients: router({
+    all: publicProcedure.query(async () => {
+      return await db.getAllClients();
+    }),
+    
+    byId: publicProcedure
+      .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
-        return db.getTaskStatusHistory(input.taskId);
+        return await db.getClientById(input.id);
+      }),
+    
+    create: publicProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        address: z.string().min(1),
+        contactPerson: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await db.createClient(input);
+        return { id, success: true };
+      }),
+    
+    update: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        address: z.string().min(1).optional(),
+        contactPerson: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await db.updateClient(id, data);
+        return { success: true };
+      }),
+    
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteClient(input.id);
+        return { success: true };
       }),
   }),
 });

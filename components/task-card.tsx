@@ -1,5 +1,6 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBadge } from "@/components/status-badge";
+import { CourierBadge } from "@/components/courier-badge";
 import { type TaskStatus } from "@/shared/types";
 import { useColors } from "@/hooks/use-colors";
 import { calculateUrgencyFromTimeString } from "@/lib/task-sorting";
@@ -7,11 +8,10 @@ import { calculateUrgencyFromTimeString } from "@/lib/task-sorting";
 // ─── Status border colors (based on status) ────────────────────────────────
 
 const STATUS_BORDER_COLORS: Record<TaskStatus, string> = {
-  pending:     "#9CA3AF", // grey
-  assigned:    "#3B82F6", // blue
-  in_progress: "#F97316", // orange
-  completed:   "#22C55E", // green
-  cancelled:   "#EF4444", // red
+  assigned:    "#3B82F6", // blue (Новая)
+  in_progress: "#F97316", // orange (В работе)
+  completed:   "#22C55E", // green (Выполнено)
+  cancelled:   "#EF4444", // red (Отменена)
 };
 
 // ─── Courier color palette ────────────────────────────────────────────────────
@@ -72,7 +72,11 @@ interface TaskCardProps {
 export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
   const urgency = calculateUrgencyFromTimeString(task.deliveryTimeTo);
-  const borderColor = urgency === "red" ? "#EF4444" : (urgency === "orange" ? "#FF6D00" : STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
+  // Red dot disappears only when task is completed or cancelled
+  const showUrgencyDot = urgency === "red" && task.status !== "completed" && task.status !== "cancelled";
+  // Border color depends ONLY on status, not on urgency or courier
+  const borderColor = STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF";
+  // Courier color for badge display
   const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
@@ -104,8 +108,8 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
 
   return (
     <View style={{ position: "relative" }}>
-      {/* Red dot for urgent tasks */}
-      {urgency === "red" && (
+      {/* Red dot for urgent tasks (hidden when completed) */}
+      {showUrgencyDot && (
         <View
           style={{
             position: "absolute",
@@ -225,18 +229,16 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
       <View style={styles.bottomRow}>
         <StatusBadge status={task.status} size="sm" />
         
-        {task.courierName && (
-          <View style={styles.courierBadge}>
-            <View
-              style={[
-                styles.courierDot,
-                { backgroundColor: courierColor },
-              ]}
-            />
-            <Text style={[styles.courierText, { color: colors.muted }]}>
-              {shortName(task.courierName)}
-            </Text>
-          </View>
+        {task.courierName ? (
+          <CourierBadge
+            name={shortName(task.courierName)}
+            color={courierColor}
+            size="sm"
+          />
+        ) : (
+          <Text style={[styles.courierWaitingText, { color: colors.muted }]}>
+            В ожидании
+          </Text>
         )}
         
         {task.placesCount != null && (
@@ -325,20 +327,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 6,
   },
-  courierBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  courierDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  courierText: {
-    fontSize: 11,
-    lineHeight: 14,
-  },
+
   itemsContainer: {
     marginTop: 8,
     paddingLeft: 4,
@@ -352,5 +341,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     marginLeft: "auto",
+  },
+  courierWaitingText: {
+    fontSize: 12,
+    fontWeight: "500",
+    lineHeight: 16,
   },
 });

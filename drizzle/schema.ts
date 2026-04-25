@@ -57,12 +57,11 @@ export const tasks = mysqlTable("tasks", {
   /** Assigned courier ID (null = unassigned) */
   courierId: int("courierId"),
   status: mysqlEnum("status", [
-    "pending",     // Waiting to be assigned
     "assigned",    // Assigned to courier, waiting for pickup
     "in_progress", // Courier picked up the package — "Я заберу"
     "completed",   // Delivery confirmed — "Доставлено"
     "cancelled",   // Manager cancelled the task
-  ]).default("pending").notNull(),
+  ]).default("assigned").notNull(),
   /** Task type: regular delivery, warehouse pickup, or courier call */
   taskType: mysqlEnum("taskType", ["regular", "warehouse_pickup", "courier_call"]).default("regular").notNull(),
   /** Recipient information */
@@ -186,3 +185,72 @@ export const sberbankPickups = mysqlTable("sberbankPickups", {
 
 export type SberbankPickup = typeof sberbankPickups.$inferSelect;
 export type InsertSberbankPickup = typeof sberbankPickups.$inferInsert;
+
+
+/**
+ * Mail/Letters — tracks mail deliveries for couriers
+ */
+export const mails = mysqlTable("mails", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Waybill number — unique identifier for the mail */
+  waybillNumber: varchar("waybillNumber", { length: 50 }).notNull().unique(),
+  /** Recipient name */
+  recipientName: varchar("recipientName", { length: 255 }),
+  /** Recipient phone number */
+  recipientPhone: varchar("recipientPhone", { length: 20 }).notNull(),
+  /** Delivery address */
+  deliveryAddress: text("deliveryAddress").notNull(),
+  /** Status: not_delivered or delivered */
+  status: mysqlEnum("mailStatus", ["not_delivered", "delivered"]).default("not_delivered").notNull(),
+  /** Recipient signature (text input by courier) */
+  recipientSignature: text("recipientSignature"),
+  /** Delivery date/time */
+  deliveredAt: timestamp("deliveredAt"),
+  /** Courier who delivered it */
+  courierId: int("courierId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Mail = typeof mails.$inferSelect;
+export type InsertMail = typeof mails.$inferInsert;
+
+/**
+ * Sberbank pickup schedule — templates for which points to pick up on each day of the week (Mon-Fri)
+ * This allows managers to set recurring schedules like "always pick up points 1,3,5 on Monday"
+ */
+export const sberbankPickupSchedule = mysqlTable("sberbankPickupSchedule", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Day of week: 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday */
+  dayOfWeek: int("dayOfWeek").notNull(), // 1-5 for Mon-Fri
+  /** Pickup point ID */
+  pointId: int("pointId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SberbankPickupSchedule = typeof sberbankPickupSchedule.$inferSelect;
+export type InsertSberbankPickupSchedule = typeof sberbankPickupSchedule.$inferInsert;
+
+/**
+ * Clients table — stores client information for creating regular delivery tasks
+ * Clients like "Основа движения", "Hello Korea", etc.
+ */
+export const clients = mysqlTable("clients", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Client name (required) */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Client address (required) - used as sender address for tasks */
+  address: text("address").notNull(),
+  /** Contact person name (optional) */
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  /** Phone number (optional) */
+  phone: varchar("phone", { length: 20 }),
+  /** Email (optional) */
+  email: varchar("email", { length: 320 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Client = typeof clients.$inferSelect;
+export type InsertClient = typeof clients.$inferInsert;

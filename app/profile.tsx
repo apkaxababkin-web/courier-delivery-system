@@ -3,17 +3,15 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/use-colors";
-import { useCourierAuth } from "@/lib/courier-auth";
+import { useCourierAuth, COURIER_COLORS, DEFAULT_COURIER_COLOR } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
-import { useFontSize, type FontSizeScale } from "@/lib/font-size-provider";
 
 export default function ProfileModal() {
   const router = useRouter();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { courier, logout } = useCourierAuth();
+  const { courier, logout, updateCourierColor } = useCourierAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
-  const { fontSizeScale, setFontSizeScale } = useFontSize();
 
   const isDarkMode = colorScheme === "dark";
 
@@ -161,7 +159,7 @@ export default function ProfileModal() {
             />
           </View>
 
-          {/* Font Size Selector */}
+          {/* Courier Color Picker */}
           <View
             style={{
               backgroundColor: colors.surface,
@@ -172,37 +170,28 @@ export default function ProfileModal() {
             }}
           >
             <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground, marginBottom: 12 }}>
-              Размер шрифта
+              Цвет рамки курьера
             </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              {(["normal", "large", "xlarge"] as FontSizeScale[]).map((scale) => (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {COURIER_COLORS.map((color) => (
                 <Pressable
-                  key={scale}
-                  onPress={() => setFontSizeScale(scale)}
+                  key={color}
+                  onPress={() => updateCourierColor(color)}
                   style={({ pressed }) => ({
-                    flex: 1,
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    backgroundColor:
-                      fontSizeScale === scale ? colors.primary : colors.border,
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    backgroundColor: color,
+                    borderWidth: courier?.courierColor === color ? 3 : 0,
+                    borderColor: colors.foreground,
                     opacity: pressed ? 0.8 : 1,
                   })}
-                >
-                  <Text
-                    style={{
-                      textAlign: "center",
-                      fontSize: scale === "normal" ? 12 : scale === "large" ? 14 : 16,
-                      fontWeight: "600",
-                      color: fontSizeScale === scale ? "white" : colors.foreground,
-                    }}
-                  >
-                    {scale === "normal" ? "Обычный" : scale === "large" ? "Большой" : "Очень большой"}
-                  </Text>
-                </Pressable>
+                />
               ))}
             </View>
           </View>
+
+
         </View>
 
         {/* Spacer */}

@@ -4,11 +4,12 @@ export type UrgencyLevel = "normal" | "orange" | "red";
 
 /**
  * Calculate urgency level based on remaining time until deliveryTimeTo
+ * Red dot appears when ≤1 hour (60 minutes) remaining
  */
 export function calculateUrgency(
   task: Task,
   urgencyThresholdOrange: number = 60,
-  urgencyThresholdRed: number = 30
+  urgencyThresholdRed: number = 60
 ): UrgencyLevel {
   if (!task.deliveryTimeTo) return "normal";
 
@@ -24,11 +25,12 @@ export function calculateUrgency(
 /**
  * Calculate urgency level from time string (HH:MM format)
  * Used for TaskCard display
+ * Red dot appears when ≤1 hour (60 minutes) remaining
  */
 export function calculateUrgencyFromTimeString(
   timeString: string | null | undefined,
   urgencyThresholdOrange: number = 60,
-  urgencyThresholdRed: number = 30
+  urgencyThresholdRed: number = 60
 ): UrgencyLevel {
   if (!timeString) return "normal";
 
@@ -69,33 +71,42 @@ export function getUrgencyColor(urgency: UrgencyLevel): string {
 
 /**
  * Status priority for sorting (lower number = higher priority)
+ * New priority: Urgent (red dot, any status) > assigned > in_progress > completed > cancelled
  */
 const STATUS_PRIORITY: Record<TaskStatus, number> = {
-  pending: 1,
-  assigned: 1,
-  in_progress: 2,
-  completed: 3,
-  cancelled: 4,
+  assigned: 1,      // Новая
+  in_progress: 2,   // В работе
+  completed: 3,     // Выполнено
+  cancelled: 4,     // Отменена
 };
 
 /**
- * Sort tasks by status and urgency
- * Priority: pending/assigned (by urgency) → in_progress (by urgency) → completed → cancelled
+ * Sort tasks by urgency first, then status, then delivery time
+ * Priority: Urgent (red dot) > assigned > in_progress > completed > cancelled
  */
 export function sortTasks(
   tasks: Task[],
   urgencyThresholdOrange: number = 60,
-  urgencyThresholdRed: number = 30
+  urgencyThresholdRed: number = 60
 ): Task[] {
   return [...tasks].sort((a, b) => {
-    // First, sort by status priority
+    // Calculate urgency using correct thresholds (both 60 minutes for red dot)
+    const urgencyA = calculateUrgency(a, urgencyThresholdOrange, urgencyThresholdRed);
+    const urgencyB = calculateUrgency(b, urgencyThresholdOrange, urgencyThresholdRed);
+
+    // Prioritize red urgent tasks first (regardless of status)
+    const isUrgentA = urgencyA === "red";
+    const isUrgentB = urgencyB === "red";
+
+    if (isUrgentA !== isUrgentB) {
+      return isUrgentA ? -1 : 1; // Urgent tasks first
+    }
+
+    // Then, sort by status priority
     const statusDiff = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
     if (statusDiff !== 0) return statusDiff;
 
     // Within same status, sort by urgency (more urgent first)
-    const urgencyA = calculateUrgency(a, urgencyThresholdOrange, urgencyThresholdRed);
-    const urgencyB = calculateUrgency(b, urgencyThresholdOrange, urgencyThresholdRed);
-
     const urgencyOrder: Record<UrgencyLevel, number> = { red: 0, orange: 1, normal: 2 };
     const urgencyDiff = urgencyOrder[urgencyA] - urgencyOrder[urgencyB];
     if (urgencyDiff !== 0) return urgencyDiff;

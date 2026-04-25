@@ -1,24 +1,23 @@
 import React from "react";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCourierAuth } from "@/lib/courier-auth";
 import type { Mail } from "@/shared/types";
 
-export default function LettersScreen() {
+export default function MailsScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { token, loading: authLoading } = useCourierAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [token] = useState("demo_token"); // TODO: Get from auth context
 
   // Fetch all undelivered mails
   const { data: mails = [], isLoading, error, refetch } = trpc.mails.all.useQuery(
-    { token: token || "" },
+    { token },
     { enabled: !!token }
   );
 
@@ -31,7 +30,10 @@ export default function LettersScreen() {
     },
   });
 
-
+  // Debug logging
+  useEffect(() => {
+    console.log('[MailsScreen] Mails loaded:', mails.length, 'isLoading:', isLoading, 'error:', error);
+  }, [mails, isLoading, error]);
 
   // Filter mails by search query (waybill number)
   const filteredMails = useMemo(() => {
@@ -68,9 +70,9 @@ export default function LettersScreen() {
     [router]
   );
 
-  const renderMailItem = (mail: Mail) => (
+  const renderMailItem = ({ item }: { item: Mail }) => (
     <Pressable
-      onPress={() => handleMailPress(mail)}
+      onPress={() => handleMailPress(item)}
       style={({ pressed }) => [
         styles.mailCard,
         {
@@ -82,13 +84,13 @@ export default function LettersScreen() {
     >
       <View style={styles.mailContent}>
         <Text style={[styles.waybill, { color: colors.foreground }]}>
-          {mail.waybillNumber}
+          {item.waybillNumber}
         </Text>
         <Text style={[styles.address, { color: colors.muted }]} numberOfLines={2}>
-          {mail.deliveryAddress}
+          {item.deliveryAddress}
         </Text>
         <Text style={[styles.phone, { color: colors.muted }]}>
-          {mail.recipientPhone}
+          {item.recipientPhone}
         </Text>
       </View>
     </Pressable>
@@ -101,29 +103,6 @@ export default function LettersScreen() {
       </Text>
     </View>
   );
-
-  // Show loading state while auth is loading
-  if (authLoading) {
-    return (
-      <ScreenContainer className="p-4" edges={["top", "left", "right"]}>
-        <View style={styles.centerContainer}>
-          <Text style={{ color: colors.muted }}>Загрузка...</Text>
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  // Show error if no token
-  if (!token) {
-    return (
-      <ScreenContainer className="p-4" edges={["top", "left", "right"]}>
-        <View style={styles.centerContainer}>
-          <Text style={{ color: colors.error }}>Ошибка аутентификации</Text>
-          <Text style={{ color: colors.muted, marginTop: 8 }}>Пожалуйста, войдите снова</Text>
-        </View>
-      </ScreenContainer>
-    );
-  }
 
   return (
     <ScreenContainer className="p-4" edges={["top", "left", "right"]}>
@@ -189,9 +168,12 @@ export default function LettersScreen() {
         </View>
       ) : (
         <FlatList
-          data={notDeliveredMails.concat(deliveredMails)}
+          data={[
+            ...notDeliveredMails.map((m) => ({ ...m, _section: "not_delivered" })),
+            ...deliveredMails.map((m) => ({ ...m, _section: "delivered" })),
+          ]}
           keyExtractor={(item) => item.waybillNumber}
-          renderItem={({ item }) => renderMailItem(item)}
+          renderItem={({ item }) => renderMailItem(item as any)}
           ListHeaderComponent={
             notDeliveredMails.length > 0
               ? renderSectionHeader("Не доставлены", notDeliveredMails.length)

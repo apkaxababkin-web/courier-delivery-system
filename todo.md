@@ -296,3 +296,49 @@
 - [x] Red dot positioned absolutely, doesn't interfere with task info
 - [x] Sorting logic verified - urgent tasks appear first
 - [x] Fixed light mode tab bar colors (use dynamic theme colors instead of hardcoded)
+
+## Session 7: Task Status Overhaul & Urgency Indicators
+- [ ] Remove 'pending' status from shared types (replace with unassigned state)
+- [ ] Update TASK_STATUS_META to remove 'pending' entry
+- [ ] Change 'assigned' label to 'Новая' (New)
+- [ ] Display 'В ожидании' when courierName is null/empty (unassigned state)
+- [ ] Remove 'Urgent' text label from task cards (keep only red dot)
+- [ ] Red urgency dot disappears when task status is 'completed'
+- [ ] Implement new sorting priority: Urgent (red dot, New/In Progress) > New > In Progress > Completed > Cancelled
+- [ ] Auto-assign current courier when toggling 'В работе' or 'Выполнено' on unassigned task
+- [ ] Clear courier assignment when toggling back to 'assigned' from unassigned task
+- [ ] Update status colors: New (Blue #3B82F6), In Progress (Orange #F97316), Completed (Green #22C55E), Cancelled (Red #EF4444)
+- [ ] Update server setStatus to auto-assign courier when task is unassigned
+- [ ] Update server setStatus to clear courier when reverting from in_progress/completed
+- [ ] Update tests to reflect new status structure
+
+
+## Session 7: Task Status Overhaul & Urgency Indicators
+- [x] Remove 'pending' status from TaskStatus type
+- [x] Update TASK_STATUS_META with new labels and colors
+- [x] Implement new sorting priority (Urgent > New > In Progress > Completed > Cancelled)
+- [x] Hide urgency dot when task is completed
+- [x] Show 'В ожидании' when courier is unassigned
+- [x] Auto-assign current courier when toggling in_progress/completed on unassigned tasks
+- [x] Clear courier when reverting from in_progress/completed back to assigned
+- [x] Update server setStatus to handle auto-assignment logic
+- [x] Fix TypeScript errors in routers.ts (bcrypt import, Date types)
+- [x] Remove all 'pending' status references from db.ts and schema
+- [x] Apply courier color to left border of task card
+- [x] Test all status transitions and urgency indicators
+- [x] Verify sorting works correctly with new priority
+
+
+## Session 8: Mail Delivery Feature (Письма)
+- [x] Update database schema to add mail/letters table
+- [x] Create mail list screen with search by waybill number
+- [x] Implement dynamic filtering with digit-by-digit search
+- [x] Create mail details screen with delivery confirmation
+- [x] Add recipient signature field (text input)
+- [x] Add date/time picker with system defaults
+- [x] Add phone call button for recipient phone
+- [x] Implement server API for mail management (mails.all, mails.getByWaybill, mails.markDelivered)
+- [x] Add demo mail data (7 sample mails with addresses and phone numbers)
+- [ ] Add mail tab to bottom navigation
+- [ ] Test all mail delivery flows
+- [ ] Verify data syncs to server correctly

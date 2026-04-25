@@ -9,7 +9,6 @@ export * from "./_core/errors";
 // ─── Courier App Shared Types ─────────────────────────────────────────────────
 
 export type TaskStatus =
-  | "pending"
   | "assigned"
   | "in_progress"
   | "completed"
@@ -23,11 +22,10 @@ export interface TaskStatusMeta {
 }
 
 export const TASK_STATUS_META: Record<TaskStatus, TaskStatusMeta> = {
-  pending:     { label: "Ожидает",   color: "#6B7280" },
-  assigned:    { label: "Новое",     color: "#1A73E8" },
-  in_progress: { label: "В работе",  color: "#FF6D00" },
-  completed:   { label: "Выполнено", color: "#34A853" },
-  cancelled:   { label: "Отменено",  color: "#9CA3AF" },
+  assigned:    { label: "Новая",     color: "#3B82F6" },
+  in_progress: { label: "В работе",  color: "#F97316" },
+  completed:   { label: "Выполнено", color: "#22C55E" },
+  cancelled:   { label: "Отменено",  color: "#EF4444" },
 };
 
 export const PACKAGE_TYPE_LABELS: Record<PackageType, string> = {
@@ -36,4 +34,17 @@ export const PACKAGE_TYPE_LABELS: Record<PackageType, string> = {
   medium:   "Средняя посылка",
   large:    "Крупная посылка",
   fragile:  "Хрупкий груз",
+};
+
+
+export type MailStatus = "not_delivered" | "delivered";
+
+export interface MailStatusMeta {
+  label: string;
+  color: string;
+}
+
+export const MAIL_STATUS_META: Record<MailStatus, MailStatusMeta> = {
+  not_delivered: { label: "Не доставлено", color: "#3B82F6" },
+  delivered:     { label: "Доставлено",    color: "#22C55E" },
 };

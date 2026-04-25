@@ -67,17 +67,21 @@ export default function TaskListScreen() {
     [filteredTasks, courier?.urgencyThresholdOrange, courier?.urgencyThresholdRed]
   );
 
-  // Count tasks assigned to current courier
+  // Count only incomplete tasks assigned to current courier (exclude completed and cancelled)
   const myTasksCount = useMemo(() => {
     if (!tasksData || !courier?.name) return 0;
-    return tasksData.filter((task) => task.courierName === courier.name).length;
+    return tasksData.filter(
+      (task) => task.courierName === courier.name && task.status !== "completed" && task.status !== "cancelled"
+    ).length;
   }, [tasksData, courier?.name]);
 
   // Refetch tasks when returning to screen
   useFocusEffect(
     useCallback(() => {
-      refetch();
-    }, [refetch])
+      if (token) {
+        refetch();
+      }
+    }, [refetch, token])
   );
 
   const formatDate = (date: Date) => {

@@ -10,6 +10,9 @@ import {
   hemotestPickups,
   sberbankPickupPoints,
   sberbankPickups,
+  sberbankPickupSchedule,
+  mails,
+  clients,
   type Courier,
   type InsertCourier,
   type InsertTask,
@@ -20,11 +23,72 @@ import {
   type HemotestPickup,
   type SberbankPickupPoint,
   type SberbankPickup,
+  type SberbankPickupSchedule,
+  type InsertSberbankPickupSchedule,
+  type Mail,
+  type InsertMail,
+  type Client,
+  type InsertClient,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 // Re-export drizzle operators for use in this file
 const operators = { eq, and, gte, lte, lt, inArray, desc, sql };
+
+// ─── Mail helpers ─────────────────────────────────────────────────────────────
+
+export async function getAllMails(): Promise<Mail[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(mails).orderBy(desc(mails.createdAt));
+}
+
+export async function getMailByWaybill(waybillNumber: string): Promise<Mail | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(mails).where(eq(mails.waybillNumber, waybillNumber));
+  return result[0];
+}
+
+export async function getNotDeliveredMails(): Promise<Mail[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(mails).where(eq(mails.status, "not_delivered")).orderBy(desc(mails.createdAt));
+}
+
+export async function createMail(mail: InsertMail): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(mails).values(mail);
+  const result = await db.select().from(mails).where(eq(mails.waybillNumber, mail.waybillNumber));
+  return result[0];
+}
+
+export async function updateMailDelivery(
+  waybillNumber: string,
+  recipientSignature: string,
+  courierId: number
+): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(mails)
+    .set({
+      status: "delivered",
+      recipientSignature,
+      courierId,
+      deliveredAt: new Date(),
+    })
+    .where(eq(mails.waybillNumber, waybillNumber));
+  const result = await db.select().from(mails).where(eq(mails.waybillNumber, waybillNumber));
+  return result[0];
+}
+
+export async function bulkCreateMails(mailList: InsertMail[]): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(mails).values(mailList);
+}
 
 // ─── DB connection ─────────────────────────────────────────────────────────────
 
@@ -154,7 +218,7 @@ export async function getAllTasksWithCourier(): Promise<TaskWithCourier[]> {
   const allTasks = await db
     .select()
     .from(tasks)
-    .where(inArray(tasks.status, ["pending", "assigned", "in_progress"]))
+    .where(inArray(tasks.status, ["assigned", "in_progress"]))
     .orderBy(desc(tasks.createdAt));
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
   const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
@@ -304,7 +368,7 @@ export async function getTaskStatusHistory(taskId: number) {
 
 // ─── Seed helpers ─────────────────────────────────────────────────────────────
 
-/** Seed demo tasks without assigning to any courier (pending state) */
+/** Seed demo tasks without assigning to any courier (assigned state) */
 export async function seedDemoTasks(): Promise<void> {
   const db = await getDb();
   if (!db) return;
@@ -330,7 +394,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 1: Основа движения (просп. 50 лет Октября, 5) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "Основа движения",
       senderAddress: "просп. 50 лет Октября, 5, Улан-Удэ",
       senderPhone: "+7 (914) 111-22-33",
@@ -352,7 +416,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 2:       // Заявка 4: Основа движения (ул. Чайковского, 33) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "Основа движения",
       senderAddress: "ул. Терешковой, 24, Улан-Удэ",
       senderPhone: "+7 (914) 111-22-33",
@@ -374,7 +438,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 3: HelloKorea (ул. Терешковой, 12) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "HelloKorea",
       senderAddress: "ул. Терешковой, 12, Улан-Удэ",
       senderPhone: "+7 (914) 333-44-55",
@@ -394,7 +458,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 4: HelloKorea (ул. Гагарина, 39) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "HelloKorea",
       senderAddress: "ул. Гагарина, 39, Улан-Удэ",
       senderPhone: "+7 (914) 333-44-55",
@@ -416,7 +480,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 3:      // Заявка 5: Основа движения (ул. Калашникова, 17) → клиент
       courierId: null,
-      status: "pending",
+      status: "assigned",
       senderName: "Основа движения",
       senderAddress: "ул. Калашникова, 17, Улан-Удэ",
       senderPhone: "+7 (914) 111-22-33",
@@ -438,7 +502,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 6: Warehouse Pickup - Доставка кедровых орехов со склада
       courierId: null,
-      status: "pending",
+      status: "assigned",
       taskType: "warehouse_pickup",
       senderName: "Склад Кедровых Орехов",
       senderAddress: "ул. Промышленная, 5, Улан-Удэ",
@@ -461,7 +525,7 @@ export async function seedDemoTasks(): Promise<void> {
     {
       // Заявка 7: Courier Call - Вызов курьера для сбора писем
       courierId: null,
-      status: "pending",
+      status: "assigned",
       taskType: "courier_call",
       senderName: "ООО 'Экспресс Логистика'",
       senderAddress: "ул. Советская, 42, офис 301, Улан-Удэ",
@@ -826,4 +890,203 @@ export async function seedDemoSberbankPoints(): Promise<void> {
   for (const point of demoPoints) {
     await db.insert(sberbankPickupPoints).values(point);
   }
+}
+
+
+// ─── Client helpers ──────────────────────────────────────────────────────────
+
+export async function getAllClients(): Promise<Client[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(clients).orderBy(desc(clients.createdAt));
+}
+
+export async function getClientById(id: number): Promise<Client | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
+  return result[0] || null;
+}
+
+export async function createClient(data: InsertClient): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not initialized");
+  const result = await db.insert(clients).values(data);
+  return result[0].insertId;
+}
+
+export async function updateClient(id: number, data: Partial<InsertClient>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not initialized");
+  await db.update(clients).set(data).where(eq(clients.id, id));
+}
+
+export async function deleteClient(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not initialized");
+  await db.delete(clients).where(eq(clients.id, id));
+}
+
+
+// ─── Sberbank Schedule Management ─────────────────────────────────────────────
+
+/**
+ * Get all points scheduled for a specific day of week
+ * @param dayOfWeek 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday
+ */
+export async function getSberbankScheduleForDay(dayOfWeek: number): Promise<SberbankPickupPoint[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get point IDs for this day
+  const scheduleEntries = await db
+    .select({ pointId: sberbankPickupSchedule.pointId })
+    .from(sberbankPickupSchedule)
+    .where(eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek));
+
+  if (scheduleEntries.length === 0) return [];
+
+  const pointIds = scheduleEntries.map(e => e.pointId);
+
+  // Get actual point data
+  return await db
+    .select()
+    .from(sberbankPickupPoints)
+    .where(inArray(sberbankPickupPoints.id, pointIds))
+    .orderBy(sberbankPickupPoints.name);
+}
+
+/**
+ * Set points for a specific day of week (replaces existing schedule)
+ */
+export async function setSberbankScheduleForDay(dayOfWeek: number, pointIds: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Delete existing schedule for this day
+  await db
+    .delete(sberbankPickupSchedule)
+    .where(eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek));
+
+  // Insert new schedule entries
+  if (pointIds.length > 0) {
+    await db.insert(sberbankPickupSchedule).values(
+      pointIds.map(pointId => ({
+        dayOfWeek,
+        pointId,
+      }))
+    );
+  }
+}
+
+/**
+ * Add a single point to a day's schedule
+ */
+export async function addPointToSberbankSchedule(dayOfWeek: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check if already exists
+  const existing = await db
+    .select()
+    .from(sberbankPickupSchedule)
+    .where(and(
+      eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek),
+      eq(sberbankPickupSchedule.pointId, pointId)
+    ))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(sberbankPickupSchedule).values({
+      dayOfWeek,
+      pointId,
+    });
+  }
+}
+
+/**
+ * Remove a single point from a day's schedule
+ */
+export async function removePointFromSberbankSchedule(dayOfWeek: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .delete(sberbankPickupSchedule)
+    .where(and(
+      eq(sberbankPickupSchedule.dayOfWeek, dayOfWeek),
+      eq(sberbankPickupSchedule.pointId, pointId)
+    ));
+}
+
+// ─── Hemotest and Sberbank Point Management ───────────────────────────────────
+
+/**
+ * Create a new Hemotest pickup point
+ */
+export async function createHemotestPoint(data: {
+  name: string;
+  address: string;
+  phone?: string;
+  contactPerson?: string;
+}): Promise<HemotestPickupPoint> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(hemotestPickupPoints).values(data);
+  const id = result[0]?.insertId;
+  if (!id) throw new Error("Failed to create point");
+
+  const point = await db
+    .select()
+    .from(hemotestPickupPoints)
+    .where(eq(hemotestPickupPoints.id, id))
+    .limit(1);
+
+  return point[0]!;
+}
+
+/**
+ * Get all Hemotest pickup points
+ */
+export async function getAllHemotestPoints(): Promise<HemotestPickupPoint[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(hemotestPickupPoints).orderBy(hemotestPickupPoints.name);
+}
+
+/**
+ * Create a new Sberbank pickup point
+ */
+export async function createSberbankPoint(data: {
+  name: string;
+  address: string;
+  phone?: string;
+  contactPerson?: string;
+}): Promise<SberbankPickupPoint> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(sberbankPickupPoints).values(data);
+  const id = result[0]?.insertId;
+  if (!id) throw new Error("Failed to create point");
+
+  const point = await db
+    .select()
+    .from(sberbankPickupPoints)
+    .where(eq(sberbankPickupPoints.id, id))
+    .limit(1);
+
+  return point[0]!;
+}
+
+/**
+ * Get all Sberbank pickup points
+ */
+export async function getAllSberbankPoints(): Promise<SberbankPickupPoint[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(sberbankPickupPoints).orderBy(sberbankPickupPoints.name);
 }
