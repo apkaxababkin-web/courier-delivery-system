@@ -120,69 +120,6 @@
       "when": 1776578876169,
       "tag": "0016_dapper_leo",
       "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "5",
-      "when": 1776614991929,
-      "tag": "0017_flashy_molten_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "5",
-      "when": 1776616523989,
-      "tag": "0018_bizarre_bromley",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "5",
-      "when": 1776644482538,
-      "tag": "0019_magenta_loa",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "5",
-      "when": 1776645480659,
-      "tag": "0020_striped_dragon_lord",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "5",
-      "when": 1776759946364,
-      "tag": "0021_light_alex_wilder",
-      "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "5",
-      "when": 1776767438744,
-      "tag": "0022_volatile_maelstrom",
-      "breakpoints": true
-    },
-    {
-      "idx": 23,
-      "version": "5",
-      "when": 1776858233985,
-      "tag": "0023_gorgeous_vertigo",
-      "breakpoints": true
-    },
-    {
-      "idx": 24,
-      "version": "5",
-      "when": 1776862773609,
-      "tag": "0024_oval_edwin_jarvis",
-      "breakpoints": true
-    },
-    {
-      "idx": 25,
-      "version": "5",
-      "when": 1776866224761,
-      "tag": "0025_far_daimon_hellstrom",
-      "breakpoints": true
     }
   ]
 }

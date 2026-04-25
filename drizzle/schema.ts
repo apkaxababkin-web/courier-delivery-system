@@ -40,8 +40,6 @@ export const couriers = mysqlTable("couriers", {
   urgencyThresholdOrange: int("urgencyThresholdOrange").default(60).notNull(),
   /** Urgency threshold in minutes for red highlight (default: 30) */
   urgencyThresholdRed: int("urgencyThresholdRed").default(30).notNull(),
-  /** Expo push notification token */
-  expoPushToken: text("expoPushToken"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -188,49 +186,3 @@ export const sberbankPickups = mysqlTable("sberbankPickups", {
 
 export type SberbankPickup = typeof sberbankPickups.$inferSelect;
 export type InsertSberbankPickup = typeof sberbankPickups.$inferInsert;
-
-
-/**
- * Менеджеры — хранят данные профиля менеджера для входа в веб-портал
- */
-export const managers = mysqlTable("managers", {
-  id: int("id").autoincrement().primaryKey(),
-  /** Отображаемое имя менеджера */
-  name: varchar("name", { length: 255 }).notNull(),
-  /** Имя пользователя для входа */
-  username: varchar("username", { length: 100 }).notNull().unique(),
-  /** Адрес электронной почты */
-  email: varchar("email", { length: 320 }).notNull().unique(),
-  /** Хешированный пароль Bcrypt */
-  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
-  /** Номер телефона */
-  phone: varchar("phone", { length: 20 }),
-  /** Статус активности аккаунта */
-  isActive: boolean("isActive").default(true).notNull(),
-  /** Временные метки */
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
-export type Manager = typeof managers.$inferSelect;
-export type InsertManager = typeof managers.$inferInsert;
-
-export const notificationSettings = mysqlTable("notificationSettings", {
-  id: int("id").autoincrement().primaryKey(),
-  /** ID курьера */
-  courierId: int("courierId").notNull().references(() => couriers.id, { onDelete: "cascade" }),
-  /** Включены ли уведомления */
-  enabled: boolean("enabled").default(true).notNull(),
-  /** Уведомления о новых заявках */
-  newTasks: boolean("newTasks").default(true).notNull(),
-  /** Уведомления об изменении статуса */
-  statusChanges: boolean("statusChanges").default(true).notNull(),
-  /** Уведомления о сообщениях */
-  messages: boolean("messages").default(true).notNull(),
-  /** Временные метки */
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
-export type NotificationSettings = typeof notificationSettings.$inferSelect;
-export type InsertNotificationSettings = typeof notificationSettings.$inferInsert;
