@@ -1,0 +1,1 @@
+ALTER TABLE `requests` ADD `totalAmount` decimal(10,2);
