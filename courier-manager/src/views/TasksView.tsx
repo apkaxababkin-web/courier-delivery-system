@@ -336,7 +336,7 @@ export default function TasksView() {
 
       {/* Manual Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
           <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Создать заявку</h2>
@@ -1262,7 +1262,7 @@ export default function TasksView() {
 
       {/* AI Form Modal */}
       {showAiForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
           <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full">
             <div className="border-b p-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Создать заявку по тексту</h2>
@@ -1304,7 +1304,7 @@ export default function TasksView() {
 
       {/* Crop Modal */}
       {showCropModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
           <div className="bg-white rounded-lg shadow-lg max-w-4xl w-full">
             <div className="border-b p-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Обрезать изображение</h2>

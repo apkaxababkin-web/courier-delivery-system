@@ -258,7 +258,7 @@ export default function MailsView() {
 
           {/* Mapping Form Modal */}
           {showMappingForm && fileData.length > 0 && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] overflow-y-auto pt-20">
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, overflowY: "auto", paddingTop: 80 }}>
               <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-5xl my-8 max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-bold text-gray-900 mb-4">Выберите диапазон ячеек</h3>
                 <p className="text-sm text-gray-600 mb-6">

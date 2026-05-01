@@ -187,7 +187,7 @@ export default function SberbankView() {
 
       {/* Add Point Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-gray-900 mb-4">Добавить точку Сбербанка</h3>
 
@@ -248,7 +248,7 @@ export default function SberbankView() {
 
       {/* Create List Form Modal */}
       {showListForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-gray-900 mb-4">Создать список</h3>
 
