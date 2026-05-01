@@ -1,6 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -15,9 +15,15 @@ import {
   initialWindowMetrics,
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
+import * as Notifications from "expo-notifications";
+import { useRouter } from "expo-router";
+
+import { ToastProvider } from "react-native-toast-notifications";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
+import { CourierAuthProvider } from "@/lib/courier-auth";
+import { FilterProvider } from "@/lib/filter-context";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -36,6 +42,19 @@ export default function RootLayout() {
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
+    
+    // Set up notification handler
+    if (Platform.OS !== "web") {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+    }
   }, []);
 
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {
@@ -65,6 +84,46 @@ export default function RootLayout() {
   );
   const [trpcClient] = useState(() => createTRPCClient());
 
+  const router = useRouter();
+
+  // Register push token when app starts
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    
+    const registerPushToken = async () => {
+      try {
+        const token = await Notifications.getExpoPushTokenAsync();
+        console.log("[App] Expo Push Token:", token.data);
+        // Note: We'll send this token to the server from the profile screen
+        // after the courier logs in
+      } catch (error) {
+        console.warn("[App] Failed to get push token:", error);
+      }
+    };
+    
+    registerPushToken();
+  }, []);
+
+  // Handle push notification responses (when user taps on notification)
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data;
+        console.log("[App] Push notification tapped:", data);
+        
+        // Handle deep link navigation
+        if (data.url) {
+          console.log("[App] Navigating to:", data.url);
+          router.push(`/${data.url}` as any);
+        }
+      }
+    );
+
+    return () => subscription.remove();
+  }, [router]);
+
   // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {
     const metrics = initialWindowMetrics ?? { insets: initialInsets, frame: initialFrame };
@@ -80,18 +139,22 @@ export default function RootLayout() {
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
-          {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
-          {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="oauth/callback" />
-          </Stack>
-          <StatusBar style="auto" />
-        </QueryClientProvider>
-      </trpc.Provider>
+      <ToastProvider>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <FilterProvider>
+              <CourierAuthProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
+                  <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
+                </Stack>
+                <StatusBar style="auto" />
+              </CourierAuthProvider>
+            </FilterProvider>
+          </QueryClientProvider>
+        </trpc.Provider>
+      </ToastProvider>
     </GestureHandlerRootView>
   );
 
