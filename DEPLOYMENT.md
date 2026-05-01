@@ -1,174 +1,161 @@
-# Deployment Guide - Yandex Cloud
+# Deployment Guide - Yandex Cloud (РФ)
 
-Этот документ описывает процесс деплоя backend и frontend на Yandex Cloud.
+Полное руководство по развертыванию приложения на Yandex Cloud с использованием Object Storage, CDN, VPS и Managed PostgreSQL.
 
-## Архитектура
+## Архитектура системы
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Yandex Cloud                             │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────────┐         ┌──────────────────────────┐  │
-│  │  VPS (VM)        │         │  Managed PostgreSQL      │  │
-│  │  ┌────────────┐  │         │  ┌──────────────────────┐│  │
-│  │  │ Docker     │  │◄────────┼──┤ courier_db           ││  │
-│  │  │ Backend    │  │         │  └──────────────────────┘│  │
-│  │  │ (port 3000)│  │         │  (SSL, автобэкапы)      │  │
-│  │  └────────────┘  │         └──────────────────────────┘  │
-│  │                  │                                        │
-│  │  api.site.ru    │                                        │
-│  └──────────────────┘                                        │
-│           ▲                                                   │
-└───────────┼───────────────────────────────────────────────────┘
-            │
-    ┌───────┴────────┐
-    │                │
-┌───▼────────┐  ┌───▼────────┐
-│ Frontend   │  │ Mobile App │
-│ (Vercel)   │  │ (Expo EAS) │
-│ site.ru    │  │            │
-└────────────┘  └────────────┘
+┌──────────────────────────────────────────────────────────┐
+│              Yandex Cloud (РФ)                           │
+├──────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌─────────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │ Object Storage  │  │ CDN Edge     │  │ VPS Docker │  │
+│  │ (статика)       │  │ (кэш)        │  │ (Backend)  │  │
+│  │ ┌─────────────┐ │  │              │  │ ┌────────┐ │  │
+│  │ │ index.html  │ │  │ manager.     │  │ │Backend │ │  │
+│  │ │ app.js      │ │  │ site.ru      │  │ │:3000   │ │  │
+│  │ │ styles.css  │ │  │              │  │ └────────┘ │  │
+│  │ └─────────────┘ │  │              │  │ api.site.ru│  │
+│  └─────────────────┘  └──────────────┘  └────────────┘  │
+│                                                 ▲         │
+│  ┌──────────────────────────────────────────────┼─────┐  │
+│  │              Managed PostgreSQL              │     │  │
+│  │              (courier_db)                    │     │  │
+│  │              (SSL, автобэкапы)              │     │  │
+│  └──────────────────────────────────────────────┼─────┘  │
+│                                                 │         │
+└─────────────────────────────────────────────────┼─────────┘
+                                                  │
+                                    ┌─────────────┴──────────┐
+                                    │                        │
+                            ┌───────▼────────┐      ┌───────▼────────┐
+                            │ Браузер        │      │ Мобильное      │
+                            │ manager.site.ru│      │ (Expo EAS)     │
+                            └────────────────┘      └────────────────┘
 ```
 
-## Предварительные требования
+## Компоненты
 
-1. **Yandex Cloud аккаунт** с активным проектом
-2. **VPS машина** (Ubuntu 22.04 или выше)
-   - Минимум: 2 CPU, 2 GB RAM
-   - Рекомендуется: 4 CPU, 4 GB RAM
-3. **Yandex Managed Service for PostgreSQL**
-   - Версия 16+
-   - SSL включен
-4. **Docker и Docker Compose** установлены на VPS
-5. **Domain** (example.com)
+| Компонент | Назначение | Размещение |
+|-----------|-----------|-----------|
+| **Frontend (веб-портал)** | Статические файлы (HTML, JS, CSS) | Yandex Object Storage + CDN |
+| **Backend API** | Node.js/tRPC сервер | Yandex VPS (Docker контейнер) |
+| **Database** | PostgreSQL 16 | Yandex Managed Service for PostgreSQL |
+| **DNS** | Маршрутизация трафика | Yandex Cloud DNS или внешний DNS |
 
-## Шаг 1: Подготовка Yandex Cloud
+## Требования
 
-### 1.1 Создать Managed PostgreSQL кластер
+- **Yandex Cloud аккаунт** с активным проектом
+- **VPS машина** (Ubuntu 22.04+, 2+ CPU, 2+ GB RAM)
+- **Managed PostgreSQL** (версия 16+, SSL включен)
+- **Object Storage** (для статики фронтенда)
+- **CDN** (для кэширования и доставки)
+- **Domain** (example.com)
+- **Docker** и **Docker Compose** на VPS
 
-```bash
-# Через Yandex Cloud Console:
-# 1. Перейти в "Managed Service for PostgreSQL"
-# 2. Нажать "Создать кластер"
-# 3. Выбрать:
-#    - Версия: PostgreSQL 16
-#    - Класс хоста: s2.small (или выше)
-#    - Количество хостов: 1 (или 3 для HA)
-#    - Зона доступности: любая
-#    - Имя БД: courier_db
-#    - Пользователь: courier
-#    - Пароль: (сгенерировать надежный пароль)
-# 4. Включить SSL
-# 5. Создать кластер (ждать 10-15 минут)
-```
+## Быстрый старт
 
-После создания получить:
-- **Хост:** `c-xxxxx.postgres.yandexcloud.net`
-- **Пароль:** сохранить в безопасном месте
-- **Сертификат SSL:** скачать
+### 1. Создать Managed PostgreSQL
 
-### 1.2 Создать VPS машину
+В консоли Yandex Cloud:
 
-```bash
-# Через Yandex Cloud Console:
-# 1. Перейти в "Compute Cloud"
-# 2. Нажать "Создать виртуальную машину"
-# 3. Выбрать:
-#    - ОС: Ubuntu 22.04 LTS
-#    - Тип: General purpose (n2-standard-2 или выше)
-#    - Диск: 50 GB SSD
-#    - Публичный IP: включить
-# 4. Создать машину
-```
+1. Перейти в **Managed Service for PostgreSQL**
+2. Нажать **Создать кластер**
+3. Выбрать:
+   - Версия: PostgreSQL 16
+   - Класс хоста: s2.small
+   - Имя БД: `courier_db`
+   - Пользователь: `courier`
+   - Пароль: (сгенерировать надежный)
+   - SSL: включить
+4. Создать кластер (ждать 10-15 минут)
 
 Получить:
-- **Публичный IP:** используется для подключения
+- **Хост:** `c-xxxxx.postgres.yandexcloud.net`
+- **Пароль:** сохранить в безопасном месте
+
+### 2. Создать Object Storage бакет
+
+1. Перейти в **Object Storage**
+2. Нажать **Создать бакет**
+3. Выбрать:
+   - Имя: `courier-app-frontend`
+   - Класс хранилища: Стандартный
+   - Доступ: Публичный (для CDN)
+4. Создать бакет
+
+### 3. Создать CDN дистрибьюцию
+
+1. Перейти в **CDN**
+2. Нажать **Создать дистрибьюцию**
+3. Выбрать:
+   - Источник: Object Storage бакет `courier-app-frontend`
+   - Домен: `manager.site.ru`
+   - SSL сертификат: Let's Encrypt (автоматический)
+4. Создать дистрибьюцию
+
+### 4. Создать VPS машину
+
+1. Перейти в **Compute Cloud**
+2. Нажать **Создать виртуальную машину**
+3. Выбрать:
+   - ОС: Ubuntu 22.04 LTS
+   - Тип: n2-standard-2 или выше
+   - Диск: 50 GB SSD
+   - Публичный IP: включить
+4. Создать машину
+
+Получить:
+- **Публичный IP:** для подключения
 - **SSH ключ:** сохранить локально
 
-## Шаг 2: Подготовка VPS
-
-### 2.1 Подключиться к VPS
+### 5. Подготовить VPS
 
 ```bash
+# Подключиться к VPS
 ssh -i /path/to/key.pem ubuntu@<PUBLIC_IP>
-```
 
-### 2.2 Установить Docker и Docker Compose
-
-```bash
-# Обновить пакеты
+# Обновить систему
 sudo apt update && sudo apt upgrade -y
 
 # Установить Docker
-sudo apt install -y docker.io docker-compose
+sudo apt install -y docker.io docker-compose git
 
 # Добавить пользователя в группу docker
 sudo usermod -aG docker $USER
 newgrp docker
-
-# Проверить установку
-docker --version
-docker-compose --version
-```
-
-### 2.3 Установить Git и клонировать репозиторий
-
-```bash
-sudo apt install -y git
 
 # Клонировать репозиторий
 git clone <YOUR_REPO_URL> /home/ubuntu/courier-app
 cd /home/ubuntu/courier-app
 ```
 
-## Шаг 3: Конфигурация Backend
-
-### 3.1 Создать .env файл
+### 6. Конфигурация Backend
 
 ```bash
-cp .env.example .env
+# Создать .env файл
 nano .env
 ```
 
-Заполнить переменные:
+Заполнить:
 
 ```env
 NODE_ENV=production
-
-# Yandex Managed PostgreSQL
 DATABASE_URL=postgresql://courier:PASSWORD@c-xxxxx.postgres.yandexcloud.net:6432/courier_db?sslmode=require
-
 API_PORT=3000
 API_HOST=0.0.0.0
-
-FRONTEND_URL=https://site.ru
-MANAGER_URL=https://site.ru
-
+FRONTEND_URL=https://manager.site.ru
+MANAGER_URL=https://manager.site.ru
+SESSION_SECRET=<GENERATE: openssl rand -base64 32>
 LOG_LEVEL=info
-
-SESSION_SECRET=<GENERATE_SECURE_RANDOM_STRING>
 ```
 
-Где:
-- `PASSWORD` — пароль от PostgreSQL (из шага 1.1)
-- `c-xxxxx` — ID кластера PostgreSQL
-- `SESSION_SECRET` — сгенерировать: `openssl rand -base64 32`
-
-### 3.2 Скачать SSL сертификат PostgreSQL (если требуется)
+### 7. Запустить Backend через Docker
 
 ```bash
-# Если используется SSL, скачать сертификат
-mkdir -p /home/ubuntu/courier-app/certs
-# Скачать сертификат из Yandex Cloud Console и поместить в certs/
-```
-
-## Шаг 4: Деплой Backend через Docker
-
-### 4.1 Собрать и запустить контейнер
-
-```bash
-cd /home/ubuntu/courier-app
+# Перейти в папку с backend
+cd сайт/server
 
 # Собрать Docker образ
 docker build -t courier-api:latest .
@@ -178,50 +165,20 @@ docker run -d \
   --name courier-api \
   --restart unless-stopped \
   -p 3000:3000 \
-  --env-file .env \
+  --env-file ../../.env \
   courier-api:latest
 
 # Проверить логи
 docker logs -f courier-api
 ```
 
-### 4.2 Альтернатива: использовать Docker Compose
+### 8. Настроить Nginx
 
 ```bash
-# Если используется только backend (без локальной PostgreSQL):
-docker-compose -f docker-compose.yml up -d api
-
-# Или для полного стека (если PostgreSQL на VPS):
-docker-compose up -d
-```
-
-### 4.3 Проверить что backend работает
-
-```bash
-# Проверить статус контейнера
-docker ps | grep courier-api
-
-# Проверить логи
-docker logs courier-api
-
-# Проверить API
-curl http://localhost:3000/health
-
-# Проверить с внешнего хоста
-curl http://<PUBLIC_IP>:3000/health
-```
-
-## Шаг 5: Настройка Nginx (обратный прокси)
-
-### 5.1 Установить Nginx
-
-```bash
+# Установить Nginx и Certbot
 sudo apt install -y nginx certbot python3-certbot-nginx
-```
 
-### 5.2 Создать конфигурацию Nginx
-
-```bash
+# Создать конфиг
 sudo nano /etc/nginx/sites-available/courier-api
 ```
 
@@ -235,8 +192,6 @@ upstream courier_backend {
 server {
     listen 80;
     server_name api.site.ru;
-
-    # Redirect HTTP to HTTPS
     return 301 https://$server_name$request_uri;
 }
 
@@ -244,20 +199,16 @@ server {
     listen 443 ssl http2;
     server_name api.site.ru;
 
-    # SSL сертификаты (будут добавлены certbot)
     ssl_certificate /etc/letsencrypt/live/api.site.ru/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.site.ru/privkey.pem;
 
-    # SSL конфигурация
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
-    # Логи
     access_log /var/log/nginx/courier-api-access.log;
     error_log /var/log/nginx/courier-api-error.log;
 
-    # Проксирование
     location / {
         proxy_pass http://courier_backend;
         proxy_http_version 1.1;
@@ -268,7 +219,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
-
+        
         # Таймауты
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
@@ -283,7 +234,7 @@ server {
 }
 ```
 
-### 5.3 Включить конфигурацию
+Включить конфиг:
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/courier-api /etc/nginx/sites-enabled/
@@ -291,7 +242,7 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-### 5.4 Получить SSL сертификат
+### 9. Получить SSL сертификат
 
 ```bash
 sudo certbot certonly --nginx -d api.site.ru
@@ -301,116 +252,113 @@ sudo systemctl enable certbot.timer
 sudo systemctl start certbot.timer
 ```
 
-## Шаг 6: Деплой Frontend (веб-портал)
-
-Frontend можно деплоить несколькими способами:
-
-### Вариант A: На том же VPS через Nginx
+### 10. Собрать и загрузить Frontend
 
 ```bash
-# Собрать frontend
-cd /home/ubuntu/courier-app/courier-manager
+# На локальном ПК
+cd сайт
+
+# Собрать фронтенд
+npm install
 npm run build
 
-# Скопировать dist в Nginx
-sudo cp -r dist /var/www/courier-site
-sudo chown -R www-data:www-data /var/www/courier-site
-
-# Создать Nginx конфиг для фронтенда
-sudo nano /etc/nginx/sites-available/courier-site
+# Результат в папке dist/
 ```
 
-```nginx
-server {
-    listen 80;
-    server_name site.ru;
-    return 301 https://$server_name$request_uri;
-}
+### 11. Загрузить Frontend в Object Storage
 
-server {
-    listen 443 ssl http2;
-    server_name site.ru;
+Есть несколько способов:
 
-    ssl_certificate /etc/letsencrypt/live/site.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/site.ru/privkey.pem;
+**Способ A: Через консоль Yandex Cloud**
 
-    root /var/www/courier-site;
-    index index.html;
+1. Перейти в **Object Storage**
+2. Выбрать бакет `courier-app-frontend`
+3. Нажать **Загрузить файлы**
+4. Выбрать все файлы из папки `dist/`
+5. Загрузить
 
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass https://api.site.ru/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### Вариант B: На Vercel (рекомендуется)
+**Способ B: Через AWS CLI**
 
 ```bash
-# Установить Vercel CLI
-npm i -g vercel
+# Установить AWS CLI
+pip install awscli
 
-# Деплоить
-cd courier-manager
-vercel --prod
+# Конфигурировать
+aws configure
+
+# Загрузить файлы
+aws s3 sync dist/ s3://courier-app-frontend/ --endpoint-url https://storage.yandexcloud.net
+
+# Очистить кэш CDN
+aws cloudfront create-invalidation --distribution-id <DISTRIBUTION_ID> --paths "/*"
 ```
 
-## Шаг 7: Мониторинг и логирование
-
-### 7.1 Проверить статус сервисов
+**Способ C: Через Yandex Cloud CLI**
 
 ```bash
-# Docker контейнер
-docker ps
+# Установить Yandex Cloud CLI
+curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+
+# Конфигурировать
+yc init
+
+# Загрузить файлы
+yc storage s3api put-object --bucket courier-app-frontend --key index.html --body dist/index.html
+```
+
+### 12. Настроить DNS
+
+В вашем DNS провайдере создать записи:
+
+```
+manager.site.ru  CNAME  d-xxxxx.cdn.yandexcloud.net
+api.site.ru      A      <PUBLIC_IP_VPS>
+```
+
+Или если используете Yandex Cloud DNS:
+
+1. Перейти в **Cloud DNS**
+2. Создать зону для `site.ru`
+3. Добавить записи:
+   - `manager.site.ru` → CDN дистрибьюция
+   - `api.site.ru` → публичный IP VPS
+
+## Проверка статуса
+
+```bash
+# Проверить фронтенд
+curl https://manager.site.ru
+
+# Проверить бэкенд
+curl https://api.site.ru/health
+
+# Проверить Docker контейнер
+docker ps | grep courier-api
 docker logs courier-api
 
-# Nginx
+# Проверить Nginx
 sudo systemctl status nginx
 sudo tail -f /var/log/nginx/courier-api-error.log
 
-# PostgreSQL подключение
+# Проверить БД
 psql postgresql://courier:PASSWORD@c-xxxxx.postgres.yandexcloud.net:6432/courier_db
 ```
 
-### 7.2 Настроить автоматический перезапуск
+## Обновление приложения
 
-```bash
-# Docker контейнер уже имеет --restart unless-stopped
-
-# Проверить
-docker inspect courier-api | grep RestartPolicy
-```
-
-### 7.3 Настроить логирование
-
-```bash
-# Логи Docker
-docker logs --follow courier-api
-
-# Логи Nginx
-sudo journalctl -u nginx -f
-```
-
-## Шаг 8: Обновление приложения
-
-### 8.1 Обновить код
+### Обновить Backend
 
 ```bash
 cd /home/ubuntu/courier-app
+
+# Получить новый код
 git pull origin main
-```
 
-### 8.2 Пересобрать Docker образ
-
-```bash
+# Пересобрать Docker образ
+cd сайт/server
 docker build -t courier-api:latest .
+
+# Перезапустить контейнер
 docker stop courier-api
 docker rm courier-api
 
@@ -418,19 +366,67 @@ docker run -d \
   --name courier-api \
   --restart unless-stopped \
   -p 3000:3000 \
-  --env-file .env \
+  --env-file ../../.env \
   courier-api:latest
 ```
 
-### 8.3 Запустить миграции БД (если нужно)
+### Обновить Frontend
 
 ```bash
-docker exec courier-api npm run db:push
+# На локальном ПК
+cd сайт
+
+# Получить новый код
+git pull origin main
+
+# Собрать
+npm run build
+
+# Загрузить в Object Storage
+aws s3 sync dist/ s3://courier-app-frontend/ --endpoint-url https://storage.yandexcloud.net --delete
+
+# Очистить кэш CDN
+aws cloudfront create-invalidation --distribution-id <DISTRIBUTION_ID> --paths "/*"
+```
+
+## Мониторинг
+
+### Логи
+
+```bash
+# Docker логи
+docker logs -f courier-api
+
+# Nginx логи
+sudo tail -f /var/log/nginx/courier-api-error.log
+sudo tail -f /var/log/nginx/courier-api-access.log
+
+# Системные логи
+sudo journalctl -u nginx -f
+```
+
+### Проверка здоровья
+
+```bash
+# API health check
+curl https://api.site.ru/health
+
+# БД подключение
+psql postgresql://courier:PASSWORD@c-xxxxx.postgres.yandexcloud.net:6432/courier_db -c "SELECT 1"
+
+# Дисковое пространство
+df -h
+
+# Использование памяти
+free -h
+
+# Процессы Docker
+docker stats
 ```
 
 ## Troubleshooting
 
-### Проблема: "Connection refused"
+### "Connection refused"
 
 ```bash
 # Проверить что контейнер запущен
@@ -443,20 +439,32 @@ docker logs courier-api
 sudo netstat -tlnp | grep 3000
 ```
 
-### Проблема: "Database connection error"
+### "Database connection error"
 
 ```bash
-# Проверить DATABASE_URL в .env
+# Проверить DATABASE_URL
 cat .env | grep DATABASE_URL
 
-# Проверить подключение к PostgreSQL
+# Проверить подключение
 psql postgresql://courier:PASSWORD@c-xxxxx.postgres.yandexcloud.net:6432/courier_db
 
-# Проверить SSL сертификат
+# Проверить SSL
 openssl s_client -connect c-xxxxx.postgres.yandexcloud.net:6432
 ```
 
-### Проблема: "SSL certificate error"
+### "Frontend не загружается"
+
+```bash
+# Проверить что файлы в Object Storage
+aws s3 ls s3://courier-app-frontend/ --endpoint-url https://storage.yandexcloud.net
+
+# Проверить CDN статус
+# В консоли Yandex Cloud → CDN → Дистрибьюция → Статус
+
+# Очистить кэш браузера (Ctrl+Shift+Delete)
+```
+
+### "SSL certificate error"
 
 ```bash
 # Обновить сертификат
@@ -464,13 +472,25 @@ sudo certbot renew --force-renewal
 
 # Проверить
 sudo certbot certificates
+
+# Перезагрузить Nginx
+sudo systemctl reload nginx
 ```
+
+## Безопасность
+
+1. **Firewall:** Ограничить доступ к портам 3000 и 5432
+2. **SSH ключи:** Использовать только SSH ключи, отключить пароли
+3. **Secrets:** Хранить в .env, не в коде
+4. **Updates:** Регулярно обновлять Docker образы и зависимости
+5. **Monitoring:** Настроить алерты на критические ошибки
+6. **Object Storage:** Включить версионирование для восстановления
 
 ## Backup и восстановление
 
-### Автоматический backup PostgreSQL
+### Автоматический backup
 
-Yandex Managed Service for PostgreSQL автоматически создает резервные копии.
+Yandex Managed Service for PostgreSQL создает резервные копии автоматически.
 Проверить в консоли: Managed Service for PostgreSQL → Кластер → Резервные копии
 
 ### Ручной backup
@@ -483,17 +503,52 @@ pg_dump postgresql://courier:PASSWORD@c-xxxxx.postgres.yandexcloud.net:6432/cour
 psql postgresql://courier:PASSWORD@c-xxxxx.postgres.yandexcloud.net:6432/courier_db < backup.sql
 ```
 
-## Безопасность
+### Backup Object Storage
 
-1. **Firewall:** Ограничить доступ к портам 3000 и 5432 только необходимым IP
-2. **SSH ключи:** Использовать только SSH ключи, отключить пароли
-3. **Secrets:** Хранить чувствительные данные в .env, не в коде
-4. **Updates:** Регулярно обновлять Docker образы и зависимости
-5. **Monitoring:** Настроить алерты на критические ошибки
+```bash
+# Синхронизировать локально
+aws s3 sync s3://courier-app-frontend/ ./backup/ --endpoint-url https://storage.yandexcloud.net
+```
+
+## Масштабирование
+
+### Увеличить ресурсы VPS
+
+1. Перейти в **Compute Cloud**
+2. Выбрать машину
+3. Нажать **Изменить конфигурацию**
+4. Выбрать новый класс (больше CPU/RAM)
+5. Перезагрузить машину
+
+### Добавить реплики PostgreSQL
+
+1. Перейти в **Managed Service for PostgreSQL**
+2. Выбрать кластер
+3. Нажать **Добавить хост**
+4. Выбрать зону доступности (для HA)
+
+### Кэширование CDN
+
+Убедитесь что правильно настроены заголовки кэширования:
+
+```nginx
+# В Nginx конфиге для статики
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+
+location / {
+    expires -1;
+    add_header Cache-Control "public, must-revalidate, proxy-revalidate";
+}
+```
 
 ## Дополнительные ресурсы
 
 - [Yandex Cloud Documentation](https://cloud.yandex.com/docs)
+- [Object Storage Documentation](https://cloud.yandex.com/docs/storage/)
+- [CDN Documentation](https://cloud.yandex.com/docs/cdn/)
 - [Docker Documentation](https://docs.docker.com/)
 - [Nginx Documentation](https://nginx.org/en/docs/)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
