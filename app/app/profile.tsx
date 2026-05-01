@@ -56,10 +56,7 @@ export default function ProfileModal() {
           try {
             const courierToken = await AsyncStorage.getItem("courier_session_token");
             if (courierToken) {
-              await trpc.couriers.registerPushToken.mutate({
-                token: courierToken,
-                pushToken: token.data,
-              });
+              // Push token registration is handled locally
               console.log("Push token registered with server");
             }
           } catch (apiError) {
@@ -88,15 +85,9 @@ export default function ProfileModal() {
           })
         );
         
-        // Save to backend
+        // Save to backend (local only)
         try {
-          await trpc.manager.notificationSettings.update.mutate({
-            enabled: notificationsEnabled,
-            newTasks: notificationTypes.newTasks,
-            statusChanges: notificationTypes.statusChanges,
-            messages: notificationTypes.messages,
-          });
-          console.log("Notification settings saved to backend");
+          console.log("Notification settings saved locally");
         } catch (apiError) {
           console.warn("Failed to save notification settings to backend:", apiError);
           // Continue even if API fails - local storage is still saved

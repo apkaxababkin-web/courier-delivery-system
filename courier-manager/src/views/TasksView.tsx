@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import * as api from '../lib/api';
 import { parseRequestText } from '../lib/text-parser';
 
@@ -335,8 +336,8 @@ export default function TasksView() {
       </div>
 
       {/* Manual Form Modal */}
-      {showForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
+      {showForm && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Создать заявку</h2>
@@ -1258,11 +1259,11 @@ export default function TasksView() {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* AI Form Modal */}
-      {showAiForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
+      {showAiForm && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full">
             <div className="border-b p-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Создать заявку по тексту</h2>
@@ -1300,11 +1301,11 @@ export default function TasksView() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Crop Modal */}
-      {showCropModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
+      {showCropModal && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg max-w-4xl w-full">
             <div className="border-b p-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Обрезать изображение</h2>
@@ -1393,7 +1394,7 @@ export default function TasksView() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }

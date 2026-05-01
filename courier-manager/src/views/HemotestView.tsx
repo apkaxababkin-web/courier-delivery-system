@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Send, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import * as api from '../lib/api';
 
@@ -169,7 +170,7 @@ export default function HemotestView() {
       </div>
 
       {/* Add Point Form Modal */}
-      {showForm && (
+      {showForm && createPortal(
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-gray-900 mb-4">Добавить точку Гемотест</h3>
@@ -227,10 +228,10 @@ export default function HemotestView() {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Create List Form Modal */}
-      {showListForm && (
+      {showListForm && createPortal(
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-gray-900 mb-4">Создать список</h3>
@@ -262,7 +263,7 @@ export default function HemotestView() {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Created Lists */}
       {lists.length > 0 && (

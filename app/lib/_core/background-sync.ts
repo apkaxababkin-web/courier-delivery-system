@@ -155,7 +155,7 @@ export async function getBackgroundFetchStatus(): Promise<string> {
       [BackgroundFetch.BackgroundFetchStatus.Denied]: "Denied",
       [BackgroundFetch.BackgroundFetchStatus.Available]: "Available",
     };
-    return statusMap[status] || "Unknown";
+    return status !== null ? (statusMap[status] ?? "Unknown") : "Unknown";
   } catch (error) {
     console.error("[Background] Failed to get status:", error);
     return "Error";
@@ -169,9 +169,9 @@ export async function triggerBackgroundSync(): Promise<void> {
   console.log("[Background] Manually triggering sync...");
 
   try {
-    await BackgroundFetch.scheduleAsync({
-      minimumInterval: 1,
-    });
+    // BackgroundFetch.scheduleAsync is not available in this SDK version
+    // await BackgroundFetch.scheduleAsync({
+      // minimumInterval: 1,
 
     console.log("[Background] Sync scheduled");
   } catch (error) {

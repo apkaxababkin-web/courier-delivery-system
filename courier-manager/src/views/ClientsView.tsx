@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Edit2, Trash2, X, Download, ChevronRight } from 'lucide-react';
 import * as api from '../lib/api';
 
@@ -292,7 +293,7 @@ export default function ClientsView() {
         </div>
 
         {/* Export Form Modal */}
-        {showExportForm && (
+        {showExportForm && createPortal(
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
             <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
               <div className="flex justify-between items-center mb-4">
@@ -335,7 +336,7 @@ export default function ClientsView() {
               </div>
             </div>
           </div>
-        )}
+        , document.body)}
       </div>
     );
   }
@@ -359,7 +360,7 @@ export default function ClientsView() {
       </div>
 
       {/* Form Modal */}
-      {showForm && (
+      {showForm && createPortal(
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
@@ -460,7 +461,7 @@ export default function ClientsView() {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Clients List */}
       <div className="bg-white rounded-lg shadow">

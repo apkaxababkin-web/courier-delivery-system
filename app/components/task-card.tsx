@@ -8,7 +8,7 @@ import { calculateUrgencyFromTimeString } from "@/lib/task-sorting";
 // ─── Status border colors (based on status) ────────────────────────────────
 
 const STATUS_BORDER_COLORS: Record<TaskStatus, string> = {
-  pending:     "#9CA3AF", // grey
+
   assigned:    "#3B82F6", // blue
   in_progress: "#F97316", // orange
   completed:   "#22C55E", // green

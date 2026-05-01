@@ -50,6 +50,8 @@ export default function RootLayout() {
           shouldShowAlert: true,
           shouldPlaySound: true,
           shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
         }),
       });
     }
@@ -114,7 +116,7 @@ export default function RootLayout() {
         // Handle deep link navigation
         if (data.url) {
           console.log("[App] Navigating to:", data.url);
-          router.push(`/${data.url}`);
+          router.push(`/${data.url}` as any);
         }
       }
     );

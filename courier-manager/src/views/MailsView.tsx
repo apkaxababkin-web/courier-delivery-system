@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Upload, Download, FileText, CheckCircle, Clock, ChevronDown } from 'lucide-react';
 import * as api from '../lib/api';
 import * as XLSX from 'xlsx';
@@ -257,7 +258,7 @@ export default function MailsView() {
           </div>
 
           {/* Mapping Form Modal */}
-          {showMappingForm && fileData.length > 0 && (
+          {showMappingForm && fileData.length > 0 && createPortal(
             <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, overflowY: "auto", paddingTop: 80 }}>
               <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-5xl my-8 max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-bold text-gray-900 mb-4">Выберите диапазон ячеек</h3>
@@ -559,7 +560,7 @@ export default function MailsView() {
                 </form>
               </div>
             </div>
-          )}
+          , document.body)}
 
           {/* Instructions */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

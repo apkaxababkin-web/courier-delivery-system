@@ -88,7 +88,7 @@ export default function HemotestScreen() {
           borderLeftColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : selectedPointId === item.id ? "rgba(59, 130, 246, 0.6)" : colors.border,
           opacity: pressed ? 0.7 : 1,
         },
-      ]
+      ]}
     >
       <View className="flex-row items-center justify-between gap-3">
         {/* Left side: checkbox + name + address */}

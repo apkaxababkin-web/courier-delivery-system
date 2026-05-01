@@ -3,7 +3,7 @@
  * Manages adaptive screen brightness based on time of day and conditions
  */
 
-import { Brightness } from "expo-brightness";
+import * as Brightness from "expo-brightness";
 import { Platform } from "react-native";
 
 export type BrightnessMode = "auto" | "manual" | "high-contrast";
@@ -87,7 +87,7 @@ function getTimeBasedBrightness(): number {
 /**
  * Enable auto brightness adjustment
  */
-export async function enableAutoBrightness(): Promise<void> {
+export async function enableAutoBrightness(): Promise<(() => void) | void> {
   if (Platform.OS === "web") {
     return;
   }

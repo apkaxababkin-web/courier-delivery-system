@@ -133,7 +133,7 @@ export default function TaskDetailScreen() {
     Linking.openURL(`tel:${phone.replace(/\s|\(|\)|-/g, "")}`);
   };
 
-  const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled" | "pending") => {
+  const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled") => {
     // Toggle: if already in this status, revert to 'assigned'
     const statusToSet = task?.status === newStatus ? "assigned" : newStatus;
     statusMutation.mutate({ token: token!, taskId, status: statusToSet });
@@ -382,7 +382,7 @@ export default function TaskDetailScreen() {
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#22C55E" }} />
               <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>{task.courierName || "Не назначен"}</Text>
-              {task.paymentAmount && task.paymentAmount > 0 && (
+              {(task as any).paymentAmount && (task as any).paymentAmount > 0 && (
                 <Text style={{ fontSize: 16, fontWeight: "600", color: colors.primary }}>₽</Text>
               )}
             </View>
