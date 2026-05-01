@@ -218,6 +218,13 @@
       "when": 1777097638866,
       "tag": "0030_clean_korath",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1777613233015,
+      "tag": "0031_spooky_monster_badoon",
+      "breakpoints": true
     }
   ]
 }
