@@ -20,12 +20,12 @@ export default function Sidebar({
   onViewChange,
 }: SidebarProps) {
   return (
-    <aside className="w-80 bg-white border-r border-gray-200 flex flex-col h-screen">
+    <aside className="w-80 bg-gradient-to-b from-blue-700 to-blue-500 border-r border-gray-200 flex flex-col h-screen">
         <div className="h-full flex flex-col">
           {/* Logo */}
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-blue-600">Курьерская служба Миг</h2>
-            <p className="text-xs text-gray-500 mt-1">Менеджер</p>
+          <div className="px-6 py-4 border-b border-blue-600">
+            <h2 className="text-xl font-bold text-white">Курьерская служба Миг</h2>
+            <p className="text-xs text-blue-100 mt-1">Менеджер</p>
           </div>
 
           {/* Menu Items */}
@@ -41,8 +41,8 @@ export default function Sidebar({
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                     isActive
-                      ? 'bg-blue-50 text-blue-600 font-medium'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-cyan-400 text-white font-medium'
+                      : 'text-blue-100 hover:bg-blue-600'
                   }`}
                 >
                   <Icon size={20} />
@@ -53,8 +53,8 @@ export default function Sidebar({
           </nav>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-200">
-            <div className="text-xs text-gray-500">
+          <div className="px-6 py-4 border-t border-blue-600">
+            <div className="text-xs text-blue-100">
               <p>v1.0.0</p>
               <p className="mt-2">© 2026 Курьерская служба Миг</p>
             </div>
