@@ -24,7 +24,7 @@ export default function Sidebar({
         <div className="h-full flex flex-col">
           {/* Logo */}
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-blue-600">КурьерПро</h2>
+            <h2 className="text-xl font-bold text-blue-600">Курьерская служба Миг</h2>
             <p className="text-xs text-gray-500 mt-1">Менеджер</p>
           </div>
 
@@ -56,7 +56,7 @@ export default function Sidebar({
           <div className="px-6 py-4 border-t border-gray-200">
             <div className="text-xs text-gray-500">
               <p>v1.0.0</p>
-              <p className="mt-2">© 2026 КурьерПро</p>
+              <p className="mt-2">© 2026 Курьерская служба Миг</p>
             </div>
           </div>
         </div>

@@ -424,21 +424,7 @@ export default function TasksView() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-3">
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition font-medium"
-        >
-          Создать заявку в ручную
-        </button>
-        <button
-          onClick={() => setShowAiForm(true)}
-          className="flex-1 bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition font-medium"
-        >
-          Создать заявку по тексту
-        </button>
-      </div>
+    <div className="space-y-4 relative h-full flex flex-col">
 
       {/* Date and Status Filters */}
       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
@@ -505,7 +491,7 @@ export default function TasksView() {
       </div>
 
       {/* Requests List */}
-      <div className="space-y-2">
+      <div className="space-y-2 flex-1 overflow-y-auto">
         {getFilteredRequests().length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             Нет заявок
@@ -538,6 +524,22 @@ export default function TasksView() {
             </div>
           ))
         )}
+      </div>
+
+      {/* Floating Action Buttons in Bottom Right */}
+      <div className="fixed bottom-8 right-8 flex gap-3">
+        <button
+          onClick={() => setShowForm(true)}
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium shadow-lg"
+        >
+          Создать заявку
+        </button>
+        <button
+          onClick={() => setShowAiForm(true)}
+          className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition font-medium shadow-lg"
+        >
+          По тексту
+        </button>
       </div>
 
       {/* Manual Form Modal - Simplified Design */}

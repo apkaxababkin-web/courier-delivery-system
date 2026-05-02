@@ -11,15 +11,16 @@ import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
 
 
-type ViewType = 'tasks' | 'hemotest' | 'sberbank' | 'mails' | 'reports' | 'couriers' | 'clients';
+type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'archive' | 'couriers';
 
 const menuItems = [
-  { id: 'tasks', label: 'Заявки', icon: Package },
-  { id: 'clients', label: 'Клиенты', icon: Users },
+  { id: 'tasks', label: 'Все заявки', icon: Package },
+  { id: 'mails', label: 'Письма', icon: Mail },
   { id: 'hemotest', label: 'Гемотест', icon: MapPin },
   { id: 'sberbank', label: 'Сбербанк', icon: Landmark },
-  { id: 'mails', label: 'Письма', icon: Mail },
+  { id: 'clients', label: 'Клиенты', icon: Users },
   { id: 'reports', label: 'Отчёты', icon: BarChart3 },
+  { id: 'archive', label: 'Архив', icon: FileText },
   { id: 'couriers', label: 'Курьеры', icon: Users },
 ];
 
@@ -48,16 +49,18 @@ function App() {
     switch (activeView) {
       case 'tasks':
         return <TasksView />;
-      case 'clients':
-        return <ClientsView />;
+      case 'mails':
+        return <MailsView />;
       case 'hemotest':
         return <HemotestView />;
       case 'sberbank':
         return <SberbankView />;
-      case 'mails':
-        return <MailsView />;
+      case 'clients':
+        return <ClientsView />;
       case 'reports':
         return <ReportsView />;
+      case 'archive':
+        return <TasksView />; // TODO: Create ArchiveView
       case 'couriers':
         return <CouriersView />;
       default:
