@@ -1369,12 +1369,20 @@ export async function addPointToSberbankList(listId: number, pointId: number): P
 export async function createRequest(data: InsertRequest): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(requests).values({
-    ...data,
-    createdByUserId: data.createdByUserId || 1, // Default to admin user
-    status: "pending",
-  });
-  return result[0].insertId as number;
+  // Remove fields that don't exist in schema and use correct status
+  const { createdByUserId, ...cleanData } = data as any;
+  const result = await db
+    .insert(requests)
+    .values({
+      ...cleanData,
+      status: data.status || "new", // Use 'new' as default status
+    })
+    .returning({ id: requests.id });
+  
+  if (!result || result.length === 0) {
+    throw new Error("Failed to create request");
+  }
+  return result[0].id;
 }
 
 /**
