@@ -1071,6 +1071,110 @@ Return exactly this JSON structure:
         }
       }),
   }),
+
+  // ─── AI text parsing ──────────────────────────────────────────────────────
+  ai: router({
+    parseRequest: publicProcedure
+      .input(z.object({
+        text: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const { invokeLLM } = await import("./_core/llm");
+
+        try {
+          console.log("[AI Parse] Starting text parsing...");
+          console.log("[AI Parse] Input text:", input.text);
+
+          const response = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: `You are a courier request parser. Extract structured information from a request text and return ONLY a valid JSON object.
+
+Extract the following fields:
+- requestType: "delivery", "sberbank", "gemotest", or "other"
+- clientName: sender company name (Компания отправителя)
+- courierName: sender name (Фамилия отправителя)
+- recipientName: recipient name (Получатель)
+- recipientPhone: recipient phone (Телефон получателя)
+- pickupAddress: pickup address (Адрес отправителя)
+- deliveryAddress: delivery address (Адрес доставки)
+- paymentMethod: "paid" or "unpaid"
+- comment: any additional comments
+
+Return a JSON object with these fields. If a field is not found, use an empty string.`,
+              },
+              {
+                role: "user",
+                content: input.text,
+              },
+            ],
+          });
+
+          console.log("[AI Parse] LLM response:", response);
+
+          let content: string | undefined;
+          
+          // Try to extract text from OpenAI-like format: { choices: [{ message: { content: "..." } }] }
+          if (response.choices && Array.isArray(response.choices) && response.choices[0]) {
+            const choice = response.choices[0];
+            if (choice.message && choice.message.content) {
+              content = choice.message.content;
+            }
+          }
+          
+          // Try to extract text from Anthropic-like format: { content: [{ type: "text", text: "..." }] }
+          if (!content && response.content && Array.isArray(response.content)) {
+            const textContent = response.content.find((c: any) => c.type === "text");
+            if (textContent && textContent.text) {
+              content = textContent.text;
+            }
+          }
+          
+          // Try direct text field
+          if (!content && response.text) {
+            content = response.text;
+          }
+          
+          if (typeof content !== "string") {
+            throw new Error(`Invalid LLM response format: expected string, got ${typeof content}. Response: ${JSON.stringify(response)}`);
+          }
+
+          // Handle markdown code blocks
+          let jsonString = content;
+          const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (jsonMatch) {
+            jsonString = jsonMatch[1].trim();
+          }
+          
+          const parsedData = JSON.parse(jsonString);
+          console.log("[AI Parse] ✓ Successfully parsed request:", parsedData);
+          
+          return {
+            success: true,
+            data: {
+              requestType: parsedData.requestType || "other",
+              clientName: parsedData.clientName || "",
+              courierName: parsedData.courierName || "",
+              recipientName: parsedData.recipientName || "",
+              recipientPhone: parsedData.recipientPhone || "",
+              pickupAddress: parsedData.pickupAddress || "",
+              deliveryAddress: parsedData.deliveryAddress || "",
+              paymentMethod: parsedData.paymentMethod || "paid",
+              comment: parsedData.comment || "",
+            },
+          };
+        } catch (error) {
+          console.error("[AI Parse] ERROR during parsing:", error);
+          if (error instanceof Error) {
+            console.error("[AI Parse] Error message:", error.message);
+          }
+          throw new Error(
+            `Failed to parse request: ${error instanceof Error ? error.message : "Unknown error"}`
+          );
+        }
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

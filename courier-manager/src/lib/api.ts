@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:3000/api/trpc';
+const API_BASE = 'http://localhost:3001/api/trpc';
 
 interface Client {
   id: number;
@@ -466,6 +466,43 @@ export async function extractFromPdf(pdfBase64: string, fileName: string): Promi
     return data.result?.data?.json || data.result?.data || {};
   } catch (error) {
     console.error('PDF extraction error:', error);
+    throw error;
+  }
+}
+
+
+// ─── AI Text Parsing ────────────────────────────────────────────────────────
+export interface ParsedRequestData {
+  requestType: string;
+  clientName: string;
+  courierName: string;
+  recipientName: string;
+  recipientPhone: string;
+  pickupAddress: string;
+  deliveryAddress: string;
+  paymentMethod: string;
+  comment: string;
+}
+
+export async function parseRequestWithAI(text: string): Promise<{ success: boolean; data?: ParsedRequestData }> {
+  try {
+    const response = await fetch(`${API_BASE}/ai.parseRequest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ json: { text } }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to parse request with AI');
+    }
+    const data = await response.json();
+    // TRPC returns { result: { data: { json: {...} } } }
+    return {
+      success: true,
+      data: data.result?.data?.json || data.result?.data || {},
+    };
+  } catch (error) {
+    console.error('AI parsing error:', error);
     throw error;
   }
 }

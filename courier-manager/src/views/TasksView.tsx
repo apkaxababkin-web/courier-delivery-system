@@ -313,25 +313,33 @@ export default function TasksView() {
     if (!aiText.trim()) return;
     setAiLoading(true);
     try {
-      const parsed = parseRequestText(aiText);
-      setFormData({
-        ...formData,
-        taskType: parsed.taskType,
-        senderName: parsed.senderName,
-        senderPhone: parsed.senderPhone,
-        senderAddress: parsed.senderAddress,
-        recipientName: parsed.recipientName,
-        recipientPhone: parsed.recipientPhone,
-        deliveryAddress: parsed.recipientAddress,
-        packageDescription: parsed.packageDescription,
-      });
-      setShowAiForm(false);
-      setShowForm(true);
-      setAiText('');
-      setAiLoading(false);
+      const response = await api.parseRequestWithAI(aiText);
+      
+      if (response.success && response.data) {
+        setFormData({
+          ...formData,
+          taskType: response.data.requestType === 'delivery' ? 'delivery' : 'simple',
+          senderName: response.data.courierName || '',
+          senderCompany: response.data.clientName || '',
+          senderPhone: '',
+          senderAddress: response.data.pickupAddress || '',
+          recipientName: response.data.recipientName || '',
+          recipientPhone: response.data.recipientPhone || '',
+          deliveryAddress: response.data.deliveryAddress || '',
+          packageDescription: '',
+          paymentMethod: (response.data.paymentMethod as any) || 'paid',
+          comments: response.data.comment || '',
+        });
+        setShowAiForm(false);
+        setShowForm(true);
+        setAiText('');
+      } else {
+        alert('Ошибка при парсинге текста');
+      }
     } catch (error) {
       console.error(error);
-      alert('Ошибка при парсинге текста');
+      alert('Ошибка при парсинге текста: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
       setAiLoading(false);
     }
   };
