@@ -12,6 +12,16 @@ interface Client {
   email?: string;
 }
 
+interface Request {
+  id: number;
+  requestType: string;
+  status: string;
+  senderName?: string;
+  recipientName?: string;
+  deliveryAddress?: string;
+  createdAt?: string;
+}
+
 interface NutsBox {
   id: string;
   name: string;
@@ -34,7 +44,7 @@ interface TaskFormData {
   recipientCity: string;
   recipientPhone: string;
   recipientAddress: string;
-  recipientImage?: string; // base64 image, not stored in DB
+  recipientImage?: string;
   deliveryAddress: string;
   packageDescription: string;
   packageType: 'document' | 'small' | 'medium' | 'large' | 'fragile';
@@ -46,12 +56,10 @@ interface TaskFormData {
   paymentMethod: 'paid' | 'transfer' | 'cash' | 'terminal' | 'qr';
   paymentAmount?: number;
   qrCodeImage?: string;
-  // Nuts specific
   nutsBoxes?: NutsBox[];
   needsStickers?: boolean;
   nutsTariff?: number;
   cedroilTariff?: number;
-  // Pickup from TC specific
   tcName: string;
   tcAddress: string;
   trackingNumber: string;
@@ -59,7 +67,6 @@ interface TaskFormData {
   pickupRecipientClientId?: number;
 }
 
-// Crop image function
 const cropImageData = (base64: string, rect: { x: number; y: number; width: number; height: number }, callback: (cropped: string) => void) => {
   const img = new Image();
   img.onload = () => {
@@ -75,7 +82,6 @@ const cropImageData = (base64: string, rect: { x: number; y: number; width: numb
   img.src = base64;
 };
 
-// Compress image to max 100KB
 const compressImage = (base64: string, callback: (compressed: string) => void) => {
   const img = new Image();
   img.onload = () => {
@@ -83,7 +89,6 @@ const compressImage = (base64: string, callback: (compressed: string) => void) =
     let width = img.width;
     let height = img.height;
     
-    // Calculate max dimensions while maintaining aspect ratio
     const maxWidth = 1200;
     const maxHeight = 1200;
     if (width > height) {
@@ -105,11 +110,9 @@ const compressImage = (base64: string, callback: (compressed: string) => void) =
       ctx.drawImage(img, 0, 0, width, height);
     }
     
-    // Compress with quality adjustment
     let quality = 0.9;
     let compressed = canvas.toDataURL('image/jpeg', quality);
     
-    // Keep reducing quality until under 100KB
     while (compressed.length > 100 * 1024 && quality > 0.1) {
       quality -= 0.1;
       compressed = canvas.toDataURL('image/jpeg', quality);
@@ -140,6 +143,7 @@ const DEFAULT_NUTS_BOXES: NutsBox[] = [
 
 export default function TasksView() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [requests, setRequests] = useState<Request[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showAiForm, setShowAiForm] = useState(false);
   const [aiText, setAiText] = useState('');
@@ -149,6 +153,10 @@ export default function TasksView() {
   const [cropRect, setCropRect] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [formData, setFormData] = useState<TaskFormData>({
     taskType: 'delivery',
     clientId: undefined,
@@ -185,8 +193,8 @@ export default function TasksView() {
 
   useEffect(() => {
     loadClients();
+    loadRequests();
     
-    // Handle paste event for image
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -221,6 +229,15 @@ export default function TasksView() {
     }
   };
 
+  const loadRequests = async () => {
+    try {
+      const requests = await api.getAllRequests();
+      setRequests(requests || []);
+    } catch (error) {
+      console.error('Failed to load requests:', error);
+    }
+  };
+
   const handleClientSelect = (clientId: number) => {
     const client = clients.find(c => c.id === clientId);
     if (client) {
@@ -248,11 +265,11 @@ export default function TasksView() {
         requestType: formData.taskType,
         ...formData,
       };
-      // Remove UI-only fields that shouldn't be sent to backend
       const { senderClientId, recipientClientId, nutsBoxes, needsStickers, ...requestPayload } = payload;
       await api.createRequest(requestPayload);
       alert('Заявка создана успешно!');
       setShowForm(false);
+      loadRequests();
       setFormData({
         taskType: 'delivery',
         clientId: undefined,
@@ -356,6 +373,48 @@ export default function TasksView() {
     });
   };
 
+  const getFilteredRequests = () => {
+    let filtered = requests;
+
+    // Filter by type
+    if (selectedFilter !== 'all') {
+      filtered = filtered.filter(r => r.requestType === selectedFilter);
+    }
+
+    // Filter by status
+    if (selectedStatus !== 'all') {
+      filtered = filtered.filter(r => r.status === selectedStatus);
+    }
+
+    // Filter by date range
+    if (dateFrom || dateTo) {
+      filtered = filtered.filter(r => {
+        if (!r.createdAt) return true;
+        const requestDate = new Date(r.createdAt).toISOString().split('T')[0];
+        if (dateFrom && requestDate < dateFrom) return false;
+        if (dateTo && requestDate > dateTo) return false;
+        return true;
+      });
+    }
+
+    return filtered;
+  };
+
+  const statusOptions = [
+    { id: 'all', label: 'Все статусы' },
+    { id: 'new', label: 'Новая' },
+    { id: 'pending', label: 'В процессе' },
+    { id: 'completed', label: 'Завершена' },
+    { id: 'cancelled', label: 'Отменена' },
+  ];
+
+  const filterButtons = [
+    { id: 'all', label: 'Все типы' },
+    { id: 'sberbank', label: 'Сбербанк' },
+    { id: 'hemotest', label: 'Гемотест' },
+    { id: 'other', label: 'Другие' },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex gap-3">
@@ -371,6 +430,106 @@ export default function TasksView() {
         >
           Создать заявку по тексту
         </button>
+      </div>
+
+      {/* Date and Status Filters */}
+      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+        <div className="flex gap-3 items-end flex-wrap">
+          {/* Date From */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              От
+            </label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {/* Date To */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              До
+            </label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {/* Status Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Статус
+            </label>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {statusOptions.map(option => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter Buttons */}
+      <div className="flex gap-2 flex-wrap">
+        {filterButtons.map(button => (
+          <button
+            key={button.id}
+            onClick={() => setSelectedFilter(button.id)}
+            className={`px-4 py-2 rounded-lg font-medium transition ${
+              selectedFilter === button.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            {button.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Requests List */}
+      <div className="space-y-2">
+        {getFilteredRequests().length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            Нет заявок
+          </div>
+        ) : (
+          getFilteredRequests().map(request => (
+            <div key={request.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">
+                    Заявка #{request.id}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    {request.senderName && <div>От: {request.senderName}</div>}
+                    {request.recipientName && <div>Кому: {request.recipientName}</div>}
+                    {request.deliveryAddress && <div>Адрес: {request.deliveryAddress}</div>}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                    request.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                    request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    request.status === 'completed' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {request.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Manual Form Modal - Simplified Design */}
