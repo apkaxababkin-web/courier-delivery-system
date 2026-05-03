@@ -1,49 +1,58 @@
-# Multi-stage build для Node.js backend
+# Multi-stage build для Node.js backend с оптимизацией кэша
 
-# Stage 1: Build
-FROM node:22-alpine AS builder
+# Stage 1: Dependencies (кэшируется отдельно)
+FROM node:22-alpine AS dependencies
 
 WORKDIR /app
 
-# Копируем package.json и pnpm-lock.yaml
+# Копируем только package.json и pnpm-lock.yaml (для кэширования слоя)
 COPY package.json pnpm-lock.yaml ./
 
 # Устанавливаем pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9.12.0
 
 # Устанавливаем зависимости
 RUN pnpm install --frozen-lockfile
 
+# Stage 2: Builder (собираем приложение)
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Копируем node_modules из dependencies
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/pnpm-lock.yaml ./pnpm-lock.yaml
+
 # Копируем исходный код
-COPY . .
+COPY package.json ./
+COPY server/ ./server/
+COPY shared/ ./shared/
+COPY drizzle/ ./drizzle/
+COPY drizzle.config.ts tsconfig.json ./
 
-# Собираем backend (если скрипт существует)
-RUN pnpm run build || echo "Build script not found, skipping build"
+# Собираем backend
+RUN npm install -g pnpm@9.12.0 && \
+    pnpm run build
 
-# Stage 2: Runtime
+# Stage 3: Runtime (минимальный образ)
 FROM node:22-alpine
 
 WORKDIR /app
 
 # Устанавливаем pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9.12.0
 
-# Копируем package.json для установки production зависимостей
-COPY package.json pnpm-lock.yaml ./
+# Копируем только production зависимости
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY package.json ./
 
-# Устанавливаем только production зависимости
-RUN pnpm install --frozen-lockfile --prod
-
-# Копируем собранный код из builder (если существует)
-COPY --from=builder /app/dist ./dist 2>/dev/null || true
-COPY --from=builder /app/drizzle ./drizzle 2>/dev/null || true
+# Копируем собранный код из builder
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/drizzle ./drizzle
 
 # Копируем скрипты для миграций БД (если существуют)
 COPY scripts/ ./scripts/ 2>/dev/null || true
-
-# Копируем исходный код (на случай если dist не был собран)
-COPY server/ ./server/ 2>/dev/null || true
-COPY shared/ ./shared/ 2>/dev/null || true
 
 # Expose порт (по умолчанию 3000)
 EXPOSE 3000
