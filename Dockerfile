@@ -31,6 +31,8 @@ FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app/courier-manager
 
+RUN npm install -g pnpm@9.12.0
+
 # Копируем node_modules из frontend-deps
 COPY --from=frontend-deps /app/courier-manager/node_modules ./node_modules
 
