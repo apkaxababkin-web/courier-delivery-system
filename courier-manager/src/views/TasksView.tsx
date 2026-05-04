@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '../lib/api';
 import { parseRequestText } from '../lib/text-parser';
-import { X, Sparkles, Plus, Search, Filter } from 'lucide-react';
+import { X, Sparkles, Plus, Search, CheckCircle2, AlertCircle, Clock, FileText, Edit2, Trash2 } from 'lucide-react';
 
 interface Client {
   id: number;
@@ -280,11 +280,11 @@ export default function TasksView() {
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case 'new':
-        return 'bg-blue-100 text-blue-700';
+        return 'bg-green-100 text-green-700';
       case 'pending':
         return 'bg-yellow-100 text-yellow-700';
       case 'completed':
-        return 'bg-green-100 text-green-700';
+        return 'bg-purple-100 text-purple-700';
       case 'cancelled':
         return 'bg-red-100 text-red-700';
       default:
@@ -307,120 +307,183 @@ export default function TasksView() {
     }
   };
 
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'new':
+        return <CheckCircle2 className="w-5 h-5 text-green-500" />;
+      case 'pending':
+        return <Clock className="w-5 h-5 text-yellow-500" />;
+      case 'completed':
+        return <CheckCircle2 className="w-5 h-5 text-purple-500" />;
+      default:
+        return <AlertCircle className="w-5 h-5 text-gray-400" />;
+    }
+  };
+
+  const formatDateRange = () => {
+    if (dateFrom && dateTo) {
+      return `${dateFrom} - ${dateTo}`;
+    }
+    if (dateFrom) {
+      return `с ${dateFrom}`;
+    }
+    if (dateTo) {
+      return `до ${dateTo}`;
+    }
+    return '';
+  };
+
   return (
     <div className="space-y-6">
       {/* Statistics Cards */}
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
-          <div className="text-sm font-medium text-gray-600 mb-2">Всего заявок</div>
-          <div className="text-3xl font-bold text-gray-900">{stats.total}</div>
+        {/* Total */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-sm font-medium text-gray-600 mb-2">Всего заявок</div>
+              <div className="text-3xl font-bold text-gray-900">{stats.total}</div>
+            </div>
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <FileText className="w-5 h-5 text-blue-500" />
+            </div>
+          </div>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
-          <div className="text-sm font-medium text-gray-600 mb-2">Новые</div>
-          <div className="text-3xl font-bold text-blue-600">{stats.new}</div>
+
+        {/* New */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-sm font-medium text-gray-600 mb-2">Новые</div>
+              <div className="text-3xl font-bold text-green-600">{stats.new}</div>
+            </div>
+            <div className="p-2 bg-green-50 rounded-lg">
+              <CheckCircle2 className="w-5 h-5 text-green-500" />
+            </div>
+          </div>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
-          <div className="text-sm font-medium text-gray-600 mb-2">В работе</div>
-          <div className="text-3xl font-bold text-yellow-600">{stats.pending}</div>
+
+        {/* Pending */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-sm font-medium text-gray-600 mb-2">В работе</div>
+              <div className="text-3xl font-bold text-yellow-600">{stats.pending}</div>
+            </div>
+            <div className="p-2 bg-yellow-50 rounded-lg">
+              <Clock className="w-5 h-5 text-yellow-500" />
+            </div>
+          </div>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
-          <div className="text-sm font-medium text-gray-600 mb-2">Завершённые</div>
-          <div className="text-3xl font-bold text-green-600">{stats.completed}</div>
+
+        {/* Completed */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-sm font-medium text-gray-600 mb-2">Завершённые</div>
+              <div className="text-3xl font-bold text-purple-600">{stats.completed}</div>
+            </div>
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <CheckCircle2 className="w-5 h-5 text-purple-500" />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Filters Card */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
-        <div className="flex items-end gap-4 flex-wrap">
-          {/* Search */}
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Поиск</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Клиент, адрес, ID..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+        <div className="space-y-4">
+          {/* First Row: Status, Date Range, Search */}
+          <div className="flex items-end gap-4">
+            {/* Status Select */}
+            <div className="w-40">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Статус</label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">Все</option>
+                <option value="new">Новая</option>
+                <option value="pending">В работе</option>
+                <option value="completed">Завершена</option>
+                <option value="cancelled">Отменена</option>
+              </select>
             </div>
-          </div>
 
-          {/* Date From */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">От</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+            {/* Date Range */}
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Дата</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+                <span className="text-gray-400">—</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+            </div>
 
-          {/* Date To */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">До</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+            {/* Search */}
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Поиск</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Клиент или ID..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+            </div>
 
-          {/* Status Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Статус</label>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Все статусы</option>
-              <option value="new">Новая</option>
-              <option value="pending">В работе</option>
-              <option value="completed">Завершена</option>
-              <option value="cancelled">Отменена</option>
-            </select>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Создать заявку
-            </button>
-            <button
-              onClick={() => setShowAiForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
-            >
-              <Sparkles className="w-4 h-4" />
-              По тексту
-            </button>
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowForm(true)}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm flex items-center gap-2 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" />
+                Создать заявку
+              </button>
+              <button
+                onClick={() => setShowAiForm(true)}
+                className="px-6 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition font-medium text-sm flex items-center gap-2 whitespace-nowrap"
+              >
+                <Sparkles className="w-4 h-4" />
+                Создать по тексту
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Tasks Table */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-soft overflow-hidden">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         {filteredRequests.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="text-gray-500 mb-2">Заявок пока нет</div>
-            <div className="text-sm text-gray-400 mb-6">Создайте первую заявку вручную или через ИИ</div>
+            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <div className="text-gray-600 font-medium mb-2">Заявок пока нет</div>
+            <div className="text-sm text-gray-500 mb-6">Создайте первую заявку вручную или через ИИ</div>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setShowForm(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm"
               >
                 Создать заявку
               </button>
               <button
                 onClick={() => setShowAiForm(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+                className="px-6 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition font-medium text-sm"
               >
                 Создать по тексту
               </button>
@@ -430,11 +493,12 @@ export default function TasksView() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">ID</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Клиент</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Адрес</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Статус</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Дата</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Клиент</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Адрес</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Статус</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Дата</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -450,6 +514,16 @@ export default function TasksView() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
                     {request.createdAt ? new Date(request.createdAt).toLocaleDateString('ru-RU') : '-'}
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <button className="p-2 hover:bg-gray-200 rounded-lg transition text-gray-600">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button className="p-2 hover:bg-red-100 rounded-lg transition text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
