@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:3001/api/trpc';
+const API_BASE = '/api/trpc';
 
 interface Client {
   id: number;

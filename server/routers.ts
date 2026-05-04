@@ -1147,6 +1147,69 @@ Return exactly this JSON structure:
         }
       }),
   }),
+
+  // ─── AI router ───────────────────────────────────────────────────────────────
+  ai: router({
+    parseRequest: publicProcedure
+      .input(z.object({ text: z.string() }))
+      .mutation(async ({ input }) => {
+        const { invokeLLM } = await import("./_core/llm");
+
+        const systemPrompt = `Ты — ИИ-ассистент для курьерской службы. Проанализируй текст заявки и извлеки структурированные данные.
+Верни ТОЛЬКО валидный JSON объект без дополнительного текста.
+
+Структура ответа:
+{
+  "recipientName": "ФИО получателя",
+  "recipientPhone": "телефон получателя или null",
+  "deliveryAddress": "адрес доставки",
+  "senderName": "имя отправителя или null",
+  "senderPhone": "телефон отправителя или null",
+  "senderAddress": "адрес отправителя или null",
+  "packageDescription": "описание посылки или null",
+  "specialInstructions": "особые инструкции или null",
+  "paymentMethod": "paid | cash | transfer | terminal | qr",
+  "deliveryTimeFrom": "HH:MM или null",
+  "deliveryTimeTo": "HH:MM или null"
+}
+
+Правила:
+- Извлеки ФИО, телефон и адрес доставки (обязательные поля)
+- Если упоминается "оплачено" — paymentMethod = "paid"
+- Если "наличные" — paymentMethod = "cash"
+- Если "перевод" — paymentMethod = "transfer"
+- Если "терминал" — paymentMethod = "terminal"
+- Если "QR" — paymentMethod = "qr"
+- По умолчанию paymentMethod = "paid"
+- Верни ТОЛЬКО JSON, без пояснений`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Проанализируй текст заявки:\n\n${input.text}` },
+          ],
+        });
+
+        let content = response.choices[0]?.message?.content;
+        if (!content) throw new Error("Нет ответа от AI");
+
+        if (Array.isArray(content)) {
+          const textContent = content.find((c: any) => c.type === "text") as { type: "text"; text: string } | undefined;
+          content = textContent?.text || "";
+        }
+        if (typeof content !== "string") throw new Error("Неверный формат ответа AI");
+
+        // Strip markdown code blocks if present
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        const jsonString = jsonMatch ? jsonMatch[1].trim() : content.trim();
+
+        const parsed = JSON.parse(jsonString);
+        if (!parsed.recipientName || !parsed.deliveryAddress) {
+          throw new Error("AI не смог извлечь обязательные поля (ФИО и адрес)");
+        }
+        return parsed;
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

@@ -17,7 +17,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     setLoading(true);
 
     try {
-      const apiUrl = 'http://localhost:3000/api/trpc/managerAuth.login';
+      const apiUrl = '/api/trpc/managerAuth.login';
       const payload = {
         json: {
           username,
@@ -67,7 +67,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     setLoading(true);
 
     try {
-      const apiUrl = 'http://localhost:3000/api/trpc/managerAuth.getDemoToken';
+      const apiUrl = '/api/trpc/managerAuth.getDemoToken';
       
       const response = await fetch(apiUrl, {
         method: 'POST',
