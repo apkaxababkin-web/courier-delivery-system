@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import path from "path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -68,6 +69,19 @@ async function startServer() {
     }),
   );
 
+  // Serve static files from /app/public (frontend build)
+  const publicPath = path.join(process.cwd(), "public");
+  app.use(express.static(publicPath));
+
+  // SPA fallback: serve index.html for all non-API routes
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(publicPath, "index.html"), (err) => {
+      if (err) {
+        res.status(404).json({ error: "Not found" });
+      }
+    });
+  });
+
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);
 
@@ -77,6 +91,7 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`[api] server listening on port ${port}`);
+    console.log(`[api] serving static files from ${publicPath}`);
   });
 }
 

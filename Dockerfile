@@ -1,4 +1,4 @@
-# Multi-stage build для Node.js backend с оптимизацией кэша
+# Multi-stage build для Node.js backend + React frontend
 
 # Stage 1: Dependencies (кэшируется отдельно)
 FROM node:22-alpine AS dependencies
@@ -14,8 +14,8 @@ RUN npm install -g pnpm@9.12.0
 # Устанавливаем зависимости
 RUN pnpm install --frozen-lockfile
 
-# Stage 2: Builder (собираем приложение)
-FROM node:22-alpine AS builder
+# Stage 2: Frontend Builder (собираем React приложение)
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 
@@ -23,7 +23,24 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/pnpm-lock.yaml ./pnpm-lock.yaml
 
-# Копируем исходный код
+# Копируем исходный код frontend
+COPY courier-manager/ ./courier-manager/
+COPY package.json ./
+
+# Собираем frontend
+WORKDIR /app/courier-manager
+RUN pnpm run build
+
+# Stage 3: Backend Builder (собираем Node.js приложение)
+FROM node:22-alpine AS backend-builder
+
+WORKDIR /app
+
+# Копируем node_modules из dependencies
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/pnpm-lock.yaml ./pnpm-lock.yaml
+
+# Копируем исходный код backend
 COPY package.json ./
 COPY server/ ./server/
 COPY shared/ ./shared/
@@ -32,9 +49,9 @@ COPY drizzle.config.ts tsconfig.json ./
 
 # Собираем backend
 RUN npm install -g pnpm@9.12.0 && \
-    pnpm run build
+    pnpm run build:backend
 
-# Stage 3: Runtime (минимальный образ)
+# Stage 4: Runtime (минимальный образ)
 FROM node:22-alpine
 
 WORKDIR /app
@@ -47,9 +64,12 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY package.json ./
 
-# Копируем собранный код из builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/drizzle ./drizzle
+# Копируем собранный backend код
+COPY --from=backend-builder /app/dist ./dist
+COPY --from=backend-builder /app/drizzle ./drizzle
+
+# Копируем собранный frontend в /app/public
+COPY --from=frontend-builder /app/courier-manager/dist ./public
 
 # Копируем скрипты для миграций БД (если существуют)
 COPY scripts/ ./scripts/ 2>/dev/null || true
