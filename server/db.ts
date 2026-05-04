@@ -257,8 +257,8 @@ async function fetchTasksWithCourier(
     ? await (whereClause as () => Promise<Task[]>)()
     : await db.select().from(tasks).orderBy(desc(tasks.createdAt));
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
-  return allTasks.map((t) => ({
+  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  return allTasks.map((t: Task) => ({
     ...t,
     courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
   }));
@@ -273,8 +273,8 @@ export async function getAllTasksWithCourier(): Promise<TaskWithCourier[]> {
     .where(inArray(tasks.status, ["assigned", "in_progress"]))
     .orderBy(desc(tasks.createdAt));
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
-  return allTasks.map((t) => ({
+  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  return allTasks.map((t: Task) => ({
     ...t,
     courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
   }));
@@ -289,8 +289,8 @@ export async function getCompletedTasksWithCourier(): Promise<TaskWithCourier[]>
     .where(inArray(tasks.status, ["completed", "cancelled"]))
     .orderBy(desc(tasks.updatedAt));
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
-  return allTasks.map((t) => ({
+  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  return allTasks.map((t: Task) => ({
     ...t,
     courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
   }));
@@ -317,8 +317,8 @@ export async function getTasksByDateWithCourier(targetDate: Date): Promise<TaskW
     .orderBy(desc(tasks.createdAt));
   
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c) => [c.id, c.name]));
-  return allTasks.map((t) => ({
+  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  return allTasks.map((t: Task) => ({
     ...t,
     courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
   }));
@@ -701,15 +701,15 @@ export async function getHemotestPickupPointsForDate(
       eq(hemotestPickups.date, dateStr)
     ));
   
-  const pickupMap = new Map(pickups.map((p) => [p.pointId, p]));
+  const pickupMap = new Map<number, HemotestPickup>(pickups.map((p: HemotestPickup) => [p.pointId, p]));
   
   // Get courier name
   const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
   const courierName = courierData[0]?.name ?? "Unknown";
   
   // Combine and sort: unpicked first, then picked
-  const result = points.map((point) => {
-    const pickup = pickupMap.get(point.id);
+  const result = points.map((point: HemotestPickupPoint) => {
+    const pickup: HemotestPickup | undefined = pickupMap.get(point.id);
     return {
       ...point,
       isPicked: pickup?.isPicked ?? false,
@@ -719,7 +719,7 @@ export async function getHemotestPickupPointsForDate(
   });
   
   // Sort: unpicked first (false), then picked (true)
-  return result.sort((a, b) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
+  return result.sort((a: HemotestPickupWithStatus, b: HemotestPickupWithStatus) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
 }
 
 export async function toggleHemotestPickup(
@@ -809,15 +809,15 @@ export async function getSberbankPickupPointsForDate(
       eq(sberbankPickups.date, dateStr)
     ));
   
-  const pickupMap = new Map(pickups.map((p) => [p.pointId, p]));
+  const pickupMap = new Map<number, SberbankPickup>(pickups.map((p: SberbankPickup) => [p.pointId, p]));
   
   // Get courier name
   const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
   const courierName = courierData[0]?.name ?? "Unknown";
   
   // Combine and sort: unpicked first, then picked
-  const result = points.map((point) => {
-    const pickup = pickupMap.get(point.id);
+  const result = points.map((point: SberbankPickupPoint) => {
+    const pickup: SberbankPickup | undefined = pickupMap.get(point.id);
     return {
       ...point,
       isPicked: pickup?.isPicked ?? false,
@@ -827,7 +827,7 @@ export async function getSberbankPickupPointsForDate(
   });
   
   // Sort: unpicked first (false), then picked (true)
-  return result.sort((a, b) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
+  return result.sort((a: SberbankPickupWithStatus, b: SberbankPickupWithStatus) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
 }
 
 export async function toggleSberbankPickup(
@@ -998,7 +998,7 @@ export async function getSberbankScheduleForDay(dayOfWeek: number): Promise<Sber
 
   if (scheduleEntries.length === 0) return [];
 
-  const pointIds = scheduleEntries.map(e => e.pointId);
+  const pointIds = scheduleEntries.map((e: SberbankPickupSchedule) => e.pointId);
 
   // Get actual point data
   return await db
@@ -1226,7 +1226,7 @@ export async function getHemotestPickupListWithItems(listId: number): Promise<{
 
   return {
     list: list[0],
-    items: items.map(i => i.hemotestPickupPoints),
+    items: items.map((i: { hemotestListItems: HemotestListItem; hemotestPickupPoints: HemotestPickupPoint }) => i.hemotestPickupPoints),
   };
 }
 
@@ -1337,7 +1337,7 @@ export async function getSberbankPickupListWithItems(listId: number): Promise<{
 
   return {
     list: list[0],
-    items: items.map(i => i.sberbankPickupPoints),
+    items: items.map((i: { sberbankListItems: SberbankListItem; sberbankPickupPoints: SberbankPickupPoint }) => i.sberbankPickupPoints),
   };
 }
 
