@@ -24,9 +24,7 @@ README.md
 .editorconfig
 .prettierrc
 .eslintrc*
-tsconfig.json
 vitest.config.ts
-drizzle.config.ts
 vite.config.ts
 tailwind.config.js
 postcss.config.js

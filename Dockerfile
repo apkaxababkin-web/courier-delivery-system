@@ -45,7 +45,8 @@ COPY package.json ./
 COPY server/ ./server/
 COPY shared/ ./shared/
 COPY drizzle/ ./drizzle/
-COPY drizzle.config.ts tsconfig.json ./
+COPY drizzle.config.ts ./
+COPY tsconfig.json ./
 
 # Собираем backend
 RUN npm install -g pnpm@9.12.0 && \
