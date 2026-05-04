@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '../lib/api';
 import { parseRequestText } from '../lib/text-parser';
-import { X } from 'lucide-react';
+import { X, Sparkles, Plus, Search, Filter } from 'lucide-react';
 
 interface Client {
   id: number;
@@ -67,71 +67,6 @@ interface TaskFormData {
   pickupRecipientClientId?: number;
 }
 
-const cropImageData = (base64: string, rect: { x: number; y: number; width: number; height: number }, callback: (cropped: string) => void) => {
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
-    }
-    callback(canvas.toDataURL('image/jpeg', 0.9));
-  };
-  img.src = base64;
-};
-
-const compressImage = (base64: string, callback: (compressed: string) => void) => {
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    let width = img.width;
-    let height = img.height;
-    
-    const maxWidth = 1200;
-    const maxHeight = 1200;
-    if (width > height) {
-      if (width > maxWidth) {
-        height *= maxWidth / width;
-        width = maxWidth;
-      }
-    } else {
-      if (height > maxHeight) {
-        width *= maxHeight / height;
-        height = maxHeight;
-      }
-    }
-    
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.drawImage(img, 0, 0, width, height);
-    }
-    
-    let quality = 0.9;
-    let compressed = canvas.toDataURL('image/jpeg', quality);
-    
-    while (compressed.length > 100 * 1024 && quality > 0.1) {
-      quality -= 0.1;
-      compressed = canvas.toDataURL('image/jpeg', quality);
-    }
-    
-    callback(compressed);
-  };
-  img.src = base64;
-};
-
-const NUTS_WEIGHTS: { [key: string]: number } = {
-  '1': 15,
-  '2': 16,
-  '3': 16.5,
-  '4': 18,
-  '5': 18,
-  '6': 0,
-};
-
 const DEFAULT_NUTS_BOXES: NutsBox[] = [
   { id: '1', name: '0,1 (15 кг)', quantity: 0 },
   { id: '2', name: '0,2 (16 кг)', quantity: 0 },
@@ -148,15 +83,10 @@ export default function TasksView() {
   const [showAiForm, setShowAiForm] = useState(false);
   const [aiText, setAiText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [showCropModal, setShowCropModal] = useState(false);
-  const [cropImage, setCropImage] = useState<string>('');
-  const [cropRect, setCropRect] = useState({ x: 0, y: 0, width: 0, height: 0 });
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
-  const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [formData, setFormData] = useState<TaskFormData>({
     taskType: 'delivery',
     clientId: undefined,
@@ -194,30 +124,6 @@ export default function TasksView() {
   useEffect(() => {
     loadClients();
     loadRequests();
-    
-    const handlePaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          const blob = items[i].getAsFile();
-          if (blob) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const base64 = event.target?.result as string;
-              compressImage(base64, (compressed) => {
-                setFormData(prev => ({ ...prev, recipientImage: compressed }));
-              });
-            };
-            reader.readAsDataURL(blob);
-          }
-        }
-      }
-    };
-    
-    document.addEventListener('paste', handlePaste);
-    return () => document.removeEventListener('paste', handlePaste);
   }, []);
 
   const loadClients = async () => {
@@ -238,26 +144,6 @@ export default function TasksView() {
     }
   };
 
-  const handleClientSelect = (clientId: number) => {
-    const client = clients.find(c => c.id === clientId);
-    if (client) {
-      setFormData({
-        ...formData,
-        clientId,
-        senderName: client.name,
-        senderCompany: '',
-        senderCity: '',
-        senderPhone: client.phone || '',
-        senderAddress: client.address,
-        recipientName: client.name,
-        recipientCompany: '',
-        recipientCity: '',
-        recipientPhone: client.phone || '',
-        deliveryAddress: client.address,
-      });
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -270,39 +156,7 @@ export default function TasksView() {
       alert('Заявка создана успешно!');
       setShowForm(false);
       loadRequests();
-      setFormData({
-        taskType: 'delivery',
-        clientId: undefined,
-        senderClientId: undefined,
-        recipientClientId: undefined,
-        senderName: '',
-        senderCompany: '',
-        senderCity: '',
-        senderAddress: '',
-        senderPhone: '',
-        recipientName: '',
-        recipientCompany: '',
-        recipientCity: '',
-        recipientPhone: '',
-        recipientAddress: '',
-        deliveryAddress: '',
-        packageDescription: '',
-        packageType: 'small',
-        specialInstructions: '',
-        deliveryTimeFrom: '',
-        deliveryTimeTo: '',
-        placesCount: 1,
-        comments: '',
-        nutsBoxes: DEFAULT_NUTS_BOXES,
-        paymentMethod: 'paid',
-        paymentAmount: 0,
-        tcName: '',
-        tcAddress: '',
-        trackingNumber: '',
-        pickupDirection: 'tc_to_recipient',
-        pickupRecipientClientId: undefined,
-        needsStickers: false,
-      });
+      resetForm();
     } catch (error) {
       alert('Ошибка при создании заявки: ' + (error instanceof Error ? error.message : 'Unknown error'));
       console.error(error);
@@ -384,17 +238,10 @@ export default function TasksView() {
   const getFilteredRequests = () => {
     let filtered = requests;
 
-    // Filter by type
-    if (selectedFilter !== 'all') {
-      filtered = filtered.filter(r => r.requestType === selectedFilter);
-    }
-
-    // Filter by status
     if (selectedStatus !== 'all') {
       filtered = filtered.filter(r => r.status === selectedStatus);
     }
 
-    // Filter by date range
     if (dateFrom || dateTo) {
       filtered = filtered.filter(r => {
         if (!r.createdAt) return true;
@@ -405,176 +252,236 @@ export default function TasksView() {
       });
     }
 
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(r =>
+        r.senderName?.toLowerCase().includes(query) ||
+        r.recipientName?.toLowerCase().includes(query) ||
+        r.deliveryAddress?.toLowerCase().includes(query) ||
+        r.id.toString().includes(query)
+      );
+    }
+
     return filtered;
   };
 
-  const statusOptions = [
-    { id: 'all', label: 'Все статусы' },
-    { id: 'new', label: 'Новая' },
-    { id: 'pending', label: 'В процессе' },
-    { id: 'completed', label: 'Завершена' },
-    { id: 'cancelled', label: 'Отменена' },
-  ];
+  const getStatistics = () => {
+    return {
+      total: requests.length,
+      new: requests.filter(r => r.status === 'new').length,
+      pending: requests.filter(r => r.status === 'pending').length,
+      completed: requests.filter(r => r.status === 'completed').length,
+    };
+  };
 
-  const filterButtons = [
-    { id: 'all', label: 'Все типы' },
-    { id: 'sberbank', label: 'Сбербанк' },
-    { id: 'hemotest', label: 'Гемотест' },
-    { id: 'other', label: 'Другие' },
-  ];
+  const stats = getStatistics();
+  const filteredRequests = getFilteredRequests();
+
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'new':
+        return 'bg-blue-100 text-blue-700';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-700';
+      case 'completed':
+        return 'bg-green-100 text-green-700';
+      case 'cancelled':
+        return 'bg-red-100 text-red-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'new':
+        return 'Новая';
+      case 'pending':
+        return 'В работе';
+      case 'completed':
+        return 'Завершена';
+      case 'cancelled':
+        return 'Отменена';
+      default:
+        return status;
+    }
+  };
 
   return (
-    <div className="space-y-4 relative h-full flex flex-col">
+    <div className="space-y-6">
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
+          <div className="text-sm font-medium text-gray-600 mb-2">Всего заявок</div>
+          <div className="text-3xl font-bold text-gray-900">{stats.total}</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
+          <div className="text-sm font-medium text-gray-600 mb-2">Новые</div>
+          <div className="text-3xl font-bold text-blue-600">{stats.new}</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
+          <div className="text-sm font-medium text-gray-600 mb-2">В работе</div>
+          <div className="text-3xl font-bold text-yellow-600">{stats.pending}</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
+          <div className="text-sm font-medium text-gray-600 mb-2">Завершённые</div>
+          <div className="text-3xl font-bold text-green-600">{stats.completed}</div>
+        </div>
+      </div>
 
-      {/* Date and Status Filters */}
-      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
-        <div className="flex gap-3 items-end flex-wrap">
+      {/* Filters Card */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-soft">
+        <div className="flex items-end gap-4 flex-wrap">
+          {/* Search */}
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Поиск</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Клиент, адрес, ID..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
           {/* Date From */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              От
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">От</label>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
           {/* Date To */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              До
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">До</label>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
           {/* Status Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Статус
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Статус</label>
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {statusOptions.map(option => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
+              <option value="all">Все статусы</option>
+              <option value="new">Новая</option>
+              <option value="pending">В работе</option>
+              <option value="completed">Завершена</option>
+              <option value="cancelled">Отменена</option>
             </select>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Создать заявку
+            </button>
+            <button
+              onClick={() => setShowAiForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+            >
+              <Sparkles className="w-4 h-4" />
+              По тексту
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Filter Buttons */}
-      <div className="flex gap-2 flex-wrap">
-        {filterButtons.map(button => (
-          <button
-            key={button.id}
-            onClick={() => setSelectedFilter(button.id)}
-            className={`px-4 py-2 rounded-lg font-medium transition ${
-              selectedFilter === button.id
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            {button.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Requests List */}
-      <div className="space-y-2 flex-1 overflow-y-auto">
-        {getFilteredRequests().length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            Нет заявок
+      {/* Tasks Table */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-soft overflow-hidden">
+        {filteredRequests.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="text-gray-500 mb-2">Заявок пока нет</div>
+            <div className="text-sm text-gray-400 mb-6">Создайте первую заявку вручную или через ИИ</div>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setShowForm(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+              >
+                Создать заявку
+              </button>
+              <button
+                onClick={() => setShowAiForm(true)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+              >
+                Создать по тексту
+              </button>
+            </div>
           </div>
         ) : (
-          getFilteredRequests().map(request => (
-            <div key={request.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900">
-                    Заявка #{request.id}
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    {request.senderName && <div>От: {request.senderName}</div>}
-                    {request.recipientName && <div>Кому: {request.recipientName}</div>}
-                    {request.deliveryAddress && <div>Адрес: {request.deliveryAddress}</div>}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                    request.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                    request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                    request.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {request.status}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">ID</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Клиент</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Адрес</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Статус</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Дата</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRequests.map((request) => (
+                <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">#{request.id}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">{request.senderName || request.recipientName || '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 line-clamp-1">{request.deliveryAddress || '-'}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(request.status)}`}>
+                      {getStatusLabel(request.status)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-700">
+                    {request.createdAt ? new Date(request.createdAt).toLocaleDateString('ru-RU') : '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
-      {/* Floating Action Buttons in Bottom Right */}
-      <div className="fixed bottom-8 right-8 flex gap-3">
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium shadow-lg"
-        >
-          Создать заявку
-        </button>
-        <button
-          onClick={() => setShowAiForm(true)}
-          className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition font-medium shadow-lg"
-        >
-          По тексту
-        </button>
-      </div>
-
-      {/* Manual Form Modal - Simplified Design */}
+      {/* Task Creation Modal */}
       {showForm && createPortal(
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-gray-900">
-                Создать заявку
-              </h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+              <h2 className="text-xl font-semibold text-gray-900">Создать заявку</h2>
               <button
                 onClick={resetForm}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
               >
-                <X size={20} />
+                <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Modal Body */}
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
               {/* Task Type */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Тип заявки *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Тип заявки *</label>
                 <select
                   value={formData.taskType}
-                  onChange={(e) => {
-                    const newType = e.target.value as TaskFormData['taskType'];
-                    setFormData({
-                      ...formData,
-                      taskType: newType,
-                      nutsBoxes: newType === 'nuts' ? DEFAULT_NUTS_BOXES : formData.nutsBoxes,
-                    });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => setFormData({ ...formData, taskType: e.target.value as TaskFormData['taskType'] })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
                   <option value="delivery">Доставка</option>
@@ -586,130 +493,116 @@ export default function TasksView() {
                 </select>
               </div>
 
-              {/* Sender Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Отправитель *
-                </label>
-                <input
-                  type="text"
-                  value={formData.senderName}
-                  onChange={(e) => setFormData({ ...formData, senderName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Название компании"
-                  required
-                />
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Sender Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Отправитель *</label>
+                  <input
+                    type="text"
+                    value={formData.senderName}
+                    onChange={(e) => setFormData({ ...formData, senderName: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Название компании"
+                    required
+                  />
+                </div>
+
+                {/* Sender Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Телефон отправителя</label>
+                  <input
+                    type="tel"
+                    value={formData.senderPhone}
+                    onChange={(e) => setFormData({ ...formData, senderPhone: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="+7 (914) 111-22-33"
+                  />
+                </div>
               </div>
 
               {/* Sender Address */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Адрес отправителя *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Адрес отправителя *</label>
                 <input
                   type="text"
                   value={formData.senderAddress}
                   onChange={(e) => setFormData({ ...formData, senderAddress: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="ул. Калашникова, 17"
                   required
                 />
               </div>
 
-              {/* Sender Phone */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Телефон отправителя
-                </label>
-                <input
-                  type="tel"
-                  value={formData.senderPhone}
-                  onChange={(e) => setFormData({ ...formData, senderPhone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="+7 (914) 111-22-33"
-                />
-              </div>
+              {/* Recipient */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Получатель *</label>
+                  <input
+                    type="text"
+                    value={formData.recipientName}
+                    onChange={(e) => setFormData({ ...formData, recipientName: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Имя получателя"
+                    required
+                  />
+                </div>
 
-              {/* Recipient Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Получатель *
-                </label>
-                <input
-                  type="text"
-                  value={formData.recipientName}
-                  onChange={(e) => setFormData({ ...formData, recipientName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Имя получателя"
-                  required
-                />
-              </div>
-
-              {/* Recipient Phone */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Телефон получателя *
-                </label>
-                <input
-                  type="tel"
-                  value={formData.recipientPhone}
-                  onChange={(e) => setFormData({ ...formData, recipientPhone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="+7 (914) 111-22-33"
-                  required
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Телефон получателя *</label>
+                  <input
+                    type="tel"
+                    value={formData.recipientPhone}
+                    onChange={(e) => setFormData({ ...formData, recipientPhone: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="+7 (914) 111-22-33"
+                    required
+                  />
+                </div>
               </div>
 
               {/* Delivery Address */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Адрес доставки *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Адрес доставки *</label>
                 <input
                   type="text"
                   value={formData.deliveryAddress}
                   onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="ул. Доставки, 5"
                   required
                 />
               </div>
 
               {/* Delivery Time */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Время от
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Время от</label>
                   <input
                     type="time"
                     value={formData.deliveryTimeFrom}
                     onChange={(e) => setFormData({ ...formData, deliveryTimeFrom: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Время до
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Время до</label>
                   <input
                     type="time"
                     value={formData.deliveryTimeTo}
                     onChange={(e) => setFormData({ ...formData, deliveryTimeTo: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               {/* Comments */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Комментарии
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Комментарии</label>
                 <textarea
                   value={formData.comments}
                   onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Дополнительная информация"
                   rows={3}
                 />
@@ -717,13 +610,11 @@ export default function TasksView() {
 
               {/* Payment Method */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Способ оплаты
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Способ оплаты</label>
                 <select
                   value={formData.paymentMethod}
                   onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as TaskFormData['paymentMethod'] })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="paid">Оплачено</option>
                   <option value="transfer">Перевод</option>
@@ -733,20 +624,20 @@ export default function TasksView() {
                 </select>
               </div>
 
-              {/* Buttons */}
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition font-medium"
-                >
-                  Создать заявку
-                </button>
+              {/* Modal Footer */}
+              <div className="flex gap-3 pt-6 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition font-medium"
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
                 >
                   Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                >
+                  Создать заявку
                 </button>
               </div>
             </form>
@@ -754,51 +645,53 @@ export default function TasksView() {
         </div>
       , document.body)}
 
-      {/* AI Form Modal */}
+      {/* AI Text Parsing Modal */}
       {showAiForm && createPortal(
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-gray-900">
-                Создать заявку по тексту
-              </h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                <h2 className="text-xl font-semibold text-gray-900">Создать заявку по тексту</h2>
+              </div>
               <button
                 onClick={() => setShowAiForm(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
               >
-                <X size={20} />
+                <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); handleAiSubmit(); }} className="space-y-4">
+            {/* Modal Body */}
+            <form onSubmit={(e) => { e.preventDefault(); handleAiSubmit(); }} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Описание заявки
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Описание заявки</label>
                 <textarea
                   value={aiText}
                   onChange={(e) => setAiText(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Опишите заявку..."
-                  rows={6}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Вставьте текст заявки из мессенджера, письма или другого источника..."
+                  rows={8}
                   required
                 />
               </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="submit"
-                  disabled={aiLoading}
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50"
-                >
-                  {aiLoading ? 'Обработка...' : 'Создать'}
-                </button>
+              <div className="flex gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={() => setShowAiForm(false)}
-                  className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition font-medium"
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
                 >
                   Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={aiLoading}
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {aiLoading ? 'Распознавание...' : 'Распознать'}
                 </button>
               </div>
             </form>
