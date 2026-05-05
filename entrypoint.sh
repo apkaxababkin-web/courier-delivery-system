@@ -13,7 +13,7 @@ echo "[Entrypoint] Waiting for PostgreSQL to be ready..."
 max_attempts=30
 attempt=1
 while [ $attempt -le $max_attempts ]; do
-  if pg_isready -h $(echo $DATABASE_URL | grep -oP 'postgres://[^:]+:[^@]+@\K[^:/]+') -U courier 2>/dev/null; then
+  if psql "$DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
     echo "[Entrypoint] PostgreSQL is ready!"
     break
   fi
