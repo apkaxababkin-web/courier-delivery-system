@@ -1,5 +1,6 @@
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
+// Removed mysql2 - now using postgres driver
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import { eq, and, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
@@ -140,14 +141,14 @@ export async function getMailsByFilter(
 
 // ─── DB connection ─────────────────────────────────────────────────────────────
 
-let _pool: mysql.Pool | null = null;
+let _pool: postgres.Sql | null = null;
 let _db: any = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       if (!_pool) {
-        _pool = mysql.createPool(process.env.DATABASE_URL);
+        _pool = postgres(process.env.DATABASE_URL);
       }
       _db = drizzle(_pool);
     } catch (error) {

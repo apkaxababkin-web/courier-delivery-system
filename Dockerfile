@@ -85,6 +85,14 @@ COPY --from=backend-builder /app/drizzle ./drizzle
 # Копируем собранный frontend в /app/public
 COPY --from=frontend-builder /app/courier-manager/dist ./public
 
+# Копируем drizzle.config.ts для миграций
+COPY drizzle.config.ts ./
+COPY drizzle/ ./drizzle/
+
+# Копируем entrypoint скрипт
+COPY entrypoint.sh ./
+RUN chmod +x ./entrypoint.sh
+
 # Expose порт
 EXPOSE 3000
 
@@ -92,5 +100,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
 
-# Запуск
-CMD ["node", "dist/index.js"]
+# Запуск с entrypoint для автоматических миграций
+ENTRYPOINT ["./entrypoint.sh"]
