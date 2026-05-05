@@ -1,5 +1,5 @@
 import { X, Sparkles, Loader } from 'lucide-react';
-import { Modal } from '../../../components/Modal';
+import { Modal } from '../../../../components/Modal';
 import { useState } from 'react';
 
 interface AiTaskModalProps {

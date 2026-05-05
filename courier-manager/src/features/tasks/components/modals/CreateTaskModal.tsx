@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
-import { Modal } from '../../../components/Modal';
-import type { TaskFormData, Client } from '../model/types';
+import { Modal } from '../../../../components/Modal';
+import type { TaskFormData, Client } from '../../model/types';
 
 interface CreateTaskModalProps {
   isOpen: boolean;

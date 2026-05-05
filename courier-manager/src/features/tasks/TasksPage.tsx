@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { getAllClients, getAllRequests, createRequest, parseRequestWithAI } from '../../lib/api';
 import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
-import { TasksFilters } from './components/TasksFilters';
-import { TasksList } from './components/TasksList';
-import { CreateTaskModal } from './components/CreateTaskModal';
-import { AiTaskModal } from './components/AiTaskModal';
+import { TasksTable } from './components/TasksTable';
+import { EmptyState } from './components/EmptyState';
+import { CreateTaskModal } from './components/modals/CreateTaskModal';
+import { AiTaskModal } from './components/modals/AiTaskModal';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
 import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
@@ -97,25 +97,13 @@ export default function TasksPage() {
     }
   };
 
-  // Handle delete
-  const handleDelete = async (id: number) => {
-    if (confirm('Вы уверены?')) {
-      try {
-        // TODO: Implement delete API call
-        await loadData();
-      } catch (error) {
-        console.error('Failed to delete:', error);
-      }
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Statistics */}
       <TasksStats stats={stats} />
 
-      {/* Filters */}
-      <TasksFilters
+      {/* Toolbar with Filters */}
+      <TasksToolbar
         selectedStatus={selectedStatus}
         onStatusChange={setSelectedStatus}
         dateFrom={dateFrom}
@@ -124,24 +112,22 @@ export default function TasksPage() {
         onDateToChange={setDateTo}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-      />
-
-      {/* Toolbar */}
-      <div className="flex justify-end">
-        <TasksToolbar
-          onCreateClick={() => setShowCreateModal(true)}
-          onAiCreateClick={() => setShowAiModal(true)}
-        />
-      </div>
-
-      {/* Tasks List */}
-      <TasksList
-        requests={filteredRequests}
-        isLoading={isLoading}
-        onDelete={handleDelete}
         onCreateClick={() => setShowCreateModal(true)}
         onAiCreateClick={() => setShowAiModal(true)}
       />
+
+      {/* Tasks Table or Empty State */}
+      {filteredRequests.length === 0 && !isLoading ? (
+        <EmptyState
+          onCreateClick={() => setShowCreateModal(true)}
+          onAiCreateClick={() => setShowAiModal(true)}
+        />
+      ) : (
+        <TasksTable
+          requests={filteredRequests}
+          isLoading={isLoading}
+        />
+      )}
 
       {/* Modals */}
       <CreateTaskModal
