@@ -22,7 +22,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const API_URL = import.meta.env.VITE_API_URL || 'https://couriermig.ru';
+  if (!import.meta.env.VITE_API_URL) {
+    console.warn('[Auth] VITE_API_URL not set, using default:', API_URL);
+  }
 
   // Check if user is already logged in
   useEffect(() => {

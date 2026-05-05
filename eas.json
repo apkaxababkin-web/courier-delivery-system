@@ -1,0 +1,27 @@
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_OAUTH_PORTAL_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_OAUTH_SERVER_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_APP_ID": "courier-app",
+        "EXPO_PUBLIC_OWNER_OPEN_ID": "owner-id",
+        "EXPO_PUBLIC_OWNER_NAME": "Courier Service"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
