@@ -92,7 +92,6 @@
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.24.2",
-    "@types/postgres": "^0.0.2",
     "esbuild": "^0.23.1",
     "eslint": "^9.39.2",
     "eslint-config-expo": "~10.0.0",

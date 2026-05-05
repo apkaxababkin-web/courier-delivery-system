@@ -1,7 +1,7 @@
 // Removed mysql2 - now using postgres driver
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, lt, inArray, desc, sql, conflict } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   couriers,
@@ -184,7 +184,10 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+    await db.insert(users).values(values).onConflict((t) => ({
+      target: t.openId,
+      do: db.update(users).set(updateSet),
+    }));
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -217,8 +220,8 @@ export async function getCourierById(id: number): Promise<Courier | null> {
 export async function createCourier(data: InsertCourier): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(couriers).values(data);
-  return result[0].insertId;
+  const result = await db.insert(couriers).values(data).returning({ id: couriers.id });
+  return result[0].id;
 }
 
 export async function updateCourier(id: number, data: Partial<InsertCourier>): Promise<void> {
@@ -349,8 +352,8 @@ export async function getTaskById(taskId: number): Promise<Task | null> {
 export async function createTask(data: InsertTask): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(tasks).values(data);
-  return result[0].insertId;
+  const result = await db.insert(tasks).values(data).returning({ id: tasks.id });
+  return result[0].id;
 }
 
 export async function updateTaskStatus(
@@ -650,9 +653,9 @@ export async function seedDemoCourier(): Promise<number> {
     vehicleType: "car",
     isActive: true,
     totalDeliveries: 0,
-  });
+  }).returning({ id: couriers.id });
   
-  return result[0].insertId;
+  return result[0].id;
 }
 
 export async function updateCourierUrgencyThresholds(
@@ -964,8 +967,8 @@ export async function getClientById(id: number): Promise<Client | null> {
 export async function createClient(data: InsertClient): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not initialized");
-  const result = await db.insert(clients).values(data);
-  return result[0].insertId;
+  const result = await db.insert(clients).values(data).returning({ id: clients.id });
+  return result[0].id;
 }
 
 export async function updateClient(id: number, data: Partial<InsertClient>): Promise<void> {
@@ -1086,8 +1089,8 @@ export async function createHemotestPoint(data: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(hemotestPickupPoints).values(data);
-  const id = result[0]?.insertId;
+  const result = await db.insert(hemotestPickupPoints).values(data).returning({ id: hemotestPickupPoints.id });
+  const id = result[0]?.id;
   if (!id) throw new Error("Failed to create point");
 
   const point = await db
@@ -1121,8 +1124,8 @@ export async function createSberbankPoint(data: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(sberbankPickupPoints).values(data);
-  const id = result[0]?.insertId;
+  const result = await db.insert(sberbankPickupPoints).values(data).returning({ id: sberbankPickupPoints.id });
+  const id = result[0]?.id;
   if (!id) throw new Error("Failed to create point");
 
   const point = await db
@@ -1162,9 +1165,9 @@ export async function createHemotestPickupList(data: {
     date: data.date,
     name: data.name,
     status: "active",
-  });
+  }).returning({ id: hemotestPickupLists.id });
 
-  const listId = result[0]?.insertId;
+  const listId = result[0]?.id;
   if (!listId) throw new Error("Failed to create list");
 
   // Add items to the list (with deduplication)
@@ -1273,9 +1276,9 @@ export async function createSberbankPickupList(data: {
     dayOfWeek: data.dayOfWeek,
     name: data.name,
     status: "active",
-  });
+  }).returning({ id: sberbankPickupLists.id });
 
-  const listId = result[0]?.insertId;
+  const listId = result[0]?.id;
   if (!listId) throw new Error("Failed to create list");
 
   // Add items to the list (with deduplication)
@@ -1380,8 +1383,8 @@ export async function createRequest(data: InsertRequest): Promise<number> {
     ...data,
     createdByUserId: data.createdByUserId || 1, // Default to admin user
     status: "pending",
-  });
-  return result[0].insertId as number;
+  }).returning({ id: requests.id });
+  return result[0].id as number;
 }
 
 /**
@@ -1453,8 +1456,8 @@ export async function seedDemoManager(): Promise<number> {
     passwordHash,
     phone: "+7 (999) 111-11-11",
     isActive: true,
-  });
-  return result[0].insertId as number;
+  }).returning({ id: managers.id });
+  return result[0].id as number;
 }
 
 // ─── Client helpers ────────────────────────────────────────────────────────────
