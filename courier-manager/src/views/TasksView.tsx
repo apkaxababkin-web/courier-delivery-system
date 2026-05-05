@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '../lib/api';
 import { parseRequestText } from '../lib/text-parser';
-import { X, Sparkles, Plus, Search, CheckCircle2, AlertCircle, Clock, FileText, Edit2, Trash2 } from 'lucide-react';
+import { X, Sparkles, Plus, Search, CheckCircle2, AlertCircle, Clock, FileText, Edit2, Trash2, TrendingUp } from 'lucide-react';
 
 interface Client {
   id: number;
@@ -334,444 +334,302 @@ export default function TasksView() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {/* Total */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600 mb-2">Всего заявок</div>
-              <div className="text-3xl font-bold text-gray-900">{stats.total}</div>
+    <div className="bg-slate-50 min-h-screen p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* Statistics Cards - 4 columns */}
+        <div className="grid grid-cols-4 gap-6">
+          {/* Total */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-2">Всего заявок</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+              </div>
+              <div className="bg-blue-100 p-3 rounded-lg">
+                <FileText className="w-6 h-6 text-blue-600" />
+              </div>
             </div>
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <FileText className="w-5 h-5 text-blue-500" />
+          </div>
+
+          {/* New */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-2">Новые</p>
+                <p className="text-3xl font-bold text-green-600">{stats.new}</p>
+              </div>
+              <div className="bg-green-100 p-3 rounded-lg">
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          {/* Pending */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-2">В работе</p>
+                <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
+              </div>
+              <div className="bg-yellow-100 p-3 rounded-lg">
+                <Clock className="w-6 h-6 text-yellow-600" />
+              </div>
+            </div>
+          </div>
+
+          {/* Completed */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-2">Завершённые</p>
+                <p className="text-3xl font-bold text-purple-600">{stats.completed}</p>
+              </div>
+              <div className="bg-purple-100 p-3 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-purple-600" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* New */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600 mb-2">Новые</div>
-              <div className="text-3xl font-bold text-green-600">{stats.new}</div>
-            </div>
-            <div className="p-2 bg-green-50 rounded-lg">
-              <CheckCircle2 className="w-5 h-5 text-green-500" />
-            </div>
-          </div>
-        </div>
-
-        {/* Pending */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600 mb-2">В работе</div>
-              <div className="text-3xl font-bold text-yellow-600">{stats.pending}</div>
-            </div>
-            <div className="p-2 bg-yellow-50 rounded-lg">
-              <Clock className="w-5 h-5 text-yellow-500" />
-            </div>
-          </div>
-        </div>
-
-        {/* Completed */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600 mb-2">Завершённые</div>
-              <div className="text-3xl font-bold text-purple-600">{stats.completed}</div>
-            </div>
-            <div className="p-2 bg-purple-50 rounded-lg">
-              <CheckCircle2 className="w-5 h-5 text-purple-500" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters Card */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <div className="space-y-4">
-          {/* First Row: Status, Date Range, Search */}
-          <div className="flex items-end gap-4">
+        {/* Filters Card */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+          <div className="flex items-center gap-4 flex-wrap">
             {/* Status Select */}
-            <div className="w-40">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Статус</label>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="all">Все</option>
-                <option value="new">Новая</option>
-                <option value="pending">В работе</option>
-                <option value="completed">Завершена</option>
-                <option value="cancelled">Отменена</option>
-              </select>
-            </div>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Все статусы</option>
+              <option value="new">Новые</option>
+              <option value="pending">В работе</option>
+              <option value="completed">Завершённые</option>
+              <option value="cancelled">Отменённые</option>
+            </select>
 
             {/* Date Range */}
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Дата</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-                <span className="text-gray-400">—</span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-              </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-gray-400">—</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
 
             {/* Search */}
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Поиск</label>
+            <div className="flex-1 min-w-64">
               <div className="relative">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
+                  placeholder="Поиск по клиенту или адресу..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Клиент или ID..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3">
+            <div className="flex gap-3 ml-auto">
               <button
                 onClick={() => setShowForm(true)}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm flex items-center gap-2 whitespace-nowrap"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-5 h-5" />
                 Создать заявку
               </button>
               <button
                 onClick={() => setShowAiForm(true)}
-                className="px-6 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition font-medium text-sm flex items-center gap-2 whitespace-nowrap"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-5 h-5" />
                 Создать по тексту
               </button>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Tasks Table */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        {filteredRequests.length === 0 ? (
-          <div className="p-12 text-center">
-            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <div className="text-gray-600 font-medium mb-2">Заявок пока нет</div>
-            <div className="text-sm text-gray-500 mb-6">Создайте первую заявку вручную или через ИИ</div>
+        {/* Table Card */}
+        {filteredRequests.length > 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">ID</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Клиент</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Адрес</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Статус</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Дата</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRequests.map((request, index) => (
+                  <tr key={request.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm text-gray-900">#{request.id}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{request.senderName || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{request.deliveryAddress || 'N/A'}</td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(request.status)}`}>
+                        {getStatusIcon(request.status)}
+                        {getStatusLabel(request.status)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {request.createdAt ? new Date(request.createdAt).toLocaleDateString('ru-RU') : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button className="p-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button className="p-2 text-gray-600 hover:bg-red-100 hover:text-red-600 rounded-lg transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* Empty State */
+          <div className="bg-white rounded-xl border border-gray-200 p-12 shadow-sm text-center">
+            <div className="flex justify-center mb-4">
+              <div className="bg-gray-100 p-4 rounded-lg">
+                <FileText className="w-12 h-12 text-gray-400" />
+              </div>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Заявок пока нет</h3>
+            <p className="text-gray-600 mb-6">Создайте первую заявку вручную или через ИИ</p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => setShowForm(true)}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
               >
                 Создать заявку
               </button>
               <button
                 onClick={() => setShowAiForm(true)}
-                className="px-6 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition font-medium text-sm"
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
                 Создать по тексту
               </button>
             </div>
           </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Клиент</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Адрес</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Статус</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Дата</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRequests.map((request) => (
-                <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">#{request.id}</td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{request.senderName || request.recipientName || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-700 line-clamp-1">{request.deliveryAddress || '-'}</td>
-                  <td className="px-6 py-4 text-sm">
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(request.status)}`}>
-                      {getStatusLabel(request.status)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
-                    {request.createdAt ? new Date(request.createdAt).toLocaleDateString('ru-RU') : '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <button className="p-2 hover:bg-gray-200 rounded-lg transition text-gray-600">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button className="p-2 hover:bg-red-100 rounded-lg transition text-red-600">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
       </div>
 
-      {/* Task Creation Modal */}
+      {/* Modals */}
       {showForm && createPortal(
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
-              <h2 className="text-xl font-semibold text-gray-900">Создать заявку</h2>
-              <button
-                onClick={resetForm}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-              >
-                <X className="w-5 h-5 text-gray-500" />
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-96 overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">Создать заявку</h2>
+              <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="w-6 h-6" />
               </button>
             </div>
-
-            {/* Modal Body */}
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {/* Task Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Тип заявки *</label>
-                <select
-                  value={formData.taskType}
-                  onChange={(e) => setFormData({ ...formData, taskType: e.target.value as TaskFormData['taskType'] })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="delivery">Доставка</option>
-                  <option value="movement">Перемещение</option>
-                  <option value="nuts">Орехи</option>
-                  <option value="courier_call">Вызов курьера</option>
-                  <option value="pickup_from_tc">Получение и отправка груза в ТК</option>
-                  <option value="simple">Простая заявка</option>
-                </select>
-              </div>
-
-              {/* Two Column Layout */}
               <div className="grid grid-cols-2 gap-4">
-                {/* Sender Name */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Отправитель *</label>
-                  <input
-                    type="text"
-                    value={formData.senderName}
-                    onChange={(e) => setFormData({ ...formData, senderName: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Название компании"
-                    required
-                  />
-                </div>
-
-                {/* Sender Phone */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Телефон отправителя</label>
-                  <input
-                    type="tel"
-                    value={formData.senderPhone}
-                    onChange={(e) => setFormData({ ...formData, senderPhone: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="+7 (914) 111-22-33"
-                  />
-                </div>
-              </div>
-
-              {/* Sender Address */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Адрес отправителя *</label>
                 <input
                   type="text"
-                  value={formData.senderAddress}
-                  onChange={(e) => setFormData({ ...formData, senderAddress: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="ул. Калашникова, 17"
-                  required
+                  placeholder="Имя отправителя"
+                  value={formData.senderName}
+                  onChange={(e) => setFormData({ ...formData, senderName: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-              </div>
-
-              {/* Recipient */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Получатель *</label>
-                  <input
-                    type="text"
-                    value={formData.recipientName}
-                    onChange={(e) => setFormData({ ...formData, recipientName: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Имя получателя"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Телефон получателя *</label>
-                  <input
-                    type="tel"
-                    value={formData.recipientPhone}
-                    onChange={(e) => setFormData({ ...formData, recipientPhone: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="+7 (914) 111-22-33"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Delivery Address */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Адрес доставки *</label>
                 <input
                   type="text"
-                  value={formData.deliveryAddress}
-                  onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="ул. Доставки, 5"
-                  required
+                  placeholder="Имя получателя"
+                  value={formData.recipientName}
+                  onChange={(e) => setFormData({ ...formData, recipientName: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-
-              {/* Delivery Time */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Время от</label>
-                  <input
-                    type="time"
-                    value={formData.deliveryTimeFrom}
-                    onChange={(e) => setFormData({ ...formData, deliveryTimeFrom: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Время до</label>
-                  <input
-                    type="time"
-                    value={formData.deliveryTimeTo}
-                    onChange={(e) => setFormData({ ...formData, deliveryTimeTo: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Comments */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Комментарии</label>
-                <textarea
-                  value={formData.comments}
-                  onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Дополнительная информация"
-                  rows={3}
-                />
-              </div>
-
-              {/* Payment Method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Способ оплаты</label>
-                <select
-                  value={formData.paymentMethod}
-                  onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as TaskFormData['paymentMethod'] })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="paid">Оплачено</option>
-                  <option value="transfer">Перевод</option>
-                  <option value="cash">Наличные</option>
-                  <option value="terminal">Терминал</option>
-                  <option value="qr">QR-код</option>
-                </select>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex gap-3 pt-6 border-t border-gray-200">
+              <input
+                type="text"
+                placeholder="Адрес доставки"
+                value={formData.deliveryAddress}
+                onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <textarea
+                placeholder="Описание посылки"
+                value={formData.packageDescription}
+                onChange={(e) => setFormData({ ...formData, packageDescription: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={3}
+              />
+              <div className="flex gap-3 justify-end pt-4">
                 <button
                   type="button"
-                  onClick={resetForm}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  Создать заявку
+                  Создать
                 </button>
               </div>
             </form>
           </div>
-        </div>
-      , document.body)}
+        </div>,
+        document.body
+      )}
 
-      {/* AI Text Parsing Modal */}
       {showAiForm && createPortal(
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Создать заявку по тексту</h2>
-              </div>
-              <button
-                onClick={() => setShowAiForm(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-              >
-                <X className="w-5 h-5 text-gray-500" />
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">Создать заявку по тексту</h2>
+              <button onClick={() => setShowAiForm(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="w-6 h-6" />
               </button>
             </div>
-
-            {/* Modal Body */}
-            <form onSubmit={(e) => { e.preventDefault(); handleAiSubmit(); }} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Описание заявки</label>
-                <textarea
-                  value={aiText}
-                  onChange={(e) => setAiText(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="Вставьте текст заявки из мессенджера, письма или другого источника..."
-                  rows={8}
-                  required
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
+            <div className="p-6 space-y-4">
+              <textarea
+                placeholder="Вставьте текст заявки..."
+                value={aiText}
+                onChange={(e) => setAiText(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={6}
+              />
+              <div className="flex gap-3 justify-end">
                 <button
-                  type="button"
                   onClick={() => setShowAiForm(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >
                   Отмена
                 </button>
                 <button
-                  type="submit"
+                  onClick={handleAiSubmit}
                   disabled={aiLoading}
-                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  <Sparkles className="w-4 h-4" />
                   {aiLoading ? 'Распознавание...' : 'Распознать'}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
-        </div>
-      , document.body)}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
