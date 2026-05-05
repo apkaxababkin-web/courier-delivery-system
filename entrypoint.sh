@@ -30,7 +30,7 @@ fi
 # Run migrations
 echo "[Entrypoint] Running database migrations..."
 if [ -f "drizzle.config.ts" ]; then
-  if npx drizzle-kit migrate 2>&1; then
+  if npx drizzle-kit push 2>&1; then
     echo "[Entrypoint] ✓ Migrations completed successfully"
   else
     echo "[Entrypoint] ⚠ Migrations encountered an issue (continuing anyway)"
