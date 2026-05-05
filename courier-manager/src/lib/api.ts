@@ -1,6 +1,6 @@
 const API_BASE = '/api/trpc';
 
-interface Client {
+export interface Client {
   id: number;
   name: string;
   address: string;
@@ -11,7 +11,7 @@ interface Client {
   updatedAt: string;
 }
 
-interface Task {
+export interface Task {
   id: number;
   status: string;
   taskType: string;
