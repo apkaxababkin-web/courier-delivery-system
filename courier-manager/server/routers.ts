@@ -14,6 +14,11 @@ const COURIER_JWT_SECRET = new TextEncoder().encode(
 );
 const COURIER_TOKEN_EXPIRY = "7d";
 
+const MANAGER_JWT_SECRET = new TextEncoder().encode(
+  process.env.MANAGER_JWT_SECRET ?? "manager-secret-key-change-in-production"
+);
+const MANAGER_TOKEN_EXPIRY = "7d";
+
 async function signCourierToken(courierId: number): Promise<string> {
   return new SignJWT({ courierId, type: "courier" })
     .setProtectedHeader({ alg: "HS256" })
@@ -27,6 +32,24 @@ export async function verifyCourierToken(token: string): Promise<{ courierId: nu
     const { payload } = await jwtVerify(token, COURIER_JWT_SECRET);
     if (payload.type !== "courier" || typeof payload.courierId !== "number") return null;
     return { courierId: payload.courierId };
+  } catch {
+    return null;
+  }
+}
+
+async function signManagerToken(managerId: number): Promise<string> {
+  return new SignJWT({ managerId, type: "manager" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime(MANAGER_TOKEN_EXPIRY)
+    .setIssuedAt()
+    .sign(MANAGER_JWT_SECRET);
+}
+
+async function verifyManagerToken(token: string): Promise<{ managerId: number } | null> {
+  try {
+    const { payload } = await jwtVerify(token, MANAGER_JWT_SECRET);
+    if (payload.type !== "manager" || typeof payload.managerId !== "number") return null;
+    return { managerId: payload.managerId };
   } catch {
     return null;
   }
@@ -109,6 +132,67 @@ export const appRouter = router({
             vehicleType: courier.vehicleType,
             isActive: courier.isActive,
             totalDeliveries: courier.totalDeliveries,
+          },
+        };
+      }),
+  }),
+
+  // ─── Manager authentication (login/password) ────────────────────────────────
+  managerAuth: router({
+    login: publicProcedure
+      .input(z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const manager = await db.getManagerByUsername(input.username);
+        if (!manager) throw new Error("Неверный логин или пароль");
+        if (!manager.isActive) throw new Error("Аккаунт менеджера деактивирован");
+        const valid = await bcrypt.compare(input.password, manager.password);
+        if (!valid) throw new Error("Неверный логин или пароль");
+        const token = await signManagerToken(manager.id);
+        return {
+          token,
+          manager: {
+            id: manager.id,
+            username: manager.username,
+            name: manager.name,
+            email: manager.email,
+            isActive: manager.isActive,
+          },
+        };
+      }),
+
+    me: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const payload = await verifyManagerToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        const manager = await db.getManagerById(payload.managerId);
+        if (!manager) throw new Error("Менеджер не найден");
+        return {
+          id: manager.id,
+          username: manager.username,
+          name: manager.name,
+          email: manager.email,
+          isActive: manager.isActive,
+        };
+      }),
+
+    getDemoToken: publicProcedure
+      .mutation(async () => {
+        const managerId = await db.seedDemoManager();
+        const token = await signManagerToken(managerId);
+        const manager = await db.getManagerById(managerId);
+        if (!manager) throw new Error("Менеджер не найден");
+        return {
+          token,
+          manager: {
+            id: manager.id,
+            username: manager.username,
+            name: manager.name,
+            email: manager.email,
+            isActive: manager.isActive,
           },
         };
       }),

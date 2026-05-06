@@ -1424,3 +1424,95 @@ export async function assignRequestCourier(id: number, courierId: number): Promi
     .set({ courierId, status: "assigned" as any })
     .where(eq(requests.id, id));
 }
+
+
+// ─── Manager management ──────────────────────────────────────────────────────
+
+/**
+ * Get manager by username
+ */
+export async function getManagerByUsername(username: string): Promise<Manager | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(managers)
+    .where(eq(managers.username, username))
+    .limit(1);
+  return result[0] || null;
+}
+
+/**
+ * Get manager by ID
+ */
+export async function getManagerById(id: number): Promise<Manager | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(managers)
+    .where(eq(managers.id, id))
+    .limit(1);
+  return result[0] || null;
+}
+
+/**
+ * Create a new manager
+ */
+export async function createManager(data: {
+  username: string;
+  password: string;
+  name: string;
+  email?: string;
+}): Promise<Manager> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db
+    .insert(managers)
+    .values({
+      username: data.username,
+      password: data.password,
+      name: data.name,
+      email: data.email,
+      isActive: true,
+    })
+    .returning();
+  
+  if (!result || result.length === 0) {
+    throw new Error("Failed to create manager");
+  }
+  return result[0];
+}
+
+/**
+ * Seed demo manager (manager / manager123)
+ */
+export async function seedDemoManager(): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check if demo manager already exists
+  const existing = await getManagerByUsername("manager");
+  if (existing) return existing.id;
+
+  // Create demo manager with bcrypt hash
+  const bcrypt = await import("bcryptjs");
+  const hashedPassword = await bcrypt.hash("manager123", 10);
+
+  const result = await db
+    .insert(managers)
+    .values({
+      username: "manager",
+      password: hashedPassword,
+      name: "Demo Manager",
+      email: "manager@demo.local",
+      isActive: true,
+    })
+    .returning({ id: managers.id });
+
+  if (!result || result.length === 0) {
+    throw new Error("Failed to seed demo manager");
+  }
+  return result[0].id;
+}
