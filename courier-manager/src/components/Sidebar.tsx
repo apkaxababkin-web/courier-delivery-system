@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Truck } from 'lucide-react';
+import { Truck, X } from 'lucide-react';
 
 interface MenuItem {
   id: string;
@@ -19,55 +19,93 @@ export default function Sidebar({
   menuItems,
   activeView,
   onViewChange,
+  isOpen,
+  onClose,
 }: SidebarProps) {
   return (
-    <aside className="fixed left-0 top-0 w-[280px] h-screen bg-slate-900 border-r border-slate-800 flex flex-col z-40">
-      <div className="h-full flex flex-col">
-        {/* Logo */}
-        <div className="px-6 py-6 border-b border-slate-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Truck className="w-6 h-6 text-white" />
+    <>
+      {isOpen && (
+        <button
+          type="button"
+          aria-label="Закрыть меню"
+          onClick={onClose}
+          className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-slate-200 bg-white transition-transform duration-300 lg:z-40 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
+                <Truck className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight text-slate-950">
+                  Courier Delivery
+                </h2>
+                <p className="text-xs text-slate-500">Manager Console</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Courier</h2>
-              <p className="text-xs text-slate-400">Manager</p>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 lg:hidden"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto px-3 py-5">
+            <div className="space-y-1">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeView === item.id;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      onViewChange(item.id);
+                    }}
+                    className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? 'bg-slate-950 text-white shadow-sm'
+                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
+                    }`}
+                  >
+                    <Icon
+                      size={18}
+                      className={`flex-shrink-0 transition ${
+                        isActive
+                          ? 'text-white'
+                          : 'text-slate-400 group-hover:text-slate-700'
+                      }`}
+                    />
+
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          <div className="border-t border-slate-200 p-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-medium text-slate-950">Сегодня</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                28 активных заявок • 7 новых • 14 курьеров онлайн.
+              </p>
             </div>
           </div>
         </div>
-
-        {/* Menu Items */}
-        <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  onViewChange(item.id);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                  isActive
-                    ? 'bg-blue-600 text-white font-medium shadow-lg shadow-blue-600/20'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <Icon size={20} className="flex-shrink-0" />
-                <span className="text-sm">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-800">
-          <div className="text-xs text-slate-500 space-y-1">
-            <p className="font-medium">v1.2.5</p>
-            <p className="text-slate-600">© 2026</p>
-          </div>
-        </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
