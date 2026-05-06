@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Package, MapPin, Landmark, Mail, BarChart3, Users, FileText, LogOut, Home, Settings } from 'lucide-react';
+import {
+  Package,
+  MapPin,
+  Landmark,
+  Mail,
+  BarChart3,
+  Users,
+  FileText,
+  LogOut,
+  Menu,
+  Search,
+} from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TasksView from './views/TasksView';
 import ClientsView from './views/ClientsView';
@@ -28,6 +39,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [managerName, setManagerName] = useState('');
   const [managerRole, setManagerRole] = useState('Менеджер');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('managerToken');
@@ -47,6 +59,7 @@ function App() {
     setIsAuthenticated(false);
     setManagerName('');
     setManagerRole('');
+    setActiveView('tasks');
   };
 
   const renderView = () => {
@@ -76,63 +89,112 @@ function App() {
     return menuItems.find((item) => item.id === activeView)?.label || 'Все заявки';
   };
 
+  const getPageDescription = () => {
+    switch (activeView) {
+      case 'tasks':
+        return 'Рабочая область для обработки заявок, фильтров, статусов и назначений.';
+      case 'mails':
+        return 'Входящие письма и заявки, которые требуют обработки менеджером.';
+      case 'hemotest':
+        return 'Заявки и маршруты по направлению Гемотест.';
+      case 'sberbank':
+        return 'Заявки и маршруты по направлению Сбербанк.';
+      case 'clients':
+        return 'Клиентская база, контакты и история заявок.';
+      case 'reports':
+        return 'Операционные показатели и выгрузки по доставкам.';
+      case 'archive':
+        return 'Завершённые и закрытые заявки.';
+      case 'couriers':
+        return 'Курьеры, статусы доступности и текущая загрузка.';
+      default:
+        return 'Система управления курьерскими заявками.';
+    }
+  };
+
   if (!isAuthenticated) {
-    return <LoginView onLogin={(token) => {
-      setIsAuthenticated(true);
-      setManagerName(localStorage.getItem('managerName') || 'Менеджер');
-      setManagerRole(localStorage.getItem('managerRole') || 'Менеджер');
-    }} />;
+    return (
+      <LoginView
+        onLogin={() => {
+          setIsAuthenticated(true);
+          setManagerName(localStorage.getItem('managerName') || 'Менеджер');
+          setManagerRole(localStorage.getItem('managerRole') || 'Менеджер');
+        }}
+      />
+    );
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-slate-50 text-slate-950">
       <Sidebar
         menuItems={menuItems as any}
         activeView={activeView}
         onViewChange={(view) => {
           setActiveView(view as ViewType);
+          setIsSidebarOpen(false);
         }}
-        isOpen={true}
-        onClose={() => {}}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col overflow-hidden ml-[280px]">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-8 fixed top-0 right-0 left-[280px] z-30">
-          <h1 className="text-xl font-semibold text-gray-900">
-            {getPageTitle()}
-          </h1>
-          
-          <div className="flex items-center gap-6">
-            {/* User info */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-sm font-semibold text-blue-600">
-                  {managerName.charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-gray-900">{managerName}</span>
-                <span className="text-xs text-gray-500">{managerRole}</span>
+      <div className="flex min-h-screen flex-col lg:pl-[280px]">
+        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
+          <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(true)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden"
+                aria-label="Открыть меню"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+
+              <div className="hidden min-w-0 flex-col md:flex">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-slate-950">
+                  {getPageTitle()}
+                </h1>
+                <p className="truncate text-xs text-slate-500">{getPageDescription()}</p>
               </div>
             </div>
 
-            {/* Logout button */}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
-            >
-              <LogOut className="w-4 h-4" />
-              Выход
-            </button>
+            <div className="hidden flex-1 items-center justify-center xl:flex">
+              <div className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                <Search className="h-4 w-4" />
+                <span className="truncate">Поиск по заявкам, клиентам, адресам...</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="hidden text-right sm:block">
+                <p className="text-sm font-medium text-slate-950">{managerName}</p>
+                <p className="text-xs text-slate-500">{managerRole}</p>
+              </div>
+
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
+                {(managerName || 'M').charAt(0).toUpperCase()}
+              </div>
+
+              <button
+                onClick={handleLogout}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Выход</span>
+              </button>
+            </div>
           </div>
         </header>
 
-        {/* Content area */}
-        <main className="flex-1 overflow-auto pt-16">
-          <div className="p-8">
+        <main className="flex-1 overflow-x-hidden px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+          <div className="mx-auto max-w-[1440px] space-y-5">
+            <div className="md:hidden">
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+                {getPageTitle()}
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">{getPageDescription()}</p>
+            </div>
+
             {renderView()}
           </div>
         </main>
