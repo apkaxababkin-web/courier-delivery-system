@@ -1,1 +1,0 @@
-ALTER TABLE `tasks` ADD `placesCount` int DEFAULT 1 NOT NULL;

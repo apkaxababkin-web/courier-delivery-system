@@ -6,7 +6,6 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { migrate } from "drizzle-orm/mysql2/migrator";
 import { getDb } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {

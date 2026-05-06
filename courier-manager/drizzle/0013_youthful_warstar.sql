@@ -1,1 +1,0 @@
-ALTER TABLE `tasks` ADD `taskType` enum('regular','warehouse_pickup','courier_call') DEFAULT 'regular' NOT NULL;
