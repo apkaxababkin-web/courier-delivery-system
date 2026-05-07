@@ -14,18 +14,7 @@ interface TasksToolbarProps {
   onAiCreateClick: () => void;
 }
 
-const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
-  { value: 'all', label: 'Все' },
-  { value: 'pending', label: 'Новые' },
-  { value: 'assigned', label: 'Назначена' },
-  { value: 'in_progress', label: 'В работе' },
-  { value: 'completed', label: 'Завершённые' },
-  { value: 'cancelled', label: 'Отменённые' },
-];
-
 export function TasksToolbar({
-  selectedStatus,
-  onStatusChange,
   dateFrom,
   onDateFromChange,
   dateTo,
@@ -99,30 +88,6 @@ export function TasksToolbar({
                 <Sparkles className="h-4 w-4" />
                 Создать по тексту
               </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-5">
-            {STATUS_CHIPS.map((chip) => {
-              const isActive = selectedStatus === chip.value;
-
-              return (
-                <button
-                  key={chip.value}
-                  onClick={() => onStatusChange(chip.value)}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-slate-950 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-950'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              );
-            })}
-
-            <div className="ml-auto hidden text-xs text-slate-400 lg:block">
-              28 активных • 7 новых • 14 курьеров онлайн
             </div>
           </div>
         </div>
