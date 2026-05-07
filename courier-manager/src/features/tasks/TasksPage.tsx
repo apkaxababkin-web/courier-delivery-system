@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, CalendarDays, Landmark, MapPin } from 'lucide-react';
+import { Activity, CalendarDays, CheckCircle2, Landmark, MapPin } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -17,51 +17,40 @@ import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
 
 type OperationMode = 'requests' | 'hemotest' | 'sberbank';
-type OperationList = {
+type OperationPoint = {
   id: number;
   name: string;
-  meta: string;
-  status: string;
-  items: Array<{ id: number; name: string; address: string; phone?: string; contactPerson?: string }>;
+  address: string;
+  phone?: string;
+  contactPerson?: string;
+  pickedAt?: string;
+  pickedBy?: string;
+  courierName?: string;
+  completedAt?: string;
 };
-
+type OperationList = { id: number; name: string; meta: string; status: string; items: OperationPoint[] };
 type PickupList = { id: number; name: string; status: string; date?: string; dayOfWeek?: number };
-
-type PickupListWithItems = {
-  list?: PickupList;
-  items?: OperationList['items'];
-};
+type PickupListWithItems = { list?: PickupList; items?: OperationPoint[] };
 
 const API_BASE = '/api/trpc';
+const weekdayNames: Record<number, string> = { 1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг', 5: 'Пятница' };
 
-const weekdayNames: Record<number, string> = {
-  1: 'Понедельник',
-  2: 'Вторник',
-  3: 'Среда',
-  4: 'Четверг',
-  5: 'Пятница',
-};
+function getTodayDate() { return new Date().toISOString().slice(0, 10); }
+function getTodayBusinessWeekday() { const day = new Date().getDay(); return day === 0 || day > 5 ? 5 : day; }
 
-function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getTodayBusinessWeekday() {
-  const day = new Date().getDay();
-  if (day === 0) return 5;
-  if (day > 5) return 5;
-  return day;
+function getPickupMeta(point: OperationPoint) {
+  const pickedAt = point.pickedAt || point.completedAt;
+  const pickedBy = point.pickedBy || point.courierName;
+  const isPicked = Boolean(pickedAt || pickedBy);
+  if (!isPicked) return { isPicked, text: 'Не забрано' };
+  const time = pickedAt ? new Date(pickedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'время не указано';
+  return { isPicked, text: `${pickedBy || 'Курьер'} • ${time}` };
 }
 
 async function trpcQuery<T>(path: string, input: Record<string, unknown>): Promise<T> {
   const wrappedInput = encodeURIComponent(JSON.stringify({ json: input }));
   const response = await fetch(`${API_BASE}/${path}?input=${wrappedInput}`);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `Failed to fetch ${path}`);
-  }
-
+  if (!response.ok) throw new Error(await response.text() || `Failed to fetch ${path}`);
   const data = await response.json();
   return data.result?.data?.json || data.result?.data || [];
 }
@@ -75,21 +64,16 @@ export default function TasksPage() {
   const [isOperationLoading, setIsOperationLoading] = useState(false);
   const [hemotestDate, setHemotestDate] = useState(getTodayDate());
   const [sberbankDay, setSberbankDay] = useState(getTodayBusinessWeekday());
-
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isParsingAi, setIsParsingAi] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
+  useEffect(() => { loadData(); }, []);
   useEffect(() => {
     if (operationMode === 'hemotest') loadHemotestLists();
     if (operationMode === 'sberbank') loadSberbankLists();
@@ -98,10 +82,7 @@ export default function TasksPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [requestsData, clientsData] = await Promise.all([
-        getAllRequests(),
-        getAllClients(),
-      ]);
+      const [requestsData, clientsData] = await Promise.all([getAllRequests(), getAllClients()]);
       setRequests(requestsData);
       setClients(clientsData);
     } catch (error) {
@@ -116,18 +97,10 @@ export default function TasksPage() {
     try {
       setIsOperationLoading(true);
       const lists = await trpcQuery<PickupList[]>('hemotest.listsForDate', { date: hemotestDate });
-      const detailed = await Promise.all(
-        lists.map(async (list) => {
-          const full = await trpcQuery<PickupListWithItems>('hemotest.getList', { listId: list.id });
-          return {
-            id: list.id,
-            name: list.name,
-            meta: list.date ? new Date(list.date).toLocaleDateString('ru-RU') : hemotestDate,
-            status: list.status,
-            items: full.items || [],
-          };
-        })
-      );
+      const detailed = await Promise.all(lists.map(async (list) => {
+        const full = await trpcQuery<PickupListWithItems>('hemotest.getList', { listId: list.id });
+        return { id: list.id, name: list.name, meta: list.date ? new Date(list.date).toLocaleDateString('ru-RU') : hemotestDate, status: list.status, items: full.items || [] };
+      }));
       setOperationLists(detailed);
     } catch (error) {
       console.error('Failed to load hemotest lists:', error);
@@ -141,18 +114,10 @@ export default function TasksPage() {
     try {
       setIsOperationLoading(true);
       const lists = await trpcQuery<PickupList[]>('sberbank.listsForDay', { dayOfWeek: sberbankDay });
-      const detailed = await Promise.all(
-        lists.map(async (list) => {
-          const full = await trpcQuery<PickupListWithItems>('sberbank.getList', { listId: list.id });
-          return {
-            id: list.id,
-            name: list.name,
-            meta: weekdayNames[list.dayOfWeek || sberbankDay] || `День ${list.dayOfWeek || sberbankDay}`,
-            status: list.status,
-            items: full.items || [],
-          };
-        })
-      );
+      const detailed = await Promise.all(lists.map(async (list) => {
+        const full = await trpcQuery<PickupListWithItems>('sberbank.getList', { listId: list.id });
+        return { id: list.id, name: list.name, meta: weekdayNames[list.dayOfWeek || sberbankDay] || `День ${list.dayOfWeek || sberbankDay}`, status: list.status, items: full.items || [] };
+      }));
       setOperationLists(detailed);
     } catch (error) {
       console.error('Failed to load sberbank lists:', error);
@@ -164,6 +129,7 @@ export default function TasksPage() {
 
   const filteredRequests = getFilteredRequests(requests, selectedStatus, dateFrom, dateTo, searchQuery);
   const stats = getStatistics(requests);
+  const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name })));
 
   const handleCreateTask = async (data: TaskFormData) => {
     try {
@@ -207,17 +173,8 @@ export default function TasksPage() {
   const renderModeButton = (mode: OperationMode, label: string, icon: React.ReactNode) => {
     const isActive = operationMode === mode;
     return (
-      <button
-        type="button"
-        onClick={() => setOperationMode(mode)}
-        className={`inline-flex h-10 items-center gap-2 rounded-2xl px-4 text-sm font-medium shadow-sm transition ${
-          isActive
-            ? 'bg-slate-950 text-white'
-            : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-        }`}
-      >
-        {icon}
-        {label}
+      <button type="button" onClick={() => setOperationMode(mode)} className={`inline-flex h-10 items-center gap-2 rounded-2xl px-4 text-sm font-medium shadow-sm transition ${isActive ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'}`}>
+        {icon}{label}
       </button>
     );
   };
@@ -233,94 +190,53 @@ export default function TasksPage() {
       {operationMode === 'requests' ? (
         <>
           <TasksStats stats={stats} selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} />
-
-          <TasksToolbar
-            selectedStatus={selectedStatus}
-            onStatusChange={setSelectedStatus}
-            dateFrom={dateFrom}
-            onDateFromChange={setDateFrom}
-            dateTo={dateTo}
-            onDateToChange={setDateTo}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onCreateClick={() => setShowCreateModal(true)}
-            onAiCreateClick={() => setShowAiModal(true)}
-          />
-
-          {filteredRequests.length === 0 && !isLoading ? (
-            <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
-          ) : (
-            <TasksTable requests={filteredRequests} isLoading={isLoading} />
-          )}
+          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} dateFrom={dateFrom} onDateFromChange={setDateFrom} dateTo={dateTo} onDateToChange={setDateTo} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
+          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} isLoading={isLoading} />}
         </>
       ) : (
         <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-slate-950">
-                {operationMode === 'hemotest' ? 'Списки Гемотест' : 'Списки Сбербанк'}
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Здесь отображаются списки, созданные во вкладках {operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}.
-              </p>
+              <h2 className="text-base font-semibold text-slate-950">{operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</h2>
+              <p className="mt-1 text-sm text-slate-500">Список сборов</p>
             </div>
-
             {operationMode === 'hemotest' ? (
-              <label className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              <label className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                 <CalendarDays className="h-4 w-4 text-slate-400" />
                 <input type="date" value={hemotestDate} onChange={(e) => setHemotestDate(e.target.value)} className="bg-transparent outline-none" />
               </label>
             ) : (
-              <select
-                value={sberbankDay}
-                onChange={(e) => setSberbankDay(Number(e.target.value))}
-                className="h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
-              >
-                {Object.entries(weekdayNames).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
+              <select value={sberbankDay} onChange={(e) => setSberbankDay(Number(e.target.value))} className="h-10 w-fit rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none">
+                {Object.entries(weekdayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             )}
           </div>
 
           {isOperationLoading ? (
-            <div className="flex min-h-56 items-center justify-center p-8 text-sm text-slate-500">Загрузка списков...</div>
-          ) : operationLists.length === 0 ? (
-            <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
-              <MapPin className="mb-3 h-8 w-8 text-slate-300" />
-              <p className="text-sm font-medium text-slate-950">Списков пока нет</p>
-              <p className="mt-1 text-sm text-slate-500">Создайте список во вкладке {operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}, и он появится здесь.</p>
-            </div>
+            <div className="flex min-h-40 items-center justify-center p-8 text-sm text-slate-500">Загрузка...</div>
+          ) : flattenedPoints.length === 0 ? (
+            <div className="flex min-h-40 items-center justify-center p-8 text-center text-sm text-slate-500">На выбранную дату список пуст.</div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {operationLists.map((list) => (
-                <div key={list.id} className="p-5">
-                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-2 bg-slate-50/70 p-3">
+              {flattenedPoints.map((point) => {
+                const pickup = getPickupMeta(point);
+                return (
+                  <div key={`${point.listName}-${point.id}`} className={`grid gap-2 rounded-2xl border px-4 py-3 shadow-sm md:grid-cols-[1.1fr_2fr_1fr] md:items-center ${pickup.isPicked ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-950">{list.name}</h3>
-                      <p className="mt-1 text-xs text-slate-500">{list.meta} • {list.items.length} точек • {list.status}</p>
+                      <p className="text-sm font-semibold text-slate-950">{operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{point.listName}</p>
                     </div>
-                    <span className="inline-flex w-fit rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                      Активный список
-                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{point.name}</p>
+                      <p className="mt-0.5 text-sm text-slate-500">{point.address}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm md:justify-end">
+                      {pickup.isPicked && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
+                      <span className={pickup.isPicked ? 'font-medium text-emerald-700' : 'text-slate-500'}>{pickup.text}</span>
+                    </div>
                   </div>
-
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {list.items.map((point) => (
-                      <div key={point.id} className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-sm font-semibold text-slate-950">{point.name}</p>
-                        <p className="mt-1 text-sm text-slate-600">{point.address}</p>
-                        {(point.contactPerson || point.phone) && (
-                          <div className="mt-3 space-y-1 text-xs text-slate-500">
-                            {point.contactPerson && <p>Контакт: {point.contactPerson}</p>}
-                            {point.phone && <p>Телефон: {point.phone}</p>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
