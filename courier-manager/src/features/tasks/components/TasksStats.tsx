@@ -1,77 +1,56 @@
-import { FileText, CheckCircle2, Clock, TrendingUp } from 'lucide-react';
-import type { Statistics } from '../model/types';
+import { FileText, CheckCircle2, Clock, TrendingUp, XCircle } from 'lucide-react';
+import type { Statistics, StatusFilter } from '../model/types';
 
 interface TasksStatsProps {
   stats: Statistics;
+  selectedStatus: StatusFilter;
+  onStatusChange: (status: StatusFilter) => void;
 }
 
-export function TasksStats({ stats }: TasksStatsProps) {
+const cards: Array<{
+  key: StatusFilter;
+  label: string;
+  value: keyof Statistics | 'total';
+  icon: typeof FileText;
+  valueClass: string;
+  iconClass: string;
+}> = [
+  { key: 'all', label: 'Всего заявок', value: 'total', icon: FileText, valueClass: 'text-slate-950', iconClass: 'bg-slate-100 text-slate-600' },
+  { key: 'pending', label: 'Новые', value: 'pending', icon: CheckCircle2, valueClass: 'text-emerald-600', iconClass: 'bg-emerald-50 text-emerald-600' },
+  { key: 'assigned', label: 'Назначена', value: 'assigned', icon: Clock, valueClass: 'text-blue-600', iconClass: 'bg-blue-50 text-blue-600' },
+  { key: 'in_progress', label: 'В работе', value: 'in_progress', icon: Clock, valueClass: 'text-amber-600', iconClass: 'bg-amber-50 text-amber-600' },
+  { key: 'completed', label: 'Завершённые', value: 'completed', icon: TrendingUp, valueClass: 'text-purple-600', iconClass: 'bg-purple-50 text-purple-600' },
+  { key: 'cancelled', label: 'Отменённые', value: 'cancelled', icon: XCircle, valueClass: 'text-red-600', iconClass: 'bg-red-50 text-red-600' },
+];
+
+export function TasksStats({ stats, selectedStatus, onStatusChange }: TasksStatsProps) {
   return (
-    <div className="grid grid-cols-5 gap-6">
-      {/* Total */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Всего заявок</p>
-            <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
-          </div>
-          <div className="bg-blue-100 p-3 rounded-lg">
-            <FileText className="w-6 h-6 text-blue-600" />
-          </div>
-        </div>
-      </div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      {cards.map((card) => {
+        const Icon = card.icon;
+        const isActive = selectedStatus === card.key;
 
-      {/* Pending (New) */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Новые</p>
-            <p className="text-3xl font-bold text-green-600">{stats.pending}</p>
-          </div>
-          <div className="bg-green-100 p-3 rounded-lg">
-            <CheckCircle2 className="w-6 h-6 text-green-600" />
-          </div>
-        </div>
-      </div>
-
-      {/* Assigned */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Назначена</p>
-            <p className="text-3xl font-bold text-blue-600">{stats.assigned}</p>
-          </div>
-          <div className="bg-blue-100 p-3 rounded-lg">
-            <Clock className="w-6 h-6 text-blue-600" />
-          </div>
-        </div>
-      </div>
-
-      {/* In Progress */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600 mb-2">В работе</p>
-            <p className="text-3xl font-bold text-yellow-600">{stats.in_progress}</p>
-          </div>
-          <div className="bg-yellow-100 p-3 rounded-lg">
-            <Clock className="w-6 h-6 text-yellow-600" />
-          </div>
-        </div>
-      </div>
-
-      {/* Completed */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Завершённые</p>
-            <p className="text-3xl font-bold text-purple-600">{stats.completed}</p>
-          </div>
-          <div className="bg-purple-100 p-3 rounded-lg">
-            <TrendingUp className="w-6 h-6 text-purple-600" />
-          </div>
-        </div>
-      </div>
+        return (
+          <button
+            key={card.key}
+            type="button"
+            onClick={() => onStatusChange(card.key)}
+            className={`rounded-[22px] border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+              isActive ? 'border-slate-950 ring-4 ring-slate-950/5' : 'border-slate-200'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500">{card.label}</p>
+                <p className={`text-2xl font-semibold tracking-tight ${card.valueClass}`}>{stats[card.value]}</p>
+              </div>
+              <div className={`flex h-9 w-9 items-center justify-center rounded-2xl ${card.iconClass}`}>
+                <Icon className="h-4 w-4" />
+              </div>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
