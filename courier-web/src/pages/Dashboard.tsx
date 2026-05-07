@@ -1,26 +1,77 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, MapPin, Clock, CheckCircle, AlertCircle } from 'lucide-react';
-import axios from 'axios';
+import { LogOut, MapPin, Clock, CheckCircle, AlertCircle, RefreshCcw } from 'lucide-react';
 
 interface Task {
   id: number;
-  status: string;
-  senderName: string;
-  deliveryAddress: string;
+  status: 'assigned' | 'in_progress' | 'completed' | 'cancelled' | string;
+  senderName?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  deliveryAddress?: string;
+  senderAddress?: string;
   createdAt: string;
+  deliveryTimeFrom?: string;
+  deliveryTimeTo?: string;
+  placesCount?: number;
+  courierName?: string | null;
 }
+
+type Filter = 'all' | 'assigned' | 'in_progress' | 'completed';
+
+const API_URL = import.meta.env.VITE_API_URL || '';
+const TOKEN_STORAGE_KEY = 'courierToken';
+
+const unwrapTrpc = async <T,>(response: Response): Promise<T> => {
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || data?.error) {
+    throw new Error(data?.error?.message || 'Request failed');
+  }
+
+  return data?.result?.data?.json || data?.result?.data || data;
+};
+
+const statusLabels: Record<string, string> = {
+  assigned: 'Назначено',
+  in_progress: 'В работе',
+  completed: 'Выполнено',
+  cancelled: 'Отменено',
+  pending: 'Ожидает',
+};
+
+const getStatusClass = (status: string) => {
+  switch (status) {
+    case 'in_progress':
+      return 'border-slate-300 bg-slate-100 text-slate-900';
+    case 'completed':
+      return 'border-slate-300 bg-slate-200 text-slate-950';
+    case 'cancelled':
+      return 'border-slate-300 bg-white text-slate-500';
+    default:
+      return 'border-slate-200 bg-white text-slate-700';
+  }
+};
+
+const getStatusIcon = (status: string) => {
+  switch (status) {
+    case 'assigned':
+      return <AlertCircle className="h-4 w-4" />;
+    case 'in_progress':
+      return <Clock className="h-4 w-4" />;
+    case 'completed':
+      return <CheckCircle className="h-4 w-4" />;
+    default:
+      return <MapPin className="h-4 w-4" />;
+  }
+};
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-
-  const API_URL = import.meta.env.VITE_API_URL || 'https://couriermig.ru';
-  if (!import.meta.env.VITE_API_URL) {
-    console.warn('[Dashboard] VITE_API_URL not set, using default:', API_URL);
-  }
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
 
   useEffect(() => {
     loadTasks();
@@ -28,142 +79,145 @@ export const Dashboard: React.FC = () => {
 
   const loadTasks = async () => {
     try {
+      setError('');
       setIsLoading(true);
-      const token = localStorage.getItem('authToken');
-      const response = await axios.get(`${API_URL}/api/requests`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setTasks(response.data);
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+      if (!token) {
+        throw new Error('Нет токена курьера');
+      }
+
+      const input = encodeURIComponent(JSON.stringify({ token }));
+      const response = await fetch(`${API_URL}/api/trpc/tasks.all?input=${input}`);
+      const data = await unwrapTrpc<Task[]>(response);
+      setTasks(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Failed to load tasks:', error);
+      console.error('Failed to load courier tasks:', error);
+      setError('Не удалось загрузить заявки. Проверьте соединение и авторизацию.');
+      setTasks([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const filteredTasks = useMemo(() => {
+    if (filter === 'all') return tasks;
+    return tasks.filter((task) => task.status === filter);
+  }, [filter, tasks]);
+
+  const counters = {
+    total: tasks.length,
+    assigned: tasks.filter((task) => task.status === 'assigned').length,
+    inProgress: tasks.filter((task) => task.status === 'in_progress').length,
+    completed: tasks.filter((task) => task.status === 'completed').length,
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return <AlertCircle className="w-4 h-4" />;
-      case 'in_progress':
-        return <Clock className="w-4 h-4" />;
-      case 'completed':
-        return <CheckCircle className="w-4 h-4" />;
-      default:
-        return <MapPin className="w-4 h-4" />;
-    }
-  };
-
-  const filteredTasks = filter === 'all' ? tasks : tasks.filter(t => t.status === filter);
+  const filters: Array<{ id: Filter; label: string }> = [
+    { id: 'all', label: 'Все' },
+    { id: 'assigned', label: 'Назначено' },
+    { id: 'in_progress', label: 'В работе' },
+    { id: 'completed', label: 'Выполнено' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+    <div className="min-h-screen bg-slate-50">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">CourierApp</h1>
-            <p className="text-sm text-gray-600">Добро пожаловать, {user?.name}</p>
+            <h1 className="text-xl font-semibold text-slate-950">Курьер</h1>
+            <p className="text-sm text-slate-500">{user?.name || user?.username || 'Смена курьера'}</p>
           </div>
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
-          >
-            <LogOut className="w-5 h-5" />
-            Выход
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadTasks}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Обновить
+            </button>
+            <button
+              onClick={logout}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <LogOut className="h-4 w-4" />
+              Выход
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <p className="text-gray-600 text-sm">Всего заявок</p>
-            <p className="text-3xl font-bold text-gray-900">{tasks.length}</p>
+      <main className="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+        {error && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
+            {error}
           </div>
-          <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <p className="text-gray-600 text-sm">В работе</p>
-            <p className="text-3xl font-bold text-blue-600">{tasks.filter(t => t.status === 'in_progress').length}</p>
-          </div>
-          <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <p className="text-gray-600 text-sm">Завершено</p>
-            <p className="text-3xl font-bold text-green-600">{tasks.filter(t => t.status === 'completed').length}</p>
-          </div>
-          <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <p className="text-gray-600 text-sm">Ожидает</p>
-            <p className="text-3xl font-bold text-yellow-600">{tasks.filter(t => t.status === 'pending').length}</p>
-          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard label="Всего" value={counters.total} />
+          <StatCard label="Назначено" value={counters.assigned} />
+          <StatCard label="В работе" value={counters.inProgress} />
+          <StatCard label="Выполнено" value={counters.completed} />
         </div>
 
-        {/* Filters */}
-        <div className="mb-6 flex gap-2 flex-wrap">
-          {['all', 'pending', 'in_progress', 'completed'].map(status => (
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          {filters.map((item) => (
             <button
-              key={status}
-              onClick={() => setFilter(status)}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                filter === status
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              key={item.id}
+              onClick={() => setFilter(item.id)}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                filter === item.id
+                  ? 'bg-slate-950 text-white'
+                  : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
               }`}
             >
-              {status === 'all' ? 'Все' : status === 'pending' ? 'Ожидают' : status === 'in_progress' ? 'В работе' : 'Завершено'}
+              {item.label}
             </button>
           ))}
         </div>
 
-        {/* Tasks List */}
         {isLoading ? (
-          <div className="text-center py-12">
-            <p className="text-gray-600">Загрузка...</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">
+            Загрузка заявок...
           </div>
         ) : filteredTasks.length === 0 ? (
-          <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
-            <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg">Нет заявок</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+            <MapPin className="mx-auto mb-4 h-10 w-10 text-slate-400" />
+            <p className="text-sm text-slate-500">Нет заявок для отображения</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {filteredTasks.map(task => (
-              <div
-                key={task.id}
-                className="bg-white rounded-lg p-6 border border-gray-200 hover:border-gray-300 transition cursor-pointer"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(task.status)}`}>
+          <div className="space-y-3">
+            {filteredTasks.map((task) => (
+              <article key={task.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusClass(task.status)}`}>
                         {getStatusIcon(task.status)}
-                        {task.status === 'pending' ? 'Ожидает' : task.status === 'in_progress' ? 'В работе' : task.status === 'completed' ? 'Завершено' : task.status}
+                        {statusLabels[task.status] || task.status}
                       </span>
+                      <span className="text-xs font-medium text-slate-400">#{task.id}</span>
                     </div>
-                    <p className="text-gray-900 font-semibold">#{task.id}</p>
-                    <p className="text-gray-600 text-sm mt-1">От: {task.senderName}</p>
-                    <p className="text-gray-600 text-sm">Адрес: {task.deliveryAddress}</p>
-                    <p className="text-gray-500 text-xs mt-2">{new Date(task.createdAt).toLocaleString('ru-RU')}</p>
+
+                    <h2 className="text-base font-semibold text-slate-950">
+                      {task.recipientName || task.senderName || 'Заявка без имени'}
+                    </h2>
+                    {task.recipientPhone && <p className="mt-1 text-sm text-slate-500">Тел: {task.recipientPhone}</p>}
+                    {task.senderAddress && <p className="mt-2 text-sm text-slate-500">Забрать: {task.senderAddress}</p>}
+                    {task.deliveryAddress && <p className="mt-1 text-sm text-slate-700">Доставить: {task.deliveryAddress}</p>}
                   </div>
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                    Подробнее
-                  </button>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 sm:text-right">
+                    {task.deliveryTimeFrom || task.deliveryTimeTo ? (
+                      <p>{task.deliveryTimeFrom || '—'} — {task.deliveryTimeTo || '—'}</p>
+                    ) : (
+                      <p>{new Date(task.createdAt).toLocaleDateString('ru-RU')}</p>
+                    )}
+                    {task.placesCount ? <p className="text-xs text-slate-500">Мест: {task.placesCount}</p> : null}
+                  </div>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}
@@ -171,3 +225,12 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 };
+
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
