@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, LockKeyhole, User } from 'lucide-react';
+import { ArrowRight, Lock, User } from 'lucide-react';
 
 interface LoginViewProps {
   onLogin: (token: string) => void;
@@ -212,7 +212,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                   </label>
 
                   <div className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 transition focus-within:border-slate-300 focus-within:bg-white">
-                    <LockKeyhole className="h-4 w-4 text-slate-400" />
+                    <Lock className="h-4 w-4 text-slate-400" />
 
                     <input
                       type="password"
