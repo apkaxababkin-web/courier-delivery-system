@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bike, Clock3, MapPin, Phone, Plus, Search, Trash2, X } from 'lucide-react';
+import { Bike, BellOff, Clock3, MapPin, Phone, Plus, Search, Trash2, X } from 'lucide-react';
 
-type CourierStatus = 'Онлайн' | 'На заказе' | 'Перерыв';
+type CourierStatus = 'Онлайн' | 'На заказе' | 'Перерыв' | 'Выходной';
 
 type Courier = {
   id: number;
@@ -25,6 +25,14 @@ const statusStyles: Record<CourierStatus, string> = {
   Онлайн: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
   'На заказе': 'border border-amber-200 bg-amber-50 text-amber-700',
   Перерыв: 'border border-slate-200 bg-slate-100 text-slate-600',
+  Выходной: 'border border-slate-300 bg-white text-slate-500',
+};
+
+const statusHints: Record<CourierStatus, string> = {
+  Онлайн: 'Доступен для заявок',
+  'На заказе': 'Сейчас выполняет доставку',
+  Перерыв: 'Временно не назначать',
+  Выходной: 'Не назначать и не отправлять уведомления',
 };
 
 const emptyForm: CourierFormData = {
@@ -39,7 +47,12 @@ function readStoredCouriers(): Courier[] {
   try {
     const raw = window.localStorage.getItem(COURIERS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.map((courier) => ({
+          ...courier,
+          status: courier.status === 'Выходной' ? 'Выходной' : courier.status || 'Онлайн',
+        }))
+      : [];
   } catch {
     return [];
   }
@@ -72,6 +85,7 @@ export default function CouriersView() {
   }, [couriers, searchQuery]);
 
   const onlineCount = couriers.filter((courier) => courier.status === 'Онлайн').length;
+  const offCount = couriers.filter((courier) => courier.status === 'Выходной').length;
 
   const handleAddCourier = (event: React.FormEvent) => {
     event.preventDefault();
@@ -89,7 +103,7 @@ export default function CouriersView() {
         phone: formData.phone.trim(),
         status: formData.status,
         deliveries: 0,
-        eta: '—',
+        eta: formData.status === 'Выходной' ? 'выходной' : '—',
       },
     ];
 
@@ -103,6 +117,21 @@ export default function CouriersView() {
     if (!confirm('Удалить этого курьера из списка?')) return;
 
     const nextCouriers = couriers.filter((courier) => courier.id !== id);
+    setCouriers(nextCouriers);
+    saveStoredCouriers(nextCouriers);
+  };
+
+  const handleStatusChange = (id: number, status: CourierStatus) => {
+    const nextCouriers = couriers.map((courier) =>
+      courier.id === id
+        ? {
+            ...courier,
+            status,
+            eta: status === 'Выходной' ? 'выходной' : courier.eta === 'выходной' ? '—' : courier.eta,
+          }
+        : courier
+    );
+
     setCouriers(nextCouriers);
     saveStoredCouriers(nextCouriers);
   };
@@ -141,9 +170,10 @@ export default function CouriersView() {
             />
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            {onlineCount} онлайн · всего {couriers.length}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500" />{onlineCount} онлайн</span>
+            <span className="inline-flex items-center gap-2"><BellOff className="h-3.5 w-3.5" />{offCount} выходной</span>
+            <span>всего {couriers.length}</span>
           </div>
         </div>
 
@@ -188,11 +218,13 @@ export default function CouriersView() {
                     </div>
                   </div>
 
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[courier.status]}`}
+                  <button
+                    onClick={() => handleDeleteCourier(courier.id)}
+                    className="rounded-2xl border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50"
+                    title="Удалить курьера"
                   >
-                    {courier.status}
-                  </span>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
 
                 <div className="mt-5 grid grid-cols-2 gap-3">
@@ -219,22 +251,26 @@ export default function CouriersView() {
                   </div>
                 </div>
 
-                <div className="mt-5 flex gap-2">
-                  <button className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
-                    Открыть
-                  </button>
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[courier.status]}`}>
+                        {courier.status}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">{statusHints[courier.status]}</p>
+                    </div>
 
-                  <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
-                    Назначить
-                  </button>
-
-                  <button
-                    onClick={() => handleDeleteCourier(courier.id)}
-                    className="rounded-2xl border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50"
-                    title="Удалить курьера"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                    <select
+                      value={courier.status}
+                      onChange={(event) => handleStatusChange(courier.id, event.target.value as CourierStatus)}
+                      className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
+                    >
+                      <option value="Онлайн">Онлайн</option>
+                      <option value="На заказе">На заказе</option>
+                      <option value="Перерыв">Перерыв</option>
+                      <option value="Выходной">Выходной</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             ))}
@@ -288,10 +324,15 @@ export default function CouriersView() {
                   onChange={(event) => setFormData((prev) => ({ ...prev, status: event.target.value as CourierStatus }))}
                   className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
                 >
-                  <option value="Онлайн">Онлайн</option>
-                  <option value="На заказе">На заказе</option>
-                  <option value="Перерыв">Перерыв</option>
+                  <option value="Онлайн">Онлайн — доступен для заявок</option>
+                  <option value="На заказе">На заказе — сейчас выполняет доставку</option>
+                  <option value="Перерыв">Перерыв — временно не назначать</option>
+                  <option value="Выходной">Выходной — не отправлять уведомления</option>
                 </select>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
+                Статус “Выходной” фиксирует, что курьера не нужно назначать и не нужно отправлять ему уведомления. Сейчас это операционный статус в интерфейсе; backend-уведомления подключаются отдельным шагом.
               </div>
 
               <div className="flex gap-3 pt-2">
