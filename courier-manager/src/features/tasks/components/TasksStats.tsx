@@ -17,7 +17,6 @@ const cards: Array<{
 }> = [
   { key: 'all', label: 'Всего заявок', value: 'total', icon: FileText, valueClass: 'text-slate-950', iconClass: 'bg-slate-100 text-slate-600' },
   { key: 'pending', label: 'Новые', value: 'pending', icon: CheckCircle2, valueClass: 'text-emerald-600', iconClass: 'bg-emerald-50 text-emerald-600' },
-  { key: 'assigned', label: 'Назначена', value: 'assigned', icon: Clock, valueClass: 'text-blue-600', iconClass: 'bg-blue-50 text-blue-600' },
   { key: 'in_progress', label: 'В работе', value: 'in_progress', icon: Clock, valueClass: 'text-amber-600', iconClass: 'bg-amber-50 text-amber-600' },
   { key: 'completed', label: 'Завершённые', value: 'completed', icon: TrendingUp, valueClass: 'text-purple-600', iconClass: 'bg-purple-50 text-purple-600' },
   { key: 'cancelled', label: 'Отменённые', value: 'cancelled', icon: XCircle, valueClass: 'text-red-600', iconClass: 'bg-red-50 text-red-600' },
@@ -25,7 +24,7 @@ const cards: Array<{
 
 export function TasksStats({ stats, selectedStatus, onStatusChange }: TasksStatsProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {cards.map((card) => {
         const Icon = card.icon;
         const isActive = selectedStatus === card.key;
