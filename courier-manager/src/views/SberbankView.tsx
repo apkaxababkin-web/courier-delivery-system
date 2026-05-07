@@ -145,11 +145,10 @@ export default function SberbankView() {
 
   return (
     <div className="p-5">
-      <div className="mb-5">
+      <div className="mb-6">
         <label className="mb-3 block text-sm font-medium text-gray-700">
           Выберите день недели
         </label>
-
         <div className="grid grid-cols-5 gap-2">
           {DAYS_OF_WEEK.map(day => (
             <button
@@ -167,10 +166,10 @@ export default function SberbankView() {
         </div>
       </div>
 
-      <div className="mb-5 flex flex-wrap gap-3">
+      <div className="mb-6 flex gap-4 flex-wrap">
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700"
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
         >
           <Plus size={18} />
           Добавить точку
@@ -178,14 +177,12 @@ export default function SberbankView() {
 
         <button
           onClick={handleExportReport}
-          className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm text-white transition hover:bg-green-700"
+          className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
         >
           <Download size={18} />
           Отчёт
         </button>
       </div>
-
-      {/* Remaining component unchanged intentionally */}
     </div>
   );
 }
