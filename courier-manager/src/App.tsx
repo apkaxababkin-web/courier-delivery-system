@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TasksView from './views/TasksView';
-import ClientsView from './views/ClientsView';
+import ClientsView from './views/ClientsViewV2';
 import HemotestView from './views/HemotestView';
 import SberbankView from './views/SberbankView';
 import MailsView from './views/MailsView';
@@ -96,7 +96,7 @@ function App() {
       case 'sberbank':
         return 'Заявки и маршруты по направлению Сбербанк.';
       case 'clients':
-        return 'Клиентская база, контакты и история заявок.';
+        return 'Клиенты, магазины, точки и будущие кабинеты руководителей.';
       case 'reports':
         return 'Операционные показатели и выгрузки по доставкам.';
       case 'couriers':
@@ -135,60 +135,21 @@ function App() {
         <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setIsSidebarOpen(true)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden"
-                aria-label="Открыть меню"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-
-              <div className="hidden min-w-0 flex-col md:flex">
-                <h1 className="truncate text-lg font-semibold tracking-tight text-slate-950">
-                  {getPageTitle()}
-                </h1>
-                <p className="truncate text-xs text-slate-500">{getPageDescription()}</p>
-              </div>
+              <button type="button" onClick={() => setIsSidebarOpen(true)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden" aria-label="Открыть меню"><Menu className="h-5 w-5" /></button>
+              <div className="hidden min-w-0 flex-col md:flex"><h1 className="truncate text-lg font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="truncate text-xs text-slate-500">{getPageDescription()}</p></div>
             </div>
-
-            <div className="hidden flex-1 items-center justify-center xl:flex">
-              <div className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                <Search className="h-4 w-4" />
-                <span className="truncate">Поиск по заявкам, клиентам, адресам...</span>
-              </div>
-            </div>
-
+            <div className="hidden flex-1 items-center justify-center xl:flex"><div className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"><Search className="h-4 w-4" /><span className="truncate">Поиск по заявкам, клиентам, адресам...</span></div></div>
             <div className="flex items-center gap-3">
-              <div className="hidden text-right sm:block">
-                <p className="text-sm font-medium text-slate-950">{managerName}</p>
-                <p className="text-xs text-slate-500">{managerRole}</p>
-              </div>
-
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
-                {(managerName || 'M').charAt(0).toUpperCase()}
-              </div>
-
-              <button
-                onClick={handleLogout}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline">Выход</span>
-              </button>
+              <div className="hidden text-right sm:block"><p className="text-sm font-medium text-slate-950">{managerName}</p><p className="text-xs text-slate-500">{managerRole}</p></div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">{(managerName || 'M').charAt(0).toUpperCase()}</div>
+              <button onClick={handleLogout} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Выход</span></button>
             </div>
           </div>
         </header>
 
         <main className="flex-1 overflow-x-hidden px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           <div className="mx-auto max-w-[1440px] space-y-5">
-            <div className="md:hidden">
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                {getPageTitle()}
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">{getPageDescription()}</p>
-            </div>
-
+            <div className="md:hidden"><h1 className="text-2xl font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="mt-1 text-sm text-slate-500">{getPageDescription()}</p></div>
             {renderView()}
           </div>
         </main>
