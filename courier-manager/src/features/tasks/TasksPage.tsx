@@ -5,10 +5,6 @@ import {
   getAllRequests,
   createRequest,
   parseRequestWithAI,
-  getHemotestListsForDate,
-  getHemotestList,
-  getSberbankListsForDay,
-  getSberbankList,
 } from '../../lib/api';
 import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
@@ -29,6 +25,15 @@ type OperationList = {
   items: Array<{ id: number; name: string; address: string; phone?: string; contactPerson?: string }>;
 };
 
+type PickupList = { id: number; name: string; status: string; date?: string; dayOfWeek?: number };
+
+type PickupListWithItems = {
+  list?: PickupList;
+  items?: OperationList['items'];
+};
+
+const API_BASE = '/api/trpc';
+
 const weekdayNames: Record<number, string> = {
   1: 'Понедельник',
   2: 'Вторник',
@@ -46,6 +51,19 @@ function getTodayBusinessWeekday() {
   if (day === 0) return 5;
   if (day > 5) return 5;
   return day;
+}
+
+async function trpcQuery<T>(path: string, input: Record<string, unknown>): Promise<T> {
+  const wrappedInput = encodeURIComponent(JSON.stringify({ json: input }));
+  const response = await fetch(`${API_BASE}/${path}?input=${wrappedInput}`);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Failed to fetch ${path}`);
+  }
+
+  const data = await response.json();
+  return data.result?.data?.json || data.result?.data || [];
 }
 
 export default function TasksPage() {
@@ -97,23 +115,23 @@ export default function TasksPage() {
   const loadHemotestLists = async () => {
     try {
       setIsOperationLoading(true);
-      const lists = await getHemotestListsForDate(hemotestDate);
+      const lists = await trpcQuery<PickupList[]>('hemotest.listsForDate', { date: hemotestDate });
       const detailed = await Promise.all(
         lists.map(async (list) => {
-          const full = await getHemotestList(list.id);
+          const full = await trpcQuery<PickupListWithItems>('hemotest.getList', { listId: list.id });
           return {
             id: list.id,
             name: list.name,
-            meta: new Date(list.date).toLocaleDateString('ru-RU'),
+            meta: list.date ? new Date(list.date).toLocaleDateString('ru-RU') : hemotestDate,
             status: list.status,
-            items: full?.items || [],
+            items: full.items || [],
           };
         })
       );
       setOperationLists(detailed);
     } catch (error) {
       console.error('Failed to load hemotest lists:', error);
-      alert('Ошибка при загрузке списков Гемотест');
+      setOperationLists([]);
     } finally {
       setIsOperationLoading(false);
     }
@@ -122,23 +140,23 @@ export default function TasksPage() {
   const loadSberbankLists = async () => {
     try {
       setIsOperationLoading(true);
-      const lists = await getSberbankListsForDay(sberbankDay);
+      const lists = await trpcQuery<PickupList[]>('sberbank.listsForDay', { dayOfWeek: sberbankDay });
       const detailed = await Promise.all(
         lists.map(async (list) => {
-          const full = await getSberbankList(list.id);
+          const full = await trpcQuery<PickupListWithItems>('sberbank.getList', { listId: list.id });
           return {
             id: list.id,
             name: list.name,
-            meta: weekdayNames[list.dayOfWeek] || `День ${list.dayOfWeek}`,
+            meta: weekdayNames[list.dayOfWeek || sberbankDay] || `День ${list.dayOfWeek || sberbankDay}`,
             status: list.status,
-            items: full?.items || [],
+            items: full.items || [],
           };
         })
       );
       setOperationLists(detailed);
     } catch (error) {
       console.error('Failed to load sberbank lists:', error);
-      alert('Ошибка при загрузке списков Сбербанк');
+      setOperationLists([]);
     } finally {
       setIsOperationLoading(false);
     }
