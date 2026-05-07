@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Activity, Landmark, MapPin } from 'lucide-react';
 import { getAllClients, getAllRequests, createRequest, parseRequestWithAI } from '../../lib/api';
 import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
@@ -15,19 +16,16 @@ export default function TasksPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filter state
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isParsingAi, setIsParsingAi] = useState(false);
 
-  // Load data
   useEffect(() => {
     loadData();
   }, []);
@@ -48,7 +46,6 @@ export default function TasksPage() {
     }
   };
 
-  // Get filtered requests
   const filteredRequests = getFilteredRequests(
     requests,
     selectedStatus,
@@ -57,14 +54,11 @@ export default function TasksPage() {
     searchQuery
   );
 
-  // Get statistics
   const stats = getStatistics(requests);
 
-  // Handle create task
   const handleCreateTask = async (data: TaskFormData) => {
     try {
       setIsCreating(true);
-      // Cast TaskFormData to Request, filling in required fields with defaults
       const requestData = {
         requestType: data.requestType || 'delivery',
         recipientName: data.recipientName || '',
@@ -81,15 +75,12 @@ export default function TasksPage() {
     }
   };
 
-  // Handle AI parse
   const handleAiParse = async (text: string) => {
     try {
       setIsParsingAi(true);
       const result = await parseRequestWithAI(text);
-      // Fill form with parsed data
       console.log('Parsed:', result);
       setShowAiModal(false);
-      // TODO: Open create modal with pre-filled data
     } catch (error) {
       console.error('Failed to parse with AI:', error);
     } finally {
@@ -98,11 +89,30 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Statistics */}
-      <TasksStats stats={stats} />
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2 rounded-[24px] border border-slate-200 bg-white p-2 shadow-sm">
+        <button className="inline-flex h-10 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-medium text-white shadow-sm">
+          <Activity className="h-4 w-4" />
+          Созданные заявки
+        </button>
 
-      {/* Toolbar with Filters */}
+        <button className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 hover:bg-slate-100">
+          <MapPin className="h-4 w-4" />
+          Мониторинг Гемотест
+        </button>
+
+        <button className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 hover:bg-slate-100">
+          <Landmark className="h-4 w-4" />
+          Мониторинг Сбербанк
+        </button>
+      </div>
+
+      <TasksStats
+        stats={stats}
+        selectedStatus={selectedStatus}
+        onStatusChange={setSelectedStatus}
+      />
+
       <TasksToolbar
         selectedStatus={selectedStatus}
         onStatusChange={setSelectedStatus}
@@ -116,7 +126,6 @@ export default function TasksPage() {
         onAiCreateClick={() => setShowAiModal(true)}
       />
 
-      {/* Tasks Table or Empty State */}
       {filteredRequests.length === 0 && !isLoading ? (
         <EmptyState
           onCreateClick={() => setShowCreateModal(true)}
@@ -129,7 +138,6 @@ export default function TasksPage() {
         />
       )}
 
-      {/* Modals */}
       <CreateTaskModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
