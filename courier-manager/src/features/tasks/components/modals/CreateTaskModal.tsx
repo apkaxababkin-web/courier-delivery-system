@@ -81,11 +81,7 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, clients, isLoading 
 
   useEffect(() => {
     if (!isOpen) return;
-    setFormData((prev) => ({
-      ...prev,
-      nutsTariff: readStoredTariff(NUTS_TARIFF_STORAGE_KEY),
-      cedroilTariff: readStoredTariff(CEDROIL_TARIFF_STORAGE_KEY),
-    }));
+    setFormData((prev) => ({ ...prev, nutsTariff: readStoredTariff(NUTS_TARIFF_STORAGE_KEY), cedroilTariff: readStoredTariff(CEDROIL_TARIFF_STORAGE_KEY) }));
   }, [isOpen]);
 
   const nutsTotal = useMemo(() => (formData.nutsBoxes || []).reduce((sum, box, index) => {
@@ -95,9 +91,7 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, clients, isLoading 
 
   if (!isOpen) return null;
 
-  const updateField = <K extends keyof LocalFormData>(field: K, value: LocalFormData[K]) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  const updateField = <K extends keyof LocalFormData>(field: K, value: LocalFormData[K]) => setFormData((prev) => ({ ...prev, [field]: value }));
 
   const updateTariff = (field: 'nutsTariff' | 'cedroilTariff', value: number) => {
     updateField(field, value);
@@ -137,11 +131,7 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, clients, isLoading 
     setFormData(makeInitialFormData());
   };
 
-  const requestTypeSelector = (
-    <SelectField label="Тип заявки" value={requestType} onChange={(value) => updateField('requestType', value as RequestType)} options={[
-      ['delivery', 'Доставка'], ['movement', 'Перемещение'], ['nuts', 'Орехи'], ['courier_call', 'Вызов курьера'], ['pickup_from_tc', 'Получение и отправка груза в ТК'], ['simple', 'Простая заявка'],
-    ]} />
-  );
+  const requestTypeSelector = <SelectField label="Тип заявки" value={requestType} onChange={(value) => updateField('requestType', value as RequestType)} options={[["delivery", "Доставка"], ["movement", "Перемещение"], ["nuts", "Орехи"], ["courier_call", "Вызов курьера"], ["pickup_from_tc", "Получение и отправка груза в ТК"], ["simple", "Простая заявка"]]} />;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-h-[92vh] w-[min(1180px,calc(100vw-32px))] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-950/20" overlayStyle={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(8px)' }}>
@@ -158,26 +148,8 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, clients, isLoading 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-3">
           {requestType !== 'nuts' && requestType !== 'pickup_from_tc' && requestType !== 'simple' && (
             <div className="grid gap-3 lg:grid-cols-2">
-              <Section title="Отправитель">
-                <div className="grid gap-2.5 md:grid-cols-2">
-                  {(requestType === 'delivery' || requestType === 'movement') && <ClientSelect label="Выберите отправителя" value={formData.senderClientId} clients={clients} onChange={(id) => selectClient(id, 'sender')} className="md:col-span-2" />}
-                  <Field label="Отправитель *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required />
-                  <Field label="Телефон отправителя" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} />
-                  {requestType === 'courier_call' && <><Field label="Компания отправителя" value={formData.senderCompany || ''} onChange={(value) => updateField('senderCompany', value)} /><Field label="Город отправителя" value={formData.senderCity || ''} onChange={(value) => updateField('senderCity', value)} /></>}
-                  <Field label="Адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required className="md:col-span-2" />
-                </div>
-              </Section>
-
-              <Section title="Получатель">
-                <div className="grid gap-2.5 md:grid-cols-2">
-                  {requestType === 'movement' && <ClientSelect label="Выберите получателя" value={formData.recipientClientId} clients={clients} onChange={(id) => selectClient(id, 'recipient')} className="md:col-span-2" />}
-                  <Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required />
-                  <Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required />
-                  {requestType === 'courier_call' && <><Field label="Компания получателя" value={formData.recipientCompany || ''} onChange={(value) => updateField('recipientCompany', value)} /><Field label="Город получателя" value={formData.recipientCity || ''} onChange={(value) => updateField('recipientCity', value)} /></>}
-                  <Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required className="md:col-span-2" />
-                  {requestType !== 'courier_call' && <Field label="Квартира/офис" value={formData.recipientAddress || ''} onChange={(value) => updateField('recipientAddress', value)} className="md:col-span-2" />}
-                </div>
-              </Section>
+              <Section title="Отправитель"><div className="grid gap-2.5 md:grid-cols-2">{(requestType === 'delivery' || requestType === 'movement') && <ClientSelect label="Выберите отправителя" value={formData.senderClientId} clients={clients} onChange={(id) => selectClient(id, 'sender')} className="md:col-span-2" />}<Field label="Отправитель *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required /><Field label="Телефон отправителя" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} />{requestType === 'courier_call' && <><Field label="Компания отправителя" value={formData.senderCompany || ''} onChange={(value) => updateField('senderCompany', value)} /><Field label="Город отправителя" value={formData.senderCity || ''} onChange={(value) => updateField('senderCity', value)} /></>}<Field label="Адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required className="md:col-span-2" /></div></Section>
+              <Section title="Получатель"><div className="grid gap-2.5 md:grid-cols-2">{requestType === 'movement' && <ClientSelect label="Выберите получателя" value={formData.recipientClientId} clients={clients} onChange={(id) => selectClient(id, 'recipient')} className="md:col-span-2" />}<Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required /><Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required />{requestType === 'courier_call' && <><Field label="Компания получателя" value={formData.recipientCompany || ''} onChange={(value) => updateField('recipientCompany', value)} /><Field label="Город получателя" value={formData.recipientCity || ''} onChange={(value) => updateField('recipientCity', value)} /></>}<Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required className="md:col-span-2" />{requestType !== 'courier_call' && <Field label="Квартира/офис" value={formData.recipientAddress || ''} onChange={(value) => updateField('recipientAddress', value)} className="md:col-span-2" />}</div></Section>
             </div>
           )}
 
@@ -185,36 +157,7 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, clients, isLoading 
 
           {requestType !== 'nuts' && requestType !== 'pickup_from_tc' && requestType !== 'simple' && <div className="grid gap-3 lg:grid-cols-[1fr_340px]"><Section title="Детали доставки"><div className="grid gap-2.5 md:grid-cols-2"><Field label="Время от" type="time" value={formData.deliveryTimeFrom || ''} onChange={(value) => updateField('deliveryTimeFrom', value)} /><Field label="Время до" type="time" value={formData.deliveryTimeTo || ''} onChange={(value) => updateField('deliveryTimeTo', value)} /><Field label="Количество мест" type="number" value={formData.placesCount || 1} onChange={(value) => updateField('placesCount', Number(value) || 1)} /><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} className="md:col-span-2" /></div></Section>{requestType === 'delivery' && <Section title="Оплата"><div className="grid gap-2.5"><SelectField label="Способ оплаты" value={formData.paymentMethod || 'paid'} onChange={(value) => updateField('paymentMethod', value as TaskFormData['paymentMethod'])} options={[["paid", "Оплачено"], ["transfer", "Перевод"], ["cash", "Наличные"], ["terminal", "Терминал"], ["qr", "QR-код"]]} />{formData.paymentMethod !== 'paid' && <Field label="Сумма оплаты" type="number" value={formData.paymentAmount || ''} onChange={(value) => updateField('paymentAmount', Number(value) || 0)} />}</div></Section>}</div>}
 
-          {requestType === 'nuts' && (
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]">
-              <Section title="Коробки Орехов">
-                <div className="space-y-2">
-                  {(formData.nutsBoxes || []).map((box, index) => <div key={box.id} className="grid grid-cols-[1fr_76px_108px] items-center gap-2"><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{box.name}</div><input aria-label={`Количество ${box.name}`} type="number" min="0" value={box.quantity} onChange={(event) => updateNutsBox(box.id, { quantity: Number(event.target.value) || 0 })} className="h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-slate-300 focus:bg-white" /><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-medium text-slate-700">{(index === 5 ? (box.quantity || 0) * (formData.cedroilTariff || 0) : (box.quantity || 0) * (NUTS_WEIGHTS[box.id] || 0) * (formData.nutsTariff || 0)).toFixed(2)}</div></div>)}
-                  <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm"><div className="flex justify-between gap-4"><span className="font-semibold text-slate-900">Итого сумма:</span><span className="font-bold text-blue-700">{nutsTotal.toFixed(2)}</span></div></div>
-                  <TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} />
-                </div>
-              </Section>
-
-              <div className="space-y-3">
-                <Section title="Получатель">
-                  <div className="grid gap-2.5">
-                    <ClientSelect label="Выберите получателя" value={formData.recipientClientId} clients={clients} onChange={(id) => selectClient(id, 'recipient')} />
-                    <Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required />
-                    <Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required />
-                    <Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required />
-                  </div>
-                </Section>
-
-                <Section title="Тарифы">
-                  <div className="grid gap-2.5">
-                    <Field label="Орехи, руб. за кг" type="number" value={formData.nutsTariff || ''} onChange={(value) => updateTariff('nutsTariff', Number(value) || 0)} />
-                    <Field label="Кедровое масло, руб." type="number" value={formData.cedroilTariff || ''} onChange={(value) => updateTariff('cedroilTariff', Number(value) || 0)} />
-                    <p className="text-xs leading-4 text-slate-500">Сейчас тарифы сохраняются на этом рабочем месте. Для общего хранения нужна backend-настройка в базе.</p>
-                  </div>
-                </Section>
-              </div>
-            </div>
-          )}
+          {requestType === 'nuts' && <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]"><Section title="Коробки Орехов"><div className="space-y-2">{(formData.nutsBoxes || []).map((box, index) => <div key={box.id} className="grid grid-cols-[1fr_76px_108px] items-center gap-2"><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{box.name}</div><input aria-label={`Количество ${box.name}`} type="number" min="0" value={box.quantity} onChange={(event) => updateNutsBox(box.id, { quantity: Number(event.target.value) || 0 })} className="h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-slate-300 focus:bg-white" /><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-medium text-slate-700">{(index === 5 ? (box.quantity || 0) * (formData.cedroilTariff || 0) : (box.quantity || 0) * (NUTS_WEIGHTS[box.id] || 0) * (formData.nutsTariff || 0)).toFixed(2)}</div></div>)}<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><div className="flex justify-between gap-4"><span className="font-semibold text-slate-900">Итого сумма:</span><span className="font-bold text-slate-950">{nutsTotal.toFixed(2)}</span></div></div><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} /></div></Section><div className="space-y-3"><Section title="Получатель"><div className="grid gap-2.5"><ClientSelect label="Выберите получателя" value={formData.recipientClientId} clients={clients} onChange={(id) => selectClient(id, 'recipient')} /><Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required /><Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required /><Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required /></div></Section><Section title="Тарифы"><div className="grid gap-2.5"><Field label="Орехи, руб. за кг" type="number" value={formData.nutsTariff || ''} onChange={(value) => updateTariff('nutsTariff', Number(value) || 0)} /><Field label="Кедровое масло, руб." type="number" value={formData.cedroilTariff || ''} onChange={(value) => updateTariff('cedroilTariff', Number(value) || 0)} /><p className="text-xs leading-4 text-slate-500">Сейчас тарифы сохраняются на этом рабочем месте. Для общего хранения нужна backend-настройка в базе.</p></div></Section></div></div>}
 
           {requestType === 'pickup_from_tc' && <><Section title="Клиент"><ClientSelect label="Выберите клиента" value={formData.clientId} clients={clients} onChange={(id) => selectClient(id, 'pickupClient')} /></Section><div className="grid gap-3 lg:grid-cols-2"><Section title="Транспортная компания"><div className="grid gap-2.5 md:grid-cols-2"><SelectField label="Направление" value={formData.pickupDirection || 'tc_to_recipient'} onChange={(value) => updateField('pickupDirection', value as LocalFormData['pickupDirection'])} options={[["tc_to_recipient", "ТК → получатель"], ["recipient_to_tc", "Получатель → ТК"]]} className="md:col-span-2" /><Field label="Название ТК" value={formData.tcName || ''} onChange={(value) => updateField('tcName', value)} className="md:col-span-2" /><Field label="Адрес ТК" value={formData.tcAddress || ''} onChange={(value) => updateField('tcAddress', value)} className="md:col-span-2" /><Field label="Номер трекинга" value={formData.trackingNumber || ''} onChange={(value) => updateField('trackingNumber', value)} className="md:col-span-2" /></div></Section><Section title="Получатель"><div className="grid gap-2.5 md:grid-cols-2"><ClientSelect label="Выберите получателя" value={formData.pickupRecipientClientId} clients={clients} onChange={(id) => selectClient(id, 'pickupRecipient')} className="md:col-span-2" /><Field label="Получатель" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} /><Field label="Телефон получателя" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} /><Field label="Адрес доставки" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} className="md:col-span-2" /><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} className="md:col-span-2" /></div></Section></div></>}
         </div>
