@@ -6,7 +6,6 @@ import {
   Mail,
   BarChart3,
   Users,
-  FileText,
   LogOut,
   Menu,
   Search,
@@ -21,7 +20,7 @@ import ReportsView from './views/ReportsView';
 import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
 
-type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'archive' | 'couriers';
+type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'couriers';
 
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
@@ -30,7 +29,6 @@ const menuItems = [
   { id: 'sberbank', label: 'Сбербанк', icon: Landmark },
   { id: 'clients', label: 'Клиенты', icon: Users },
   { id: 'reports', label: 'Отчёты', icon: BarChart3 },
-  { id: 'archive', label: 'Архив', icon: FileText },
   { id: 'couriers', label: 'Курьеры', icon: Users },
 ];
 
@@ -76,8 +74,6 @@ function App() {
         return <ClientsView />;
       case 'reports':
         return <ReportsView />;
-      case 'archive':
-        return <TasksView />; // TODO: Create ArchiveView
       case 'couriers':
         return <CouriersView />;
       default:
@@ -103,8 +99,6 @@ function App() {
         return 'Клиентская база, контакты и история заявок.';
       case 'reports':
         return 'Операционные показатели и выгрузки по доставкам.';
-      case 'archive':
-        return 'Завершённые и закрытые заявки.';
       case 'couriers':
         return 'Курьеры, статусы доступности и текущая загрузка.';
       default:
