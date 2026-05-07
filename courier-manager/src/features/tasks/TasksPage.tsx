@@ -194,7 +194,7 @@ export default function TasksPage() {
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} isLoading={isLoading} />}
         </>
       ) : (
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-950">{operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</h2>
@@ -221,7 +221,7 @@ export default function TasksPage() {
               {flattenedPoints.map((point) => {
                 const pickup = getPickupMeta(point);
                 return (
-                  <div key={`${point.listName}-${point.id}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-slate-300 md:grid-cols-[1.2fr_minmax(0,2fr)_170px] md:items-center">
+                  <div key={`${point.listName}-${point.id}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-slate-300 md:grid-cols-[1.1fr_minmax(0,1.7fr)_150px] md:items-center">
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold text-slate-950">{point.name}</p>
                       {point.contactPerson && <p className="mt-0.5 truncate text-xs text-slate-400">{point.contactPerson}</p>}
