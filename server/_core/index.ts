@@ -3,10 +3,12 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import path from "path";
+import bcrypt from "bcryptjs";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import * as db from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -59,6 +61,97 @@ async function startServer() {
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
+  });
+
+  // Manager courier account endpoints.
+  // Couriers cannot self-register: manager creates username/password here,
+  // and courier web/app signs in through courierAuth.login.
+  app.get("/api/manager/couriers", async (_req, res) => {
+    try {
+      const couriers = await db.getAllCouriers();
+      res.json(
+        couriers.map((courier) => ({
+          id: courier.id,
+          name: courier.name,
+          username: courier.username,
+          phone: courier.phone,
+          vehicleType: courier.vehicleType,
+          isActive: courier.isActive,
+          totalDeliveries: courier.totalDeliveries,
+          createdAt: courier.createdAt,
+          updatedAt: courier.updatedAt,
+        })),
+      );
+    } catch (error) {
+      console.error("[manager/couriers] list failed", error);
+      res.status(500).json({ error: "Failed to load couriers" });
+    }
+  });
+
+  app.post("/api/manager/couriers", async (req, res) => {
+    try {
+      const name = String(req.body?.name || "").trim();
+      const username = String(req.body?.username || "").trim();
+      const password = String(req.body?.password || "");
+      const phone = String(req.body?.phone || "").trim() || null;
+      const vehicleType = req.body?.vehicleType || "car";
+
+      if (!name || !username || !password) {
+        res.status(400).json({ error: "Name, username and password are required" });
+        return;
+      }
+
+      if (password.length < 6) {
+        res.status(400).json({ error: "Password must be at least 6 characters" });
+        return;
+      }
+
+      const existing = await db.getCourierByUsername(username);
+      if (existing) {
+        res.status(409).json({ error: "Courier username already exists" });
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const id = await db.createCourier({
+        name,
+        username,
+        passwordHash,
+        phone,
+        vehicleType,
+        isActive: true,
+      });
+
+      const courier = await db.getCourierById(id);
+      res.status(201).json({
+        id,
+        name: courier?.name || name,
+        username: courier?.username || username,
+        phone: courier?.phone || phone,
+        vehicleType: courier?.vehicleType || vehicleType,
+        isActive: courier?.isActive ?? true,
+        totalDeliveries: courier?.totalDeliveries ?? 0,
+      });
+    } catch (error) {
+      console.error("[manager/couriers] create failed", error);
+      res.status(500).json({ error: "Failed to create courier" });
+    }
+  });
+
+  app.delete("/api/manager/couriers/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "Invalid courier id" });
+        return;
+      }
+
+      await db.updateCourier(id, { isActive: false });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[manager/couriers] deactivate failed", error);
+      res.status(500).json({ error: "Failed to deactivate courier" });
+    }
   });
 
   app.use(
