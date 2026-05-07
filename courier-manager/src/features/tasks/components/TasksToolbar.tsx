@@ -1,4 +1,4 @@
-import { Plus, Sparkles, Search } from 'lucide-react';
+import { CalendarDays, Plus, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { StatusFilter } from '../model/types';
 
 interface TasksToolbarProps {
@@ -37,76 +37,95 @@ export function TasksToolbar({
 }: TasksToolbarProps) {
   return (
     <div className="space-y-4">
-      {/* Filters Section */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
-        {/* Status Chips */}
-        <div className="flex flex-wrap gap-2">
-          {STATUS_CHIPS.map((chip) => (
-            <button
-              key={chip.value}
-              onClick={() => onStatusChange(chip.value)}
-              className={`px-4 py-2 rounded-full font-medium transition-colors ${
-                selectedStatus === chip.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
+      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 lg:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-center">
+              <div className="relative flex-1 lg:max-w-xl">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-        {/* Date Range and Search */}
-        <div className="flex items-center gap-4 flex-wrap">
-          {/* Date Range */}
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => onDateFromChange(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <span className="text-gray-400">—</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => onDateToChange(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+                <input
+                  type="text"
+                  placeholder="Поиск по клиенту, адресу, телефону или комментарию..."
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
+                  <CalendarDays className="h-4 w-4 text-slate-400" />
+
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => onDateFromChange(e.target.value)}
+                    className="bg-transparent text-sm text-slate-600 outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
+                  <CalendarDays className="h-4 w-4 text-slate-400" />
+
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => onDateToChange(e.target.value)}
+                    className="bg-transparent text-sm text-slate-600 outline-none"
+                  />
+                </div>
+
+                <button className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-950">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Фильтры
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                onClick={onCreateClick}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 transition hover:opacity-95"
+              >
+                <Plus className="h-4 w-4" />
+                Создать заявку
+              </button>
+
+              <button
+                onClick={onAiCreateClick}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                <Sparkles className="h-4 w-4" />
+                Создать по тексту
+              </button>
+            </div>
           </div>
 
-          {/* Search */}
-          <div className="flex-1 min-w-64">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Поиск по клиенту или адресу..."
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-5">
+            {STATUS_CHIPS.map((chip) => {
+              const isActive = selectedStatus === chip.value;
+
+              return (
+                <button
+                  key={chip.value}
+                  onClick={() => onStatusChange(chip.value)}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
+                    isActive
+                      ? 'bg-slate-950 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-950'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+
+            <div className="ml-auto hidden text-xs text-slate-400 lg:block">
+              28 активных • 7 новых • 14 курьеров онлайн
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-3 justify-end">
-        <button
-          onClick={onCreateClick}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Создать заявку
-        </button>
-        <button
-          onClick={onAiCreateClick}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-        >
-          <Sparkles className="w-5 h-5" />
-          Создать по тексту
-        </button>
       </div>
     </div>
   );
