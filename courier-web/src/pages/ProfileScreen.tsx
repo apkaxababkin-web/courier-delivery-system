@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ProfileScreenProps {
   onNavigate: (screen: string) => void;
@@ -17,32 +16,24 @@ export function ProfileScreen({ onNavigate }: ProfileScreenProps) {
   });
 
   useEffect(() => {
-    loadSettings();
+    const saved = localStorage.getItem('notificationSettings');
+    if (saved) setNotifications(JSON.parse(saved));
+
+    const isDark = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(isDark);
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
   }, []);
 
-  const loadSettings = async () => {
-    try {
-      const saved = localStorage.getItem('notificationSettings');
-      if (saved) {
-        setNotifications(JSON.parse(saved));
-      }
-      const isDark = localStorage.getItem('darkMode') === 'true';
-      setDarkMode(isDark);
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-    }
-  };
-
-  const saveSettings = (newNotifications: typeof notifications) => {
-    localStorage.setItem('notificationSettings', JSON.stringify(newNotifications));
-    setNotifications(newNotifications);
+  const saveSettings = (next: typeof notifications) => {
+    localStorage.setItem('notificationSettings', JSON.stringify(next));
+    setNotifications(next);
   };
 
   const toggleDarkMode = () => {
-    const newDarkMode = !darkMode;
-    setDarkMode(newDarkMode);
-    localStorage.setItem('darkMode', String(newDarkMode));
-    document.documentElement.style.colorScheme = newDarkMode ? 'dark' : 'light';
+    const next = !darkMode;
+    setDarkMode(next);
+    localStorage.setItem('darkMode', String(next));
+    document.documentElement.style.colorScheme = next ? 'dark' : 'light';
   };
 
   const handleLogout = () => {
@@ -53,206 +44,93 @@ export function ProfileScreen({ onNavigate }: ProfileScreenProps) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
-      <div style={{
-        padding: '12px 16px',
-        backgroundColor: 'var(--surface)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '600', color: 'var(--foreground)' }}>
-          Профиль
-        </h2>
-        <button
-          onClick={() => onNavigate('tasks')}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '24px',
-            cursor: 'pointer',
-            color: 'var(--foreground)',
-          }}
-        >
-          ✕
-        </button>
-      </div>
+    <section className="mobile-screen profile-screen">
+      <header className="profile-hero">
+        <div className="profile-avatar">👤</div>
+        <div>
+          <h1>{courier?.name || 'Курьер'}</h1>
+          <p>{courier?.isActive ? 'Активный аккаунт' : 'Аккаунт курьера'}</p>
+        </div>
+      </header>
 
-      {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
-        {/* Courier info */}
-        <div style={{
-          marginBottom: '12px',
-          padding: '12px',
-          backgroundColor: 'var(--surface)',
-          borderRadius: '8px',
-          border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-            ИМЯ КУРЬЕРА
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--foreground)', marginBottom: '12px' }}>
-            {courier?.name || 'Не указано'}
-          </div>
-
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-            ТЕЛЕФОН
-          </div>
-          <div style={{ fontSize: '14px', color: 'var(--foreground)', marginBottom: '12px' }}>
-            {courier?.phone || 'Не указано'}
-          </div>
-
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-            ВСЕГО ДОСТАВОК
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--foreground)' }}>
-            {courier?.totalDeliveries || 0}
-          </div>
+      <main className="profile-content">
+        <div className="profile-stats">
+          <section className="profile-stat-card">
+            <span>Доставок</span>
+            <strong>{courier?.totalDeliveries || 0}</strong>
+          </section>
+          <section className="profile-stat-card">
+            <span>Транспорт</span>
+            <strong>{courier?.vehicleType || '—'}</strong>
+          </section>
         </div>
 
-        {/* Settings */}
-        <div style={{
-          marginBottom: '12px',
-          padding: '12px',
-          backgroundColor: 'var(--surface)',
-          borderRadius: '8px',
-          border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--muted)', marginBottom: '12px' }}>
-            ПАРАМЕТРЫ
+        <section className="detail-card profile-info-card">
+          <span className="section-label">Данные курьера</span>
+          <div className="profile-row">
+            <span>Логин</span>
+            <strong>{courier?.username || '—'}</strong>
           </div>
-
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingBottom: '12px',
-            borderBottom: '1px solid var(--border)',
-          }}>
-            <label style={{ fontSize: '14px', color: 'var(--foreground)', fontWeight: '500' }}>
-              Тёмный режим
-            </label>
-            <input
-              type="checkbox"
-              checked={darkMode}
-              onChange={toggleDarkMode}
-              style={{ cursor: 'pointer', width: '20px', height: '20px' }}
-            />
+          <div className="profile-row">
+            <span>Телефон</span>
+            <strong>{courier?.phone || 'Не указано'}</strong>
           </div>
-        </div>
-
-        {/* Notifications */}
-        <div style={{
-          marginBottom: '12px',
-          padding: '12px',
-          backgroundColor: 'var(--surface)',
-          borderRadius: '8px',
-          border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--muted)', marginBottom: '12px' }}>
-            УВЕДОМЛЕНИЯ
+          <div className="profile-row">
+            <span>Статус</span>
+            <strong>{courier?.isActive ? 'Активен' : 'Неактивен'}</strong>
           </div>
+        </section>
 
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingBottom: '12px',
-            borderBottom: '1px solid var(--border)',
-          }}>
-            <label style={{ fontSize: '14px', color: 'var(--foreground)', fontWeight: '500' }}>
-              Включить уведомления
-            </label>
+        <section className="detail-card profile-info-card">
+          <span className="section-label">Параметры</span>
+          <label className="profile-switch-row">
+            <span>Тёмный режим</span>
+            <input type="checkbox" checked={darkMode} onChange={toggleDarkMode} />
+          </label>
+        </section>
+
+        <section className="detail-card profile-info-card">
+          <span className="section-label">Уведомления</span>
+          <label className="profile-switch-row">
+            <span>Включить уведомления</span>
             <input
               type="checkbox"
               checked={notifications.enabled}
-              onChange={(e) => saveSettings({ ...notifications, enabled: e.target.checked })}
-              style={{ cursor: 'pointer', width: '20px', height: '20px' }}
+              onChange={(event) => saveSettings({ ...notifications, enabled: event.target.checked })}
             />
-          </div>
-
+          </label>
           {notifications.enabled && (
             <>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingTop: '12px',
-                paddingBottom: '12px',
-                borderBottom: '1px solid var(--border)',
-              }}>
-                <label style={{ fontSize: '14px', color: 'var(--foreground)' }}>
-                  Новые заявки
-                </label>
+              <label className="profile-switch-row">
+                <span>Новые заявки</span>
                 <input
                   type="checkbox"
                   checked={notifications.newTasks}
-                  onChange={(e) => saveSettings({ ...notifications, newTasks: e.target.checked })}
-                  style={{ cursor: 'pointer', width: '20px', height: '20px' }}
+                  onChange={(event) => saveSettings({ ...notifications, newTasks: event.target.checked })}
                 />
-              </div>
-
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingTop: '12px',
-                paddingBottom: '12px',
-                borderBottom: '1px solid var(--border)',
-              }}>
-                <label style={{ fontSize: '14px', color: 'var(--foreground)' }}>
-                  Изменение статуса
-                </label>
+              </label>
+              <label className="profile-switch-row">
+                <span>Изменение статуса</span>
                 <input
                   type="checkbox"
                   checked={notifications.statusChanges}
-                  onChange={(e) => saveSettings({ ...notifications, statusChanges: e.target.checked })}
-                  style={{ cursor: 'pointer', width: '20px', height: '20px' }}
+                  onChange={(event) => saveSettings({ ...notifications, statusChanges: event.target.checked })}
                 />
-              </div>
-
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingTop: '12px',
-              }}>
-                <label style={{ fontSize: '14px', color: 'var(--foreground)' }}>
-                  Сообщения
-                </label>
+              </label>
+              <label className="profile-switch-row">
+                <span>Сообщения</span>
                 <input
                   type="checkbox"
                   checked={notifications.messages}
-                  onChange={(e) => saveSettings({ ...notifications, messages: e.target.checked })}
-                  style={{ cursor: 'pointer', width: '20px', height: '20px' }}
+                  onChange={(event) => saveSettings({ ...notifications, messages: event.target.checked })}
                 />
-              </div>
+              </label>
             </>
           )}
-        </div>
-      </div>
+        </section>
 
-      {/* Logout button */}
-      <div style={{ padding: '12px', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
-        <button
-          onClick={handleLogout}
-          style={{
-            width: '100%',
-            padding: '12px',
-            borderRadius: '8px',
-            border: 'none',
-            backgroundColor: 'var(--error)',
-            color: 'white',
-            fontWeight: '600',
-            fontSize: '14px',
-            cursor: 'pointer',
-          }}
-        >
-          Выход
-        </button>
-      </div>
-    </div>
+        <button className="logout-button" onClick={handleLogout}>Выйти</button>
+      </main>
+    </section>
   );
 }
