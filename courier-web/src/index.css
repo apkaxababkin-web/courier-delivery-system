@@ -1,7 +1,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import './exact-pickup.css';
 
 :root{--primary:#0a7ea4;--background:#fff;--app-bg:#f6f7f9;--surface:#fff;--surface-soft:#f5f5f5;--foreground:#11181c;--muted:#687076;--border:#e5e7eb;--success:#22c55e;--warning:#f59e0b;--error:#ef4444;--status-assigned:#3b82f6;--status-in-progress:#f97316;--status-completed:#22c55e;--status-cancelled:#ef4444;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:16px;line-height:1.5;color:var(--foreground);background:var(--app-bg)}
 @media (prefers-color-scheme:dark){:root{--background:#151718;--app-bg:#101214;--surface:#1e2022;--surface-soft:#151718;--foreground:#ecedee;--muted:#9ba1a6;--border:#334155}}
