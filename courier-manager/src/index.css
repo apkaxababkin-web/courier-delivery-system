@@ -72,6 +72,16 @@ select:focus {
   outline: none;
 }
 
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
+}
+
 ::selection {
   background: rgba(15, 23, 42, 0.12);
 }
@@ -115,6 +125,7 @@ select:focus {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 1rem;
   background-color: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(8px);
 }
@@ -122,6 +133,34 @@ select:focus {
 .card-shadow,
 .shadow-soft {
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+}
+
+.skeleton-line,
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.skeleton-block {
+  border-radius: 1.25rem;
+}
+
+.skeleton-line::after,
+.skeleton-block::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.58), transparent);
+  animation: skeleton-shimmer 1.4s infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 /* Task creation modal: readable compact two-column workflow. */
@@ -262,15 +301,15 @@ select:focus {
 }
 
 .badge-new {
-  @apply border border-blue-200 bg-blue-50 text-blue-700;
+  @apply border border-slate-200 bg-slate-50 text-slate-700;
 }
 
 .badge-in-progress {
-  @apply border border-amber-200 bg-amber-50 text-amber-700;
+  @apply border border-amber-200 bg-amber-50 text-amber-800;
 }
 
 .badge-completed {
-  @apply border border-emerald-200 bg-emerald-50 text-emerald-700;
+  @apply border border-slate-300 bg-white text-slate-950;
 }
 
 .badge-cancelled {
