@@ -24,10 +24,15 @@ export const OWNER_OPEN_ID = env.ownerId;
 export const OWNER_NAME = env.ownerName;
 export const API_BASE_URL = env.apiBaseUrl;
 
+// Production API base URL — used as native fallback when env var is not set
+const PRODUCTION_API_URL = "https://courier.couriermig.ru";
+
 /**
- * Get the API base URL, deriving from current hostname if not set.
- * Metro runs on 8081, API server runs on 3000.
- * URL pattern: https://PORT-sandboxid.region.domain
+ * Get the API base URL.
+ * Priority:
+ * 1. EXPO_PUBLIC_API_BASE_URL env var (set in eas.json for production builds)
+ * 2. Web: derive from current hostname (dev sandbox)
+ * 3. Native: use production URL (no localhost)
  */
 export function getApiBaseUrl(): string {
   // If API_BASE_URL is set, use it
@@ -45,8 +50,8 @@ export function getApiBaseUrl(): string {
     }
   }
 
-  // Fallback to empty (will use relative URL)
-  return "";
+  // Native fallback: use production URL (no localhost/127.0.0.1)
+  return PRODUCTION_API_URL;
 }
 
 export const SESSION_TOKEN_KEY = "app_session_token";

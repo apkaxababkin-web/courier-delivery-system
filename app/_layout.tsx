@@ -24,6 +24,7 @@ import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { CourierAuthProvider } from "@/lib/courier-auth";
 import { FilterProvider } from "@/lib/filter-context";
+import { AuthGuard } from "@/components/auth-guard";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -144,12 +145,15 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <FilterProvider>
               <CourierAuthProvider>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
-                </Stack>
-                <StatusBar style="auto" />
+                <AuthGuard>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="login" options={{ headerShown: false }} />
+                    <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
+                    <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
+                  </Stack>
+                  <StatusBar style="auto" />
+                </AuthGuard>
               </CourierAuthProvider>
             </FilterProvider>
           </QueryClientProvider>
