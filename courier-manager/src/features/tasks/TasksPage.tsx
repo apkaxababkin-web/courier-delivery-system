@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, CalendarDays, CheckCircle2, Landmark, MapPin } from 'lucide-react';
+import { Activity, CalendarDays, CheckCircle2, Landmark, MapPin, PackageCheck } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -129,7 +129,8 @@ export default function TasksPage() {
 
   const filteredRequests = getFilteredRequests(requests, selectedStatus, dateFrom, dateTo, searchQuery);
   const stats = getStatistics(requests);
-  const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name })));
+  const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
+  const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
 
   const handleCreateTask = async (data: TaskFormData) => {
     try {
@@ -181,10 +182,16 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2 rounded-[24px] border border-slate-200 bg-white p-2 shadow-sm">
-        {renderModeButton('requests', 'Созданные заявки', <Activity className="h-4 w-4" />)}
-        {renderModeButton('hemotest', 'Гемотест', <MapPin className="h-4 w-4" />)}
-        {renderModeButton('sberbank', 'Сбербанк', <Landmark className="h-4 w-4" />)}
+      <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          {renderModeButton('requests', 'Созданные заявки', <Activity className="h-4 w-4" />)}
+          {renderModeButton('hemotest', 'Гемотест', <MapPin className="h-4 w-4" />)}
+          {renderModeButton('sberbank', 'Сбербанк', <Landmark className="h-4 w-4" />)}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium">Режим: {operationMode === 'requests' ? 'Заявки' : operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</span>
+          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium">Видимость назначений</span>
+        </div>
       </div>
 
       {operationMode === 'requests' ? (
@@ -194,37 +201,48 @@ export default function TasksPage() {
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} isLoading={isLoading} />}
         </>
       ) : (
-        <div className="max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="max-w-6xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-950">{operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</h2>
-              <p className="mt-1 text-sm text-slate-500">Список сборов</p>
+              <p className="mt-1 text-sm text-slate-500">Операционный список сборов: точка, адрес, курьер и факт забора.</p>
             </div>
-            {operationMode === 'hemotest' ? (
-              <label className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                <CalendarDays className="h-4 w-4 text-slate-400" />
-                <input type="date" value={hemotestDate} onChange={(e) => setHemotestDate(e.target.value)} className="bg-transparent outline-none" />
-              </label>
-            ) : (
-              <select value={sberbankDay} onChange={(e) => setSberbankDay(Number(e.target.value))} className="h-10 w-fit rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none">
-                {Object.entries(weekdayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            )}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <span className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">
+                <PackageCheck className="h-4 w-4 text-slate-400" />
+                {pickedCount}/{flattenedPoints.length} забрано
+              </span>
+              {operationMode === 'hemotest' ? (
+                <label className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  <CalendarDays className="h-4 w-4 text-slate-400" />
+                  <input type="date" value={hemotestDate} onChange={(e) => setHemotestDate(e.target.value)} className="bg-transparent outline-none" />
+                </label>
+              ) : (
+                <select value={sberbankDay} onChange={(e) => setSberbankDay(Number(e.target.value))} className="h-10 w-fit rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none">
+                  {Object.entries(weekdayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              )}
+            </div>
           </div>
 
           {isOperationLoading ? (
-            <div className="flex min-h-40 items-center justify-center p-8 text-sm text-slate-500">Загрузка...</div>
+            <OperationSkeleton />
           ) : flattenedPoints.length === 0 ? (
-            <div className="flex min-h-40 items-center justify-center p-8 text-center text-sm text-slate-500">На выбранную дату список пуст.</div>
+            <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500">
+              <MapPin className="mb-3 h-8 w-8 text-slate-300" />
+              <p className="font-medium text-slate-950">На выбранный период точек нет</p>
+              <p className="mt-1 max-w-sm">Измените дату/день недели или проверьте, что список сборов создан в разделе направления.</p>
+            </div>
           ) : (
             <div className="space-y-2 bg-slate-50/70 p-3">
               {flattenedPoints.map((point) => {
                 const pickup = getPickupMeta(point);
                 return (
-                  <div key={`${point.listName}-${point.id}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-slate-300 md:grid-cols-[1.1fr_minmax(0,1.7fr)_150px] md:items-center">
+                  <div key={`${point.listName}-${point.id}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-slate-300 hover:shadow-md md:grid-cols-[1.1fr_minmax(0,1.7fr)_170px] md:items-center">
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold text-slate-950">{point.name}</p>
-                      {point.contactPerson && <p className="mt-0.5 truncate text-xs text-slate-400">{point.contactPerson}</p>}
+                      <p className="mt-0.5 truncate text-xs text-slate-400">{point.listName} · {point.listMeta}</p>
+                      {point.contactPerson && <p className="mt-0.5 truncate text-xs text-slate-500">{point.contactPerson}</p>}
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-700">{point.address}</p>
@@ -233,8 +251,8 @@ export default function TasksPage() {
                     <div className="flex items-center gap-2 md:justify-end">
                       {pickup.isPicked && <CheckCircle2 className="h-4 w-4 text-slate-500" />}
                       <div className="text-left md:text-right">
-                        <p className={`text-sm font-semibold ${pickup.isPicked ? 'text-slate-800' : 'text-slate-500'}`}>{pickup.label}</p>
-                        {pickup.detail && <p className="mt-0.5 text-xs text-slate-400">{pickup.detail}</p>}
+                        <p className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${pickup.isPicked ? 'border-slate-300 bg-white text-slate-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{pickup.label}</p>
+                        {pickup.detail && <p className="mt-1 text-xs text-slate-400">{pickup.detail}</p>}
                       </div>
                     </div>
                   </div>
@@ -247,6 +265,28 @@ export default function TasksPage() {
 
       <CreateTaskModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} />
       <AiTaskModal isOpen={showAiModal} onClose={() => setShowAiModal(false)} onSubmit={handleAiParse} isLoading={isParsingAi} />
+    </div>
+  );
+}
+
+function OperationSkeleton() {
+  return (
+    <div className="space-y-2 bg-slate-50/70 p-3">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div key={index} className="grid gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 md:grid-cols-[1.1fr_minmax(0,1.7fr)_170px] md:items-center">
+          <div className="space-y-2">
+            <div className="skeleton-line h-4 w-40" />
+            <div className="skeleton-line h-3 w-28" />
+          </div>
+          <div className="space-y-2">
+            <div className="skeleton-line h-4 w-full max-w-md" />
+            <div className="skeleton-line h-3 w-32" />
+          </div>
+          <div className="flex md:justify-end">
+            <div className="skeleton-line h-7 w-24" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
