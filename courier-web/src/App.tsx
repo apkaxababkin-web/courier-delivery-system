@@ -7,7 +7,7 @@ import { PickupGemotestScreen } from './pages/PickupGemotestScreen';
 import { PickupSberbankScreen } from './pages/PickupSberbankScreen';
 import './index.css';
 
-type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'profile';
+type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'letters' | 'profile';
 
 function LoginScreen() {
   const { login } = useAuth();
@@ -41,30 +41,28 @@ function LoginScreen() {
         <form onSubmit={handleSubmit} className="login-form">
           <label>
             <span>Логин</span>
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="Введите логин"
-              autoComplete="username"
-              disabled={submitting}
-            />
+            <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Введите логин" autoComplete="username" disabled={submitting} />
           </label>
           <label>
             <span>Пароль</span>
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Введите пароль"
-              type="password"
-              autoComplete="current-password"
-              disabled={submitting}
-            />
+            <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Введите пароль" type="password" autoComplete="current-password" disabled={submitting} />
           </label>
           {error && <div className="form-error">{error}</div>}
           <button type="submit" disabled={submitting}>{submitting ? 'Вход...' : 'Войти'}</button>
         </form>
       </section>
     </main>
+  );
+}
+
+function LettersScreen() {
+  return (
+    <section className="mobile-screen letters-screen">
+      <div className="letters-empty">
+        <h1>Письма</h1>
+        <p>Письма - в разработке</p>
+      </div>
+    </section>
   );
 }
 
@@ -98,9 +96,10 @@ function AppContent() {
         {currentScreen === 'task-detail' && selectedTaskId && <TaskDetailScreen taskId={selectedTaskId} onBack={handleBack} />}
         {currentScreen === 'pickup-gemotest' && <PickupGemotestScreen />}
         {currentScreen === 'pickup-sberbank' && <PickupSberbankScreen />}
+        {currentScreen === 'letters' && <LettersScreen />}
         {currentScreen === 'profile' && <ProfileScreen onNavigate={handleNavigate} />}
       </div>
-      <BottomTabBar currentScreen={currentScreen} onNavigate={handleNavigate} />
+      {currentScreen !== 'profile' && <BottomTabBar currentScreen={currentScreen} onNavigate={handleNavigate} />}
     </div>
   );
 }
@@ -112,10 +111,10 @@ interface BottomTabBarProps {
 
 function BottomTabBar({ currentScreen, onNavigate }: BottomTabBarProps) {
   const tabs: Array<{ id: Screen; label: string; icon: string }> = [
-    { id: 'tasks', label: 'Все заявки', icon: '📋' },
+    { id: 'tasks', label: 'Все заявки', icon: '☷' },
     { id: 'pickup-gemotest', label: 'Гемотест', icon: '🏥' },
     { id: 'pickup-sberbank', label: 'Сбербанк', icon: '🏦' },
-    { id: 'profile', label: 'Профиль', icon: '👤' },
+    { id: 'letters', label: 'Письма', icon: '✉️' },
   ];
 
   return (
