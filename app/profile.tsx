@@ -109,7 +109,7 @@ export default function ProfileModal() {
           await AsyncStorage.removeItem("notificationSettings");
           await AsyncStorage.removeItem("pushToken");
           logout();
-          router.replace("/");
+          router.replace("/login");
         },
         style: "destructive",
       },

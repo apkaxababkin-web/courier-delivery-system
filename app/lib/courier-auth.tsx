@@ -70,26 +70,13 @@ export function CourierAuthProvider({ children }: { children: React.ReactNode })
           getItem(COURIER_INFO_KEY),
         ]);
         if (savedToken && savedCourier) {
+          // Restore saved session (persists across app restarts)
           setToken(savedToken);
           setCourier(JSON.parse(savedCourier));
+          console.log("[CourierAuth] Session restored for:", JSON.parse(savedCourier).name);
         } else {
-          // Auto-login with demo courier if no session exists
-          const demoCourier: CourierInfo = {
-            id: 1,
-            name: "Демо Курьер",
-            username: "demo",
-            phone: "+7 (999) 000-00-00",
-            vehicleType: "Автомобиль",
-            isActive: true,
-            totalDeliveries: 0,
-          };
-          const demoToken = "demo-token-" + Date.now();
-          await Promise.all([
-            storeItem(COURIER_TOKEN_KEY, demoToken),
-            storeItem(COURIER_INFO_KEY, JSON.stringify(demoCourier)),
-          ]);
-          setToken(demoToken);
-          setCourier(demoCourier);
+          // No saved session — user must log in via login screen
+          console.log("[CourierAuth] No saved session, login required");
         }
       } catch (e) {
         console.error("[CourierAuth] Failed to load session:", e);

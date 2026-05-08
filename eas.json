@@ -1,16 +1,45 @@
 {
   "cli": {
-    "version": ">= 5.0.0"
+    "version": ">= 12.0.0",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_OAUTH_PORTAL_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_OAUTH_SERVER_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_APP_ID": "courier-app",
+        "EXPO_PUBLIC_OWNER_OPEN_ID": "owner-id",
+        "EXPO_PUBLIC_OWNER_NAME": "Courier Service"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_OAUTH_PORTAL_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_OAUTH_SERVER_URL": "https://couriermig.ru",
+        "EXPO_PUBLIC_APP_ID": "courier-app",
+        "EXPO_PUBLIC_OWNER_OPEN_ID": "owner-id",
+        "EXPO_PUBLIC_OWNER_NAME": "Courier Service"
+      }
     },
     "production": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://couriermig.ru",
         "EXPO_PUBLIC_OAUTH_PORTAL_URL": "https://couriermig.ru",
