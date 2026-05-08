@@ -5,10 +5,11 @@ import { TaskDetailScreen } from './pages/TaskDetailScreen';
 import { ProfileScreen } from './pages/ProfileScreen';
 import { PickupGemotestScreen } from './pages/PickupGemotestScreen';
 import { PickupSberbankScreen } from './pages/PickupSberbankScreen';
+import { HistoryScreen } from './pages/HistoryScreen';
 import './index.css';
 import './exact-pickup.css';
 
-type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'letters' | 'profile';
+type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'history' | 'profile';
 
 function LoginScreen() {
   const { login } = useAuth();
@@ -56,17 +57,6 @@ function LoginScreen() {
   );
 }
 
-function LettersScreen() {
-  return (
-    <section className="mobile-screen letters-screen">
-      <div className="letters-empty">
-        <h1>Письма</h1>
-        <p>Письма - в разработке</p>
-      </div>
-    </section>
-  );
-}
-
 function AppContent() {
   const { loading, isAuthenticated } = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('tasks');
@@ -97,7 +87,7 @@ function AppContent() {
         {currentScreen === 'task-detail' && selectedTaskId && <TaskDetailScreen taskId={selectedTaskId} onBack={handleBack} />}
         {currentScreen === 'pickup-gemotest' && <PickupGemotestScreen />}
         {currentScreen === 'pickup-sberbank' && <PickupSberbankScreen />}
-        {currentScreen === 'letters' && <LettersScreen />}
+        {currentScreen === 'history' && <HistoryScreen onTaskSelect={handleTaskSelect} />}
         {currentScreen === 'profile' && <ProfileScreen onNavigate={handleNavigate} />}
       </div>
       {currentScreen !== 'profile' && <BottomTabBar currentScreen={currentScreen} onNavigate={handleNavigate} />}
@@ -115,7 +105,7 @@ function BottomTabBar({ currentScreen, onNavigate }: BottomTabBarProps) {
     { id: 'tasks', label: 'Все заявки', icon: '☷' },
     { id: 'pickup-gemotest', label: 'Гемотест', icon: '🏥' },
     { id: 'pickup-sberbank', label: 'Сбербанк', icon: '🏦' },
-    { id: 'letters', label: 'Письма', icon: '✉️' },
+    { id: 'history', label: 'История', icon: '🕘' },
   ];
 
   return (
