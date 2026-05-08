@@ -39,24 +39,6 @@ export default function LoginScreen() {
     },
   });
 
-  const demoMutation = trpc.courierAuth.getDemoToken.useMutation({
-    onSuccess: async (data) => {
-      setError(null);
-      await setSession(data.token, {
-        id: data.courier.id,
-        name: data.courier.name,
-        username: data.courier.username,
-        phone: data.courier.phone,
-        vehicleType: data.courier.vehicleType,
-        isActive: data.courier.isActive,
-        totalDeliveries: data.courier.totalDeliveries,
-      });
-    },
-    onError: (err) => {
-      setError(err.message || "Ошибка подключения к серверу");
-    },
-  });
-
   const handleLogin = () => {
     if (!username.trim()) {
       setError("Введите логин");
@@ -70,12 +52,7 @@ export default function LoginScreen() {
     loginMutation.mutate({ username: username.trim(), password: password.trim() });
   };
 
-  const handleDemo = () => {
-    setError(null);
-    demoMutation.mutate();
-  };
-
-  const isLoading = loginMutation.isPending || demoMutation.isPending;
+  const isLoading = loginMutation.isPending;
 
   return (
     <KeyboardAvoidingView
@@ -86,20 +63,13 @@ export default function LoginScreen() {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Logo / Title */}
         <View style={styles.header}>
           <Text style={[styles.logo, { color: colors.primary }]}>📦</Text>
-          <Text style={[styles.title, { color: colors.foreground }]}>
-            Курьер
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>
-            Войдите в свой аккаунт
-          </Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>Курьер</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>Войдите в свой аккаунт</Text>
         </View>
 
-        {/* Login Form */}
         <View style={styles.form}>
-          {/* Username */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.muted }]}>Логин</Text>
             <TextInput
@@ -123,7 +93,6 @@ export default function LoginScreen() {
             />
           </View>
 
-          {/* Password */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.muted }]}>Пароль</Text>
             <TextInput
@@ -148,7 +117,6 @@ export default function LoginScreen() {
             />
           </View>
 
-          {/* Error message */}
           {error ? (
             <View
               style={[
@@ -156,13 +124,10 @@ export default function LoginScreen() {
                 { backgroundColor: colors.error + "15", borderColor: colors.error },
               ]}
             >
-              <Text style={[styles.errorText, { color: colors.error }]}>
-                {error}
-              </Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
             </View>
           ) : null}
 
-          {/* Login Button */}
           <Pressable
             onPress={handleLogin}
             disabled={isLoading}
@@ -177,29 +142,6 @@ export default function LoginScreen() {
               <ActivityIndicator color="white" />
             ) : (
               <Text style={styles.loginButtonText}>Войти</Text>
-            )}
-          </Pressable>
-
-          {/* Demo Button */}
-          <Pressable
-            onPress={handleDemo}
-            disabled={isLoading}
-            style={({ pressed }) => [
-              styles.demoButton,
-              {
-                borderColor: colors.border,
-                backgroundColor: colors.surface,
-              },
-              pressed && { opacity: 0.7 },
-              isLoading && { opacity: 0.5 },
-            ]}
-          >
-            {demoMutation.isPending ? (
-              <ActivityIndicator color={colors.muted} />
-            ) : (
-              <Text style={[styles.demoButtonText, { color: colors.muted }]}>
-                Войти как демо-курьер
-              </Text>
             )}
           </Pressable>
         </View>
@@ -270,16 +212,5 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "700",
-  },
-  demoButton: {
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  demoButtonText: {
-    fontSize: 14,
-    fontWeight: "500",
   },
 });
