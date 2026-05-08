@@ -1,43 +1,83 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
 interface Task {
   id: number;
   recipientName: string;
   deliveryAddress: string;
+  recipientAddress?: string;
+  deliveryCity?: string;
+  senderName?: string;
+  senderAddress?: string;
   status: 'assigned' | 'in_progress' | 'completed' | 'cancelled';
   deliveryTimeFrom?: string;
   deliveryTimeTo?: string;
   courierName?: string;
-  senderName?: string;
+  placesCount?: number;
+  taskType?: 'regular' | 'warehouse_pickup' | 'courier_call';
 }
 
 interface TaskListScreenProps {
   onTaskSelect: (taskId: number) => void;
-  onNavigate: (screen: string) => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  assigned: '#3b82f6',
-  in_progress: '#f97316',
-  completed: '#22c55e',
-  cancelled: '#ef4444',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  assigned: 'Новая',
+const STATUS_LABELS: Record<Task['status'], string> = {
+  assigned: 'Назначена',
   in_progress: 'В работе',
-  completed: 'Выполнено',
-  cancelled: 'Отменено',
+  completed: 'Выполнена',
+  cancelled: 'Отменена',
 };
 
-export function TaskListScreen({ onTaskSelect, onNavigate }: TaskListScreenProps) {
+const STATUS_CLASS: Record<Task['status'], string> = {
+  assigned: 'status-assigned',
+  in_progress: 'status-progress',
+  completed: 'status-completed',
+  cancelled: 'status-cancelled',
+};
+
+function toTrpcDate(date: string) {
+  return new Date(`${date}T00:00:00`).toISOString();
+}
+
+function formatDate(dateStr: string) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function getDateLabel(dateStr: string) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (date.toDateString() === today.toDateString()) return 'Сегодня';
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date.toDateString() === tomorrow.toDateString()) return 'Завтра';
+
+  return date.toLocaleDateString('ru-RU', { weekday: 'short' });
+}
+
+function shiftDate(dateStr: string, days: number) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split('T')[0];
+}
+
+function getTaskTypeIcon(task: Task) {
+  if (task.taskType === 'warehouse_pickup') return '📦';
+  if (task.taskType === 'courier_call') return '📞';
+  return '📋';
+}
+
+export function TaskListScreen({ onTaskSelect }: TaskListScreenProps) {
   const { token, courier } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTasks();
@@ -45,221 +85,116 @@ export function TaskListScreen({ onTaskSelect, onNavigate }: TaskListScreenProps
 
   const loadTasks = async () => {
     if (!token) return;
+
     try {
       setLoading(true);
+      setError(null);
+
       const response = await axios.get(
-        `/api/trpc/tasks.all?input=${encodeURIComponent(JSON.stringify({ token, date: selectedDate }))}`,
+        `/api/trpc/tasks.all?input=${encodeURIComponent(JSON.stringify({ token, date: toTrpcDate(selectedDate) }))}`,
         { withCredentials: true }
       );
-      
-      let taskList = response.data?.result?.data?.json || response.data?.result || [];
+
+      let taskList = response.data?.result?.data?.json || response.data?.result?.data || response.data?.result || [];
       if (!Array.isArray(taskList)) taskList = [];
 
       if (filterMode === 'mine' && courier?.name) {
-        taskList = taskList.filter((t: Task) => t.courierName === courier.name);
+        taskList = taskList.filter((task: Task) => task.courierName === courier.name);
       }
 
       setTasks(taskList);
-    } catch (error) {
-      console.error('Failed to load tasks:', error);
+    } catch (err) {
+      console.error('Failed to load tasks:', err);
       setTasks([]);
+      setError('Не удалось загрузить заявки');
     } finally {
       setLoading(false);
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00');
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = String(date.getFullYear()).slice(-2);
-    return `${day}.${month}.${year}`;
-  };
-
-  const getDateLabel = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (date.toDateString() === today.toDateString()) {
-      return 'Сегодня';
-    }
-
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    if (date.toDateString() === tomorrow.toDateString()) {
-      return 'Завтра';
-    }
-
-    const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-    return days[date.getDay()];
-  };
+  const stats = useMemo(() => {
+    return {
+      total: tasks.length,
+      mine: tasks.filter((task) => task.courierName === courier?.name).length,
+      active: tasks.filter((task) => task.status === 'assigned' || task.status === 'in_progress').length,
+    };
+  }, [tasks, courier?.name]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
-      <div style={{
-        padding: '12px 16px',
-        backgroundColor: 'var(--surface)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <div>
-          <div style={{ fontSize: '14px', color: 'var(--muted)' }}>
-            {getDateLabel(selectedDate)}
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--foreground)' }}>
-            {formatDate(selectedDate)}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+    <section className="mobile-screen task-list-screen">
+      <header className="mobile-header-v2">
+        <div className="header-row">
+          <button className="logo-button" onClick={loadTasks} aria-label="Обновить заявки">📦</button>
+          <button className="date-pill" onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}>
+            <span>{getDateLabel(selectedDate)}</span>
+            <strong>{formatDate(selectedDate)}</strong>
+          </button>
           <button
+            className={`filter-pill ${filterMode === 'mine' ? 'active' : ''}`}
             onClick={() => setFilterMode(filterMode === 'all' ? 'mine' : 'all')}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: filterMode === 'mine' ? 'var(--primary)' : 'var(--border)',
-              color: filterMode === 'mine' ? 'white' : 'var(--foreground)',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
           >
-            {filterMode === 'all' ? 'Все' : 'Мои'}
-          </button>
-          <button
-            onClick={() => {
-              const newDate = new Date(selectedDate);
-              newDate.setDate(newDate.getDate() - 1);
-              setSelectedDate(newDate.toISOString().split('T')[0]);
-            }}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--foreground)',
-              cursor: 'pointer',
-            }}
-          >
-            ←
-          </button>
-          <button
-            onClick={() => {
-              const newDate = new Date(selectedDate);
-              newDate.setDate(newDate.getDate() + 1);
-              setSelectedDate(newDate.toISOString().split('T')[0]);
-            }}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--foreground)',
-              cursor: 'pointer',
-            }}
-          >
-            →
+            {filterMode === 'all' ? 'Все' : `Мои ${stats.mine}`}
           </button>
         </div>
-      </div>
 
-      {/* Task list */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--muted)' }}>
-            Загрузка...
+        <div className="date-arrows">
+          <button onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}>‹</button>
+          <div>
+            <span>Заявки</span>
+            <strong>{stats.total}</strong>
           </div>
-        )}
+          <button onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}>›</button>
+        </div>
+      </header>
 
-        {!loading && tasks.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--muted)' }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
-            <div>Нет заявок на эту дату</div>
+      <main className="task-list-content">
+        {error && <div className="inline-error">{error}</div>}
+
+        {loading && tasks.length === 0 ? (
+          <div className="empty-state">
+            <div className="loader-dot" />
+            <strong>Загрузка...</strong>
           </div>
-        )}
+        ) : null}
 
-        {tasks.map((task) => (
-          <div
-            key={task.id}
-            onClick={() => onTaskSelect(task.id)}
-            style={{
-              marginBottom: '12px',
-              padding: '12px',
-              backgroundColor: 'var(--surface)',
-              borderLeft: `4px solid ${STATUS_COLORS[task.status] || '#ccc'}`,
-              borderRadius: '8px',
-              border: `1px solid var(--border)`,
-              borderLeftWidth: '4px',
-              cursor: 'pointer',
-              transition: 'opacity 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = '0.7';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = '1';
-            }}
-          >
-            {/* Sender name + Task ID */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--foreground)' }}>
-                {task.senderName || 'Отправитель'}
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                #{task.id}
-              </div>
-            </div>
-
-            {/* Recipient name */}
-            <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--foreground)', marginBottom: '6px' }}>
-              {task.recipientName}
-            </div>
-
-            {/* Delivery address */}
-            <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '8px' }}>
-              {task.deliveryAddress}
-            </div>
-
-            {/* Time + Status + Courier */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-              <div style={{ color: 'var(--muted)' }}>
-                {task.deliveryTimeFrom} – {task.deliveryTimeTo}
-              </div>
-              <div style={{
-                display: 'flex',
-                gap: '6px',
-                alignItems: 'center',
-              }}>
-                <span style={{
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  backgroundColor: STATUS_COLORS[task.status] + '20',
-                  color: STATUS_COLORS[task.status],
-                  fontSize: '11px',
-                  fontWeight: '600',
-                }}>
-                  {STATUS_LABELS[task.status]}
-                </span>
-                {task.courierName && (
-                  <span style={{
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    backgroundColor: 'var(--primary)' + '20',
-                    color: 'var(--primary)',
-                    fontSize: '11px',
-                  }}>
-                    {task.courierName}
-                  </span>
-                )}
-              </div>
-            </div>
+        {!loading && tasks.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📋</div>
+            <strong>{getDateLabel(selectedDate) === 'Сегодня' ? 'Нет заявок' : 'Нет заявок на эту дату'}</strong>
+            <span>{filterMode === 'mine' ? 'Для вас заявок пока нет' : 'Выберите другую дату или обновите список'}</span>
           </div>
-        ))}
-      </div>
-    </div>
+        ) : null}
+
+        <div className="task-cards">
+          {tasks.map((task) => (
+            <button key={task.id} className="mobile-task-card" onClick={() => onTaskSelect(task.id)}>
+              <div className="task-card-top">
+                <div className="task-title-group">
+                  <span className="task-icon">{getTaskTypeIcon(task)}</span>
+                  <div>
+                    <strong>{task.senderName || 'Отправитель'}</strong>
+                    <small>Заявка #{task.id}</small>
+                  </div>
+                </div>
+                <span className={`status-badge ${STATUS_CLASS[task.status]}`}>{STATUS_LABELS[task.status]}</span>
+              </div>
+
+              <div className="task-person">{task.recipientName || 'Получатель не указан'}</div>
+              <div className="task-address">📍 {task.deliveryAddress || task.recipientAddress || 'Адрес не указан'}</div>
+
+              <div className="task-card-bottom">
+                <span>🕒 {task.deliveryTimeFrom || '--:--'} - {task.deliveryTimeTo || '--:--'}</span>
+                <span>{task.placesCount ? `${task.placesCount} мест` : ''}</span>
+              </div>
+
+              <div className="task-card-footer">
+                <span className="courier-chip">{task.courierName || 'Не назначен'}</span>
+                <span className="open-chip">Подробнее ›</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </main>
+    </section>
   );
 }
