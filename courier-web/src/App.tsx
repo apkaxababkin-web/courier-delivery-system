@@ -6,6 +6,7 @@ import { ProfileScreen } from './pages/ProfileScreen';
 import { PickupGemotestScreen } from './pages/PickupGemotestScreen';
 import { PickupSberbankScreen } from './pages/PickupSberbankScreen';
 import './index.css';
+import './exact-pickup.css';
 
 type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'letters' | 'profile';
 
