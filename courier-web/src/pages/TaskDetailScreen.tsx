@@ -37,6 +37,10 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Отменено',
 };
 
+function unwrapTrpc<T>(data: any): T {
+  return data?.result?.data?.json || data?.result?.data || data?.result || data;
+}
+
 export function TaskDetailScreen({ taskId, onBack }: TaskDetailScreenProps) {
   const { token } = useAuth();
   const [task, setTask] = useState<TaskDetail | null>(null);
@@ -55,9 +59,7 @@ export function TaskDetailScreen({ taskId, onBack }: TaskDetailScreenProps) {
         `/api/trpc/tasks.byId?input=${encodeURIComponent(JSON.stringify({ id: taskId, token }))}`,
         { withCredentials: true }
       );
-      
-      const taskData = response.data?.result?.data?.json || response.data?.result;
-      setTask(taskData);
+      setTask(unwrapTrpc<TaskDetail>(response.data));
     } catch (error) {
       console.error('Failed to load task:', error);
     } finally {
@@ -65,13 +67,14 @@ export function TaskDetailScreen({ taskId, onBack }: TaskDetailScreenProps) {
     }
   };
 
-  const updateStatus = async (newStatus: string) => {
-    if (!token) return;
+  const updateStatus = async (newStatus: 'assigned' | 'in_progress' | 'completed' | 'cancelled') => {
+    if (!token || !task) return;
+    const statusToSet = task.status === newStatus ? 'assigned' : newStatus;
     try {
       setUpdating(true);
       await axios.post(
-        '/api/trpc/tasks.update',
-        { json: { id: taskId, status: newStatus, token } },
+        '/api/trpc/tasks.setStatus',
+        { json: { taskId, status: statusToSet, token } },
         { withCredentials: true }
       );
       await loadTask();
@@ -84,281 +87,88 @@ export function TaskDetailScreen({ taskId, onBack }: TaskDetailScreenProps) {
 
   if (loading) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--muted)' }}>
-        Загрузка...
+      <div className="mobile-screen center-screen">
+        <div className="loader-dot" />
+        <strong>Загрузка...</strong>
       </div>
     );
   }
 
   if (!task) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--error)' }}>
-        Заявка не найдена
+      <div className="mobile-screen center-screen">
+        <div className="empty-icon">📋</div>
+        <strong>Заявка не найдена</strong>
+        <button className="primary-button" onClick={onBack}>Назад</button>
       </div>
     );
   }
 
+  const isCompleted = task.status === 'completed';
+  const isCancelled = task.status === 'cancelled';
+  const isInProgress = task.status === 'in_progress';
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
-      <div style={{
-        padding: '12px 16px',
-        backgroundColor: 'var(--surface)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '24px',
-            cursor: 'pointer',
-            color: 'var(--foreground)',
-          }}
-        >
-          ←
-        </button>
-        <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--foreground)' }}>
-          Заявка #{task.id}
-        </div>
-        <div style={{
-          padding: '4px 12px',
-          borderRadius: '12px',
-          backgroundColor: STATUS_COLORS[task.status] + '20',
-          color: STATUS_COLORS[task.status],
-          fontSize: '12px',
-          fontWeight: '600',
-        }}>
+    <section className="mobile-screen task-detail-screen">
+      <header className="detail-header">
+        <button onClick={onBack} className="back-button">←</button>
+        <strong>Заявка #{task.id}</strong>
+        <span className="status-badge" style={{ backgroundColor: `${STATUS_COLORS[task.status]}20`, color: STATUS_COLORS[task.status] }}>
           {STATUS_LABELS[task.status]}
-        </div>
-      </div>
+        </span>
+      </header>
 
-      {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
-        {/* Sender */}
-        <div style={{
-          marginBottom: '12px',
-          padding: '12px',
-          backgroundColor: 'var(--surface)',
-          borderRadius: '8px',
-          border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-            ОТПРАВИТЕЛЬ
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--foreground)', marginBottom: '4px' }}>
-            {task.senderName || 'Не указано'}
-          </div>
-          {task.senderAddress && (
-            <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '4px' }}>
-              {task.senderAddress}
-            </div>
-          )}
-          {task.senderPhone && (
-            <a
-              href={`tel:${task.senderPhone}`}
-              style={{
-                fontSize: '13px',
-                color: 'var(--primary)',
-                textDecoration: 'none',
-              }}
-            >
-              {task.senderPhone}
-            </a>
-          )}
-        </div>
+      <main className="detail-content">
+        <section className="detail-card">
+          <span className="section-label">Отправитель</span>
+          <strong>{task.senderName || 'Не указано'}</strong>
+          {task.senderAddress && <p>📍 {task.senderAddress}</p>}
+          {task.senderPhone && <a href={`tel:${task.senderPhone}`}>📞 {task.senderPhone}</a>}
+        </section>
 
-        {/* Recipient */}
-        <div style={{
-          marginBottom: '12px',
-          padding: '12px',
-          backgroundColor: 'var(--surface)',
-          borderRadius: '8px',
-          border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-            ПОЛУЧАТЕЛЬ
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--foreground)', marginBottom: '4px' }}>
-            {task.recipientName}
-          </div>
-          <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '4px' }}>
-            {task.deliveryAddress}
-          </div>
-          {task.recipientPhone && (
-            <a
-              href={`tel:${task.recipientPhone}`}
-              style={{
-                fontSize: '13px',
-                color: 'var(--primary)',
-                textDecoration: 'none',
-              }}
-            >
-              {task.recipientPhone}
-            </a>
-          )}
-        </div>
+        <section className="detail-card">
+          <span className="section-label">Получатель</span>
+          <strong>{task.recipientName}</strong>
+          <p>📍 {task.deliveryAddress}</p>
+          {task.recipientPhone && <a href={`tel:${task.recipientPhone}`}>📞 {task.recipientPhone}</a>}
+        </section>
 
-        {/* Delivery time */}
-        <div style={{
-          marginBottom: '12px',
-          padding: '12px',
-          backgroundColor: 'var(--surface)',
-          borderRadius: '8px',
-          border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-            ВРЕМЯ ДОСТАВКИ
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--foreground)' }}>
-            {task.deliveryTimeFrom} – {task.deliveryTimeTo}
-          </div>
-        </div>
+        <section className="detail-card">
+          <span className="section-label">Время доставки</span>
+          <strong>{task.deliveryTimeFrom || '--:--'} - {task.deliveryTimeTo || '--:--'}</strong>
+        </section>
 
-        {/* Courier */}
-        {task.courierName && (
-          <div style={{
-            marginBottom: '12px',
-            padding: '12px',
-            backgroundColor: 'var(--surface)',
-            borderRadius: '8px',
-            border: '1px solid var(--border)',
-          }}>
-            <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-              КУРЬЕР
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--foreground)' }}>
-              {task.courierName}
-            </div>
-          </div>
-        )}
-
-        {/* Comments */}
         {task.comments && (
-          <div style={{
-            marginBottom: '12px',
-            padding: '12px',
-            backgroundColor: 'var(--surface)',
-            borderRadius: '8px',
-            border: '1px solid var(--border)',
-          }}>
-            <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-              КОММЕНТАРИИ
-            </div>
-            <div style={{ fontSize: '13px', color: 'var(--foreground)' }}>
-              {task.comments}
-            </div>
-          </div>
+          <section className="detail-card">
+            <span className="section-label">Комментарии</span>
+            <p>{task.comments}</p>
+          </section>
         )}
 
-        {/* Places count */}
-        {task.placesCount && (
-          <div style={{
-            marginBottom: '12px',
-            padding: '12px',
-            backgroundColor: 'var(--surface)',
-            borderRadius: '8px',
-            border: '1px solid var(--border)',
-          }}>
-            <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '4px' }}>
-              МЕСТ
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--foreground)' }}>
-              {task.placesCount}
-            </div>
+        <section className="detail-card action-card">
+          <div>
+            <span className="section-label">Введите количество мест</span>
+            <div className="outlined-value">{task.placesCount || 0}</div>
           </div>
-        )}
-      </div>
+        </section>
 
-      {/* Action buttons */}
-      <div style={{
-        padding: '12px',
-        backgroundColor: 'var(--surface)',
-        borderTop: '1px solid var(--border)',
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '8px',
-      }}>
-        {task.status === 'assigned' && (
-          <>
-            <button
-              onClick={() => updateStatus('in_progress')}
-              disabled={updating}
-              style={{
-                padding: '12px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: 'var(--primary)',
-                color: 'white',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: updating ? 'not-allowed' : 'pointer',
-                opacity: updating ? 0.6 : 1,
-              }}
-            >
-              В работе
-            </button>
-            <button
-              onClick={() => updateStatus('cancelled')}
-              disabled={updating}
-              style={{
-                padding: '12px',
-                borderRadius: '8px',
-                border: '1px solid var(--error)',
-                backgroundColor: 'transparent',
-                color: 'var(--error)',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: updating ? 'not-allowed' : 'pointer',
-                opacity: updating ? 0.6 : 1,
-              }}
-            >
-              Отмена
-            </button>
-          </>
-        )}
-        {task.status === 'in_progress' && (
-          <>
-            <button
-              onClick={() => updateStatus('completed')}
-              disabled={updating}
-              style={{
-                padding: '12px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: 'var(--success)',
-                color: 'white',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: updating ? 'not-allowed' : 'pointer',
-                opacity: updating ? 0.6 : 1,
-              }}
-            >
-              Выполнено
-            </button>
-            <button
-              onClick={() => updateStatus('cancelled')}
-              disabled={updating}
-              style={{
-                padding: '12px',
-                borderRadius: '8px',
-                border: '1px solid var(--error)',
-                backgroundColor: 'transparent',
-                color: 'var(--error)',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: updating ? 'not-allowed' : 'pointer',
-                opacity: updating ? 0.6 : 1,
-              }}
-            >
-              Отмена
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+        <section className="detail-card">
+          <div className="status-grid">
+            <button className={`status-action orange ${isInProgress ? 'active' : ''}`} disabled={updating || isCompleted || isCancelled} onClick={() => updateStatus('in_progress')}>В работе</button>
+            <button className={`status-action green ${isCompleted ? 'active' : ''}`} disabled={updating || isCancelled} onClick={() => updateStatus('completed')}>Выполнено</button>
+            <button className={`status-action red ${isCancelled ? 'active' : ''}`} disabled={updating || isCompleted} onClick={() => updateStatus('cancelled')}>Отмена</button>
+            <button className="status-action blue" disabled={updating}>Перенос заявки</button>
+          </div>
+        </section>
+
+        <section className="detail-card courier-card">
+          <div>
+            <span className="green-dot" />
+            <strong>{task.courierName || 'Не назначен'}</strong>
+            <span>›</span>
+          </div>
+        </section>
+      </main>
+    </section>
   );
 }
