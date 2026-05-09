@@ -4,15 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"pnpm dev:server\" \"pnpm dev:client\"",
-    "dev:server": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
+    "dev": "vite",
     "dev:client": "vite",
-    "build": "tsc -b && vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "start": "NODE_ENV=production node dist/index.js",
+    "build": "tsc -b && vite build",
+    "start": "vite preview",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check": "tsc --noEmit",
-    "db:push": "drizzle-kit push"
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.99.2",
