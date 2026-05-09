@@ -1,4 +1,5 @@
-import { FormEvent, useState } from 'react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TaskListScreen } from './pages/TaskListScreen';
 import { TaskDetailScreen } from './pages/TaskDetailScreen';
@@ -9,7 +10,7 @@ import { HistoryScreen } from './pages/HistoryScreen';
 import './index.css';
 import './exact-pickup.css';
 
-type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'history' | 'profile';
+export type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'history' | 'profile';
 
 function LoginScreen() {
   const { login } = useAuth();
