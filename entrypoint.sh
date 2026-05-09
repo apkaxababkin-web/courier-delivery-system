@@ -8,7 +8,6 @@ set -e
 echo "[Entrypoint] Starting courier-delivery-system API..."
 echo "[Entrypoint] DATABASE_URL: $DATABASE_URL"
 
-# Wait for database to be ready
 echo "[Entrypoint] Waiting for PostgreSQL to be ready..."
 max_attempts=30
 attempt=1
@@ -27,7 +26,6 @@ if [ $attempt -gt $max_attempts ]; then
   exit 1
 fi
 
-# Run migrations
 echo "[Entrypoint] Running database migrations..."
 if [ -f "drizzle.config.ts" ]; then
   if npx drizzle-kit push 2>&1; then
@@ -39,7 +37,6 @@ else
   echo "[Entrypoint] ⚠ drizzle.config.ts not found, skipping migrations"
 fi
 
-# Compatibility patch for old production databases
 if [ -f "scripts/db_compat_patch.sql" ]; then
   echo "[Entrypoint] Running compatibility patch..."
   if psql "$DATABASE_URL" -f scripts/db_compat_patch.sql; then
@@ -49,6 +46,14 @@ if [ -f "scripts/db_compat_patch.sql" ]; then
   fi
 fi
 
-# Start the API server
+if [ -f "scripts/realtime_bridge.sql" ]; then
+  echo "[Entrypoint] Running request-task bridge patch..."
+  if psql "$DATABASE_URL" -f scripts/realtime_bridge.sql; then
+    echo "[Entrypoint] ✓ Request-task bridge applied"
+  else
+    echo "[Entrypoint] ⚠ Request-task bridge failed (continuing anyway)"
+  fi
+fi
+
 echo "[Entrypoint] Starting API server..."
 exec node dist/index.js
