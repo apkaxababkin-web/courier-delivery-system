@@ -18,6 +18,8 @@ export interface Task {
   recipientName: string;
   recipientPhone?: string;
   deliveryAddress: string;
+  courierId?: number | null;
+  courierName?: string | null;
   senderName?: string;
   senderAddress?: string;
   senderPhone?: string;
@@ -26,82 +28,108 @@ export interface Task {
   packageDescription?: string;
   specialInstructions?: string;
   comments?: string;
+  placesCount?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RealtimeSnapshot {
+  ok: boolean;
+  updatedAt: string;
+  tasks: Task[];
+  requests: Request[];
+  mails: Mail[];
+}
+
+type JsonRecord = Record<string, unknown>;
+
+function unwrapTrpc<T>(payload: any, fallback: T): T {
+  return payload?.result?.data?.json ?? payload?.result?.data ?? payload?.result ?? fallback;
+}
+
+async function readJson(response: Response): Promise<any> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+function inputQuery(input?: JsonRecord) {
+  if (!input || Object.keys(input).length === 0) return 'input={}';
+  return `input=${encodeURIComponent(JSON.stringify(input))}`;
+}
+
+async function trpcGet<T>(procedure: string, input?: JsonRecord, fallback: T = [] as T): Promise<T> {
+  const response = await fetch(`${API_BASE}/${procedure}?${inputQuery(input)}`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  const data = await readJson(response);
+  if (!response.ok) throw new Error(data?.error?.message || `Failed to fetch ${procedure}`);
+  return unwrapTrpc<T>(data, fallback);
+}
+
+async function trpcPost<T>(procedure: string, body: JsonRecord, fallback: T): Promise<T> {
+  const response = await fetch(`${API_BASE}/${procedure}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ json: body }),
+  });
+  const data = await readJson(response);
+  if (!response.ok) throw new Error(data?.error?.message || `Failed to call ${procedure}`);
+  return unwrapTrpc<T>(data, fallback);
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
 }
 
 // ─── Clients API ─────────────────────────────────────────────────────────────
 
 export async function getAllClients(): Promise<Client[]> {
-  const response = await fetch(`${API_BASE}/clients.all?input={}`);
-  if (!response.ok) throw new Error('Failed to fetch clients');
-  const data = await response.json();
-  return data.result?.data?.json || [];
+  return asArray<Client>(await trpcGet('clients.all', {}, []));
 }
 
 export async function getClientById(id: number): Promise<Client | null> {
-  const response = await fetch(`${API_BASE}/clients.byId?input=${encodeURIComponent(JSON.stringify({ id }))}`);
-  if (!response.ok) throw new Error('Failed to fetch client');
-  const data = await response.json();
-  return data.result?.data?.json || null;
+  return await trpcGet<Client | null>('clients.byId', { id }, null);
 }
 
 export async function createClient(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ id: number }> {
-  const response = await fetch(`${API_BASE}/clients.create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: client }),
-  });
-  if (!response.ok) throw new Error('Failed to create client');
-  const data = await response.json();
-  return data.result?.data || { id: 0 };
+  return await trpcPost('clients.create', client as unknown as JsonRecord, { id: 0 });
 }
 
 export async function updateClient(id: number, updates: Partial<Omit<Client, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
-  const response = await fetch(`${API_BASE}/clients.update`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { id, ...updates } }),
-  });
-  if (!response.ok) throw new Error('Failed to update client');
+  await trpcPost('clients.update', { id, ...(updates as JsonRecord) }, { success: true });
 }
 
 export async function deleteClient(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/clients.delete`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { id } }),
-  });
-  if (!response.ok) throw new Error('Failed to delete client');
+  await trpcPost('clients.delete', { id }, { success: true });
 }
 
 // ─── Tasks API ──────────────────────────────────────────────────────────────
 
 export async function getAllTasks(): Promise<Task[]> {
-  const response = await fetch(`${API_BASE}/tasks.all`);
-  if (!response.ok) throw new Error('Failed to fetch tasks');
-  const data = await response.json();
-  return data.result || [];
+  return asArray<Task>(await trpcGet('managerTasks.all', {}, []));
 }
 
-export async function createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ id: number }> {
-  const response = await fetch(`${API_BASE}/tasks.create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(task),
-  });
-  if (!response.ok) throw new Error('Failed to create task');
-  const data = await response.json();
-  return data.result;
+export async function createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ id: number; success?: boolean }> {
+  return await trpcPost('managerTasks.create', task as unknown as JsonRecord, { id: 0, success: false });
 }
 
 export async function updateTask(id: number, updates: Partial<Omit<Task, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
-  const response = await fetch(`${API_BASE}/tasks.update`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, ...updates }),
-  });
-  if (!response.ok) throw new Error('Failed to update task');
+  await trpcPost('managerTasks.updateStatus', { id, ...(updates as JsonRecord) }, { success: true });
+}
+
+export async function updateTaskStatus(id: number, status: string): Promise<void> {
+  await trpcPost('managerTasks.updateStatus', { id, status }, { success: true });
+}
+
+export async function assignTaskCourier(taskId: number, courierId: number | null): Promise<void> {
+  await trpcPost('managerTasks.assignCourier', { taskId, courierId }, { success: true });
 }
 
 // ─── Hemotest API ───────────────────────────────────────────────────────────
@@ -117,22 +145,11 @@ export interface HemotestPoint {
 }
 
 export async function getAllHemotestPoints(): Promise<HemotestPoint[]> {
-  const response = await fetch(`${API_BASE}/hemotest.points?input={}`);
-  if (!response.ok) throw new Error('Failed to fetch hemotest points');
-  const data = await response.json();
-  const points = data.result?.data?.json || data.result?.data || [];
-  return Array.isArray(points) ? points : [];
+  return asArray<HemotestPoint>(await trpcGet('hemotest.points', {}, []));
 }
 
 export async function createHemotestPoint(point: Omit<HemotestPoint, 'id' | 'createdAt' | 'updatedAt'>): Promise<HemotestPoint> {
-  const response = await fetch(`${API_BASE}/hemotest.create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: point }),
-  });
-  if (!response.ok) throw new Error('Failed to create hemotest point');
-  const data = await response.json();
-  return data.result?.data;
+  return await trpcPost('hemotest.create', point as unknown as JsonRecord, {} as HemotestPoint);
 }
 
 // ─── Sberbank API ───────────────────────────────────────────────────────────
@@ -148,41 +165,20 @@ export interface SberbankPoint {
 }
 
 export async function getAllSberbankPoints(): Promise<SberbankPoint[]> {
-  const response = await fetch(`${API_BASE}/sberbank.points?input={}`);
-  if (!response.ok) throw new Error('Failed to fetch sberbank points');
-  const data = await response.json();
-  const points = data.result?.data?.json || data.result?.data || [];
-  return Array.isArray(points) ? points : [];
+  return asArray<SberbankPoint>(await trpcGet('sberbank.points', {}, []));
 }
 
 export async function createSberbankPoint(point: Omit<SberbankPoint, 'id' | 'createdAt' | 'updatedAt'>): Promise<SberbankPoint> {
-  const response = await fetch(`${API_BASE}/sberbank.create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: point }),
-  });
-  if (!response.ok) throw new Error('Failed to create sberbank point');
-  const data = await response.json();
-  return data.result?.data;
+  return await trpcPost('sberbank.create', point as unknown as JsonRecord, {} as SberbankPoint);
 }
 
 export async function getSberbankScheduleForDay(dayOfWeek: number): Promise<SberbankPoint[]> {
-  const response = await fetch(`${API_BASE}/sberbank.scheduleForDay?input=${encodeURIComponent(JSON.stringify({ dayOfWeek }))}`);
-  if (!response.ok) throw new Error('Failed to fetch sberbank schedule');
-  const data = await response.json();
-  const points = data.result?.data?.json || data.result?.data || [];
-  return Array.isArray(points) ? points : [];
+  return asArray<SberbankPoint>(await trpcGet('sberbank.scheduleForDay', { dayOfWeek }, []));
 }
 
 export async function setSberbankScheduleForDay(dayOfWeek: number, pointIds: number[]): Promise<void> {
-  const response = await fetch(`${API_BASE}/sberbank.setScheduleForDay`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { dayOfWeek, pointIds } }),
-  });
-  if (!response.ok) throw new Error('Failed to set sberbank schedule');
+  await trpcPost('sberbank.setScheduleForDay', { dayOfWeek, pointIds }, { success: true });
 }
-
 
 // ─── Hemotest List Management ───────────────────────────────────────────────
 
@@ -201,38 +197,19 @@ export interface HemotestListWithItems {
 }
 
 export async function createHemotestPickupList(date: string, name: string, pointIds: number[]): Promise<HemotestPickupList> {
-  const response = await fetch(`${API_BASE}/hemotest.createList`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { date, name, pointIds } }),
-  });
-  if (!response.ok) throw new Error('Failed to create hemotest list');
-  const data = await response.json();
-  return data.result?.data;
+  return await trpcPost('hemotest.createList', { date, name, pointIds }, {} as HemotestPickupList);
 }
 
 export async function getHemotestListsForDate(date: string): Promise<HemotestPickupList[]> {
-  const response = await fetch(`${API_BASE}/hemotest.listsForDate?input=${encodeURIComponent(JSON.stringify({ date }))}`);
-  if (!response.ok) throw new Error('Failed to fetch hemotest lists');
-  const data = await response.json();
-  const lists = data.result?.data?.json || data.result?.data || [];
-  return Array.isArray(lists) ? lists : [];
+  return asArray<HemotestPickupList>(await trpcGet('hemotest.listsForDate', { date }, []));
 }
 
 export async function getHemotestList(listId: number): Promise<HemotestListWithItems | null> {
-  const response = await fetch(`${API_BASE}/hemotest.getList?input=${encodeURIComponent(JSON.stringify({ listId }))}`);
-  if (!response.ok) throw new Error('Failed to fetch hemotest list');
-  const data = await response.json();
-  return data.result?.data || null;
+  return await trpcGet<HemotestListWithItems | null>('hemotest.getList', { listId }, null);
 }
 
 export async function addPointToHemotestList(listId: number, pointId: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/hemotest.addPointToList`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { listId, pointId } }),
-  });
-  if (!response.ok) throw new Error('Failed to add point to hemotest list');
+  await trpcPost('hemotest.addPointToList', { listId, pointId }, { success: true });
 }
 
 // ─── Sberbank List Management ───────────────────────────────────────────────
@@ -252,38 +229,19 @@ export interface SberbankListWithItems {
 }
 
 export async function createSberbankPickupList(dayOfWeek: number, name: string, pointIds: number[]): Promise<SberbankPickupList> {
-  const response = await fetch(`${API_BASE}/sberbank.createList`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { dayOfWeek, name, pointIds } }),
-  });
-  if (!response.ok) throw new Error('Failed to create sberbank list');
-  const data = await response.json();
-  return data.result?.data;
+  return await trpcPost('sberbank.createList', { dayOfWeek, name, pointIds }, {} as SberbankPickupList);
 }
 
 export async function getSberbankListsForDay(dayOfWeek: number): Promise<SberbankPickupList[]> {
-  const response = await fetch(`${API_BASE}/sberbank.listsForDay?input=${encodeURIComponent(JSON.stringify({ dayOfWeek }))}`);
-  if (!response.ok) throw new Error('Failed to fetch sberbank lists');
-  const data = await response.json();
-  const lists = data.result?.data?.json || data.result?.data || [];
-  return Array.isArray(lists) ? lists : [];
+  return asArray<SberbankPickupList>(await trpcGet('sberbank.listsForDay', { dayOfWeek }, []));
 }
 
 export async function getSberbankList(listId: number): Promise<SberbankListWithItems | null> {
-  const response = await fetch(`${API_BASE}/sberbank.getList?input=${encodeURIComponent(JSON.stringify({ listId }))}`);
-  if (!response.ok) throw new Error('Failed to fetch sberbank list');
-  const data = await response.json();
-  return data.result?.data || null;
+  return await trpcGet<SberbankListWithItems | null>('sberbank.getList', { listId }, null);
 }
 
 export async function addPointToSberbankList(listId: number, pointId: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/sberbank.addPointToList`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { listId, pointId } }),
-  });
-  if (!response.ok) throw new Error('Failed to add point to sberbank list');
+  await trpcPost('sberbank.addPointToList', { listId, pointId }, { success: true });
 }
 
 // ─── Mails API ─────────────────────────────────────────────────────────────
@@ -306,39 +264,20 @@ export async function getAllMails(filters?: {
   dateFrom?: string;
   dateTo?: string;
 }): Promise<Mail[]> {
-  const params = new URLSearchParams();
-  if (filters?.status && filters.status !== 'all') {
-    params.append('status', filters.status);
-  }
-  if (filters?.dateFrom) {
-    params.append('dateFrom', filters.dateFrom);
-  }
-  if (filters?.dateTo) {
-    params.append('dateTo', filters.dateTo);
-  }
-  
-  const response = await fetch(`${API_BASE}/managerMails.all?input=${encodeURIComponent(JSON.stringify({
+  return asArray<Mail>(await trpcGet('managerMails.all', {
     status: filters?.status === 'all' ? undefined : filters?.status,
     dateFrom: filters?.dateFrom,
     dateTo: filters?.dateTo,
-  }))}`);
-  if (!response.ok) throw new Error('Failed to fetch mails');
-  const data = await response.json();
-  const mails = data.result?.data?.json || data.result?.data || [];
-  return Array.isArray(mails) ? mails : [];
+  }, []));
 }
 
 export async function createMail(mail: Omit<Mail, 'id' | 'createdAt' | 'status' | 'deliveredAt' | 'courierId'>): Promise<Mail> {
-  const response = await fetch(`${API_BASE}/managerMails.create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: mail }),
-  });
-  if (!response.ok) throw new Error('Failed to create mail');
-  const data = await response.json();
-  return data.result?.data;
+  return await trpcPost('managerMails.create', mail as unknown as JsonRecord, {} as Mail);
 }
 
+export async function bulkCreateMails(mails: Array<Omit<Mail, 'id' | 'createdAt' | 'status' | 'deliveredAt' | 'courierId'>>): Promise<{ created: number; skipped: number; errors: string[] }> {
+  return await trpcPost('managerMails.bulkCreate', { mails }, { created: 0, skipped: 0, errors: [] });
+}
 
 // ─── Requests API (multi-type requests) ─────────────────────────────────────
 
@@ -348,6 +287,7 @@ export interface Request {
   status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
   clientId?: number;
   courierId?: number;
+  courierName?: string | null;
   recipientName: string;
   recipientPhone: string;
   recipientAddress?: string;
@@ -383,56 +323,51 @@ export interface Request {
 export async function post(endpoint: string, data: any): Promise<any> {
   const response = await fetch(endpoint, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error(`Failed to POST ${endpoint}`);
-  return response.json();
+  const payload = await readJson(response);
+  if (!response.ok) throw new Error(payload?.error?.message || `Failed to POST ${endpoint}`);
+  return payload;
 }
 
-export async function createRequest(request: Omit<Request, 'id' | 'createdAt' | 'updatedAt' | 'status'>): Promise<{ id: number; success: boolean }> {
-  const response = await fetch(`${API_BASE}/requests.create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: request }),
-  });
-  if (!response.ok) throw new Error('Failed to create request');
-  const data = await response.json();
-  return data.result?.data || { id: 0, success: false };
+export async function createRequest(request: Omit<Request, 'id' | 'createdAt' | 'updatedAt' | 'status'>): Promise<{ id: number; taskId?: number; success: boolean }> {
+  return await trpcPost('requests.create', request as unknown as JsonRecord, { id: 0, success: false });
 }
 
 export async function getAllRequests(): Promise<Request[]> {
-  const response = await fetch(`${API_BASE}/requests.all?input={}`);
-  if (!response.ok) throw new Error('Failed to fetch requests');
-  const data = await response.json();
-  return data.result?.data?.json || data.result?.data || [];
+  return asArray<Request>(await trpcGet('requests.all', {}, []));
 }
 
 export async function getRequestById(id: number): Promise<Request | null> {
-  const response = await fetch(`${API_BASE}/requests.getById?input=${encodeURIComponent(JSON.stringify({ id }))}`);
-  if (!response.ok) throw new Error('Failed to fetch request');
-  const data = await response.json();
-  return data.result?.data?.json || data.result?.data || null;
+  const requests = await getAllRequests();
+  return requests.find((request) => request.id === id) ?? null;
 }
 
-export async function updateRequestStatus(id: number, status: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/requests.updateStatus`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { id, status } }),
+export async function updateRequestStatus(id: number, status: Request['status']): Promise<void> {
+  await trpcPost('requests.updateStatus', { id, status }, { success: true });
+}
+
+export async function assignRequestCourier(id: number, courierId: number | null): Promise<void> {
+  await trpcPost('requests.assignCourier', { id, courierId }, { success: true });
+}
+
+export async function getRealtimeSnapshot(): Promise<RealtimeSnapshot> {
+  const response = await fetch('/api/realtime/manager', {
+    credentials: 'include',
+    cache: 'no-store',
   });
-  if (!response.ok) throw new Error('Failed to update request status');
+  const data = await readJson(response);
+  if (!response.ok || data?.ok === false) throw new Error(data?.error || data?.error?.message || 'Failed to fetch realtime snapshot');
+  return {
+    ok: true,
+    updatedAt: data.updatedAt || new Date().toISOString(),
+    tasks: asArray<Task>(data.tasks),
+    requests: asArray<Request>(data.requests),
+    mails: asArray<Mail>(data.mails),
+  };
 }
-
-export async function assignRequestCourier(id: number, courierId: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/requests.assignCourier`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ json: { id, courierId } }),
-  });
-  if (!response.ok) throw new Error('Failed to assign courier to request');
-}
-
 
 // ─── PDF Extraction ─────────────────────────────────────────────────────────
 
@@ -451,25 +386,8 @@ export interface ExtractedWaybillData {
 }
 
 export async function extractFromPdf(pdfBase64: string, fileName: string): Promise<ExtractedWaybillData> {
-  try {
-    const response = await fetch(`${API_BASE}/requests.extractFromPdf`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ json: { pdfBase64, fileName } }),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Failed to extract waybill data from PDF');
-    }
-    const data = await response.json();
-    // TRPC returns { result: { data: { json: {...} } } }
-    return data.result?.data?.json || data.result?.data || {};
-  } catch (error) {
-    console.error('PDF extraction error:', error);
-    throw error;
-  }
+  return await trpcPost('requests.extractFromPdf', { pdfBase64, fileName }, {} as ExtractedWaybillData);
 }
-
 
 // ─── AI Text Parsing ────────────────────────────────────────────────────────
 export interface ParsedRequestData {
@@ -485,24 +403,6 @@ export interface ParsedRequestData {
 }
 
 export async function parseRequestWithAI(text: string): Promise<{ success: boolean; data?: ParsedRequestData }> {
-  try {
-    const response = await fetch(`${API_BASE}/ai.parseRequest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ json: { text } }),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Failed to parse request with AI');
-    }
-    const data = await response.json();
-    // TRPC returns { result: { data: { json: {...} } } }
-    return {
-      success: true,
-      data: data.result?.data?.json || data.result?.data || {},
-    };
-  } catch (error) {
-    console.error('AI parsing error:', error);
-    throw error;
-  }
+  const data = await trpcPost<ParsedRequestData>('ai.parseRequest', { text }, {} as ParsedRequestData);
+  return { success: true, data };
 }
