@@ -6,15 +6,15 @@ services:
     image: postgres:16-alpine
     container_name: courier-postgres
     environment:
-      POSTGRES_USER: courier
-      POSTGRES_PASSWORD: courier_password
-      POSTGRES_DB: courier_db
+      POSTGRES_USER: ${POSTGRES_USER:-courier}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-courier_password}
+      POSTGRES_DB: ${POSTGRES_DB:-courier_db}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U courier"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-courier} -d ${POSTGRES_DB:-courier_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,14 +30,16 @@ services:
     container_name: courier-api
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://courier:courier_password@postgres:5432/courier_db
-      PORT: 3000
-      API_PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-courier}:${POSTGRES_PASSWORD:-courier_password}@postgres:5432/${POSTGRES_DB:-courier_db}}
+      PORT: ${PORT:-3000}
+      API_PORT: ${PORT:-3000}
       API_HOST: 0.0.0.0
-      FRONTEND_URL: http://localhost:3000
-      LOG_LEVEL: info
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
