@@ -15,6 +15,26 @@ This runs:
 - production startup smoke
 - docker compose/build smoke
 
+For full docker runtime verification before deploy:
+
+```bash
+SMOKE_DOCKER_UP=1 pnpm smoke:docker
+```
+
+This additionally:
+
+- builds the compose stack
+- starts PostgreSQL and API containers
+- waits for `/api/health`
+- prints API logs on failure
+- tears down containers automatically
+
+Keep the stack running after smoke when needed:
+
+```bash
+SMOKE_DOCKER_UP=1 SMOKE_DOCKER_KEEP_UP=1 pnpm smoke:docker
+```
+
 ## Server deploy
 
 On the production server:
@@ -79,6 +99,7 @@ The rollback script does:
 
 ```bash
 pnpm smoke:local
+SMOKE_DOCKER_UP=1 pnpm smoke:docker
 pnpm smoke:live
 SMOKE_BASE_URL=https://couriermig.ru pnpm verify:production
 ```
