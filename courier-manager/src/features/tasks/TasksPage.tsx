@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getAllClients, createRequest, parseRequestWithAI } from '../../lib/api';
 import { useManagerRealtime } from '../../lib/useManagerRealtime';
+import { RealtimeStatusCard } from '../../components/RealtimeStatusCard';
 import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
 import { TasksTable } from './components/TasksTable';
@@ -15,12 +16,10 @@ export default function TasksPage() {
   const realtime = useManagerRealtime(5000);
   const requests = (realtime.snapshot?.requests ?? []) as unknown as Request[];
   const [clients, setClients] = useState<Client[]>([]);
-
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -32,34 +31,24 @@ export default function TasksPage() {
       .then((clientsData) => {
         if (!cancelled) setClients(clientsData);
       })
-      .catch((error) => {
-        console.error('Failed to load clients:', error);
-      });
+      .catch((error) => console.error('Failed to load clients:', error));
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const filteredRequests = getFilteredRequests(
-    requests,
-    selectedStatus,
-    dateFrom,
-    dateTo,
-    searchQuery
-  );
-
+  const filteredRequests = getFilteredRequests(requests, selectedStatus, dateFrom, dateTo, searchQuery);
   const stats = getStatistics(requests);
 
   const handleCreateTask = async (data: TaskFormData) => {
     try {
       setIsCreating(true);
-      const requestData = {
+      await createRequest({
         requestType: data.requestType || 'delivery',
         recipientName: data.recipientName || '',
         recipientPhone: data.recipientPhone || '',
         ...data,
-      };
-      await createRequest(requestData as any);
+      } as never);
       setShowCreateModal(false);
       await realtime.refresh(false);
     } catch (error) {
@@ -84,26 +73,12 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
-        <span>
-          Realtime: {realtime.error ? 'ошибка синхронизации' : 'активен'}
-          {realtime.lastSyncAt ? ` · обновлено ${new Date(realtime.lastSyncAt).toLocaleTimeString('ru-RU')}` : ''}
-          {realtime.isRefreshing && !realtime.isLoading ? ' · обновление...' : ''}
-        </span>
-        <button
-          type="button"
-          onClick={() => realtime.refresh(true)}
-          className="rounded-xl border border-slate-200 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Обновить
-        </button>
-      </div>
-
-      {realtime.error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {realtime.error}
-        </div>
-      ) : null}
+      <RealtimeStatusCard
+        isRefreshing={realtime.isRefreshing}
+        error={realtime.error}
+        lastSyncAt={realtime.lastSyncAt}
+        onRefresh={() => realtime.refresh(true)}
+      />
 
       <TasksStats stats={stats} />
 
@@ -121,15 +96,9 @@ export default function TasksPage() {
       />
 
       {filteredRequests.length === 0 && !realtime.isLoading ? (
-        <EmptyState
-          onCreateClick={() => setShowCreateModal(true)}
-          onAiCreateClick={() => setShowAiModal(true)}
-        />
+        <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
       ) : (
-        <TasksTable
-          requests={filteredRequests}
-          isLoading={realtime.isLoading}
-        />
+        <TasksTable requests={filteredRequests} isLoading={realtime.isLoading} />
       )}
 
       <CreateTaskModal
