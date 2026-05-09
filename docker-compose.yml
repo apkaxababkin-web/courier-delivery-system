@@ -30,14 +30,15 @@ services:
     container_name: courier-api
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-courier}:${POSTGRES_PASSWORD:-courier_password}@postgres:5432/${POSTGRES_DB:-courier_db}}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://courier:courier_password@postgres:5432/courier_db}
       PORT: ${PORT:-3000}
       API_PORT: ${PORT:-3000}
       API_HOST: 0.0.0.0
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      MANAGER_JWT_SECRET: ${MANAGER_JWT_SECRET:-change-me-manager-jwt-secret}
+      COURIER_JWT_SECRET: ${COURIER_JWT_SECRET:-change-me-courier-jwt-secret}
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
