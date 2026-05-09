@@ -1,5 +1,17 @@
 # Production rollout runbook
 
+## Production environment file
+
+Before deploy on the production server:
+
+```bash
+cd ~/courier-delivery-system
+cp .env.production.example .env
+nano .env
+```
+
+Replace placeholder values in `.env` with production values before running deploy.
+
 ## Local predeploy verification
 
 Run before touching production:
