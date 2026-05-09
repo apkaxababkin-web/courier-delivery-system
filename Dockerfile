@@ -61,6 +61,7 @@ COPY drizzle.config.ts ./
 COPY server/ ./server/
 COPY shared/ ./shared/
 COPY drizzle/ ./drizzle/
+COPY scripts/ ./scripts/
 
 # Собираем backend (esbuild)
 RUN pnpm run build:backend
@@ -72,7 +73,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-RUN npm install -g pnpm@9.12.0
+RUN apk add --no-cache postgresql-client && npm install -g pnpm@9.12.0
 
 # Копируем только production зависимости
 COPY --from=backend-deps /app/node_modules ./node_modules
@@ -81,6 +82,7 @@ COPY package.json ./
 # Копируем собранный backend
 COPY --from=backend-builder /app/dist ./dist
 COPY --from=backend-builder /app/drizzle ./drizzle
+COPY --from=backend-builder /app/scripts ./scripts
 
 # Копируем собранный frontend в /app/public
 COPY --from=frontend-builder /app/courier-manager/dist ./public
