@@ -39,6 +39,16 @@ else
   echo "[Entrypoint] ⚠ drizzle.config.ts not found, skipping migrations"
 fi
 
+# Compatibility patch for old production databases
+if [ -f "scripts/db_compat_patch.sql" ]; then
+  echo "[Entrypoint] Running compatibility patch..."
+  if psql "$DATABASE_URL" -f scripts/db_compat_patch.sql; then
+    echo "[Entrypoint] ✓ Compatibility patch applied"
+  else
+    echo "[Entrypoint] ⚠ Compatibility patch failed (continuing anyway)"
+  fi
+fi
+
 # Start the API server
 echo "[Entrypoint] Starting API server..."
 exec node dist/index.js
