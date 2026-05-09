@@ -28,6 +28,7 @@
     "predeploy:local": "node scripts/predeploy-local.mjs",
     "postdeploy:live": "node scripts/postdeploy-live.mjs",
     "deploy:server": "bash scripts/deploy-server.sh",
+    "rollback:server": "bash scripts/rollback-server.sh",
     "db:migrate": "NODE_ENV=production drizzle-kit migrate",
     "check": "tsc --noEmit",
     "lint": "expo lint",
