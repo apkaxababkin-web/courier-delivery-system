@@ -37,23 +37,22 @@ else
   echo "[Entrypoint] ⚠ drizzle.config.ts not found, skipping migrations"
 fi
 
-if [ -f "scripts/db_compat_patch.sql" ]; then
-  echo "[Entrypoint] Running compatibility patch..."
-  if psql "$DATABASE_URL" -f scripts/db_compat_patch.sql; then
-    echo "[Entrypoint] ✓ Compatibility patch applied"
-  else
-    echo "[Entrypoint] ⚠ Compatibility patch failed (continuing anyway)"
+run_patch() {
+  patch_file="$1"
+  patch_name="$2"
+  if [ -f "$patch_file" ]; then
+    echo "[Entrypoint] Running $patch_name..."
+    if psql "$DATABASE_URL" -f "$patch_file"; then
+      echo "[Entrypoint] ✓ $patch_name applied"
+    else
+      echo "[Entrypoint] ⚠ $patch_name failed (continuing anyway)"
+    fi
   fi
-fi
+}
 
-if [ -f "scripts/realtime_bridge.sql" ]; then
-  echo "[Entrypoint] Running request-task bridge patch..."
-  if psql "$DATABASE_URL" -f scripts/realtime_bridge.sql; then
-    echo "[Entrypoint] ✓ Request-task bridge applied"
-  else
-    echo "[Entrypoint] ⚠ Request-task bridge failed (continuing anyway)"
-  fi
-fi
+run_patch "scripts/db_compat_patch.sql" "compatibility patch"
+run_patch "scripts/mails_manifest_patch.sql" "mails manifest patch"
+run_patch "scripts/realtime_bridge.sql" "request-task bridge patch"
 
 echo "[Entrypoint] Starting API server..."
 exec node dist/index.js
