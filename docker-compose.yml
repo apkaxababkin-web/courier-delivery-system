@@ -31,9 +31,10 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://courier:courier_password@postgres:5432/courier_db
+      PORT: 3000
       API_PORT: 3000
       API_HOST: 0.0.0.0
-      FRONTEND_URL: http://localhost:5173
+      FRONTEND_URL: http://localhost:3000
       LOG_LEVEL: info
     ports:
       - "3000:3000"
