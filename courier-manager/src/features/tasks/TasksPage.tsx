@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { getAllClients, getRealtimeSnapshot, createRequest, parseRequestWithAI } from '../../lib/api';
+import { useState, useEffect } from 'react';
+import { getAllClients, createRequest, parseRequestWithAI } from '../../lib/api';
+import { useManagerRealtime } from '../../lib/useManagerRealtime';
 import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
 import { TasksTable } from './components/TasksTable';
@@ -10,15 +11,10 @@ import type { Request, Client, StatusFilter, TaskFormData } from './model/types'
 import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
 
-const REALTIME_INTERVAL_MS = 5000;
-
 export default function TasksPage() {
-  const [requests, setRequests] = useState<Request[]>([]);
+  const realtime = useManagerRealtime(5000);
+  const requests = (realtime.snapshot?.requests ?? []) as unknown as Request[];
   const [clients, setClients] = useState<Client[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
 
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const [dateFrom, setDateFrom] = useState('');
@@ -31,57 +27,18 @@ export default function TasksPage() {
   const [isParsingAi, setIsParsingAi] = useState(false);
 
   useEffect(() => {
-    mountedRef.current = true;
-    loadData();
-    const timer = window.setInterval(() => {
-      loadRealtime(false);
-    }, REALTIME_INTERVAL_MS);
-
+    let cancelled = false;
+    getAllClients()
+      .then((clientsData) => {
+        if (!cancelled) setClients(clientsData);
+      })
+      .catch((error) => {
+        console.error('Failed to load clients:', error);
+      });
     return () => {
-      mountedRef.current = false;
-      window.clearInterval(timer);
+      cancelled = true;
     };
   }, []);
-
-  const loadRealtime = async (showSpinner = true) => {
-    try {
-      if (showSpinner) setIsLoading(true);
-      const snapshot = await getRealtimeSnapshot();
-      if (!mountedRef.current) return;
-      setRequests(snapshot.requests as unknown as Request[]);
-      setLastSyncAt(snapshot.updatedAt);
-      setSyncError(null);
-    } catch (error) {
-      if (!mountedRef.current) return;
-      const message = error instanceof Error ? error.message : 'Ошибка realtime sync';
-      console.error('Failed to load realtime snapshot:', error);
-      setSyncError(message);
-    } finally {
-      if (mountedRef.current && showSpinner) setIsLoading(false);
-    }
-  };
-
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const [snapshot, clientsData] = await Promise.all([
-        getRealtimeSnapshot(),
-        getAllClients(),
-      ]);
-      if (!mountedRef.current) return;
-      setRequests(snapshot.requests as unknown as Request[]);
-      setClients(clientsData);
-      setLastSyncAt(snapshot.updatedAt);
-      setSyncError(null);
-    } catch (error) {
-      if (!mountedRef.current) return;
-      const message = error instanceof Error ? error.message : 'Ошибка загрузки данных';
-      console.error('Failed to load data:', error);
-      setSyncError(message);
-    } finally {
-      if (mountedRef.current) setIsLoading(false);
-    }
-  };
 
   const filteredRequests = getFilteredRequests(
     requests,
@@ -104,7 +61,7 @@ export default function TasksPage() {
       };
       await createRequest(requestData as any);
       setShowCreateModal(false);
-      await loadRealtime(false);
+      await realtime.refresh(false);
     } catch (error) {
       console.error('Failed to create task:', error);
     } finally {
@@ -129,21 +86,22 @@ export default function TasksPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
         <span>
-          Realtime: {syncError ? 'ошибка синхронизации' : 'активен'}
-          {lastSyncAt ? ` · обновлено ${new Date(lastSyncAt).toLocaleTimeString('ru-RU')}` : ''}
+          Realtime: {realtime.error ? 'ошибка синхронизации' : 'активен'}
+          {realtime.lastSyncAt ? ` · обновлено ${new Date(realtime.lastSyncAt).toLocaleTimeString('ru-RU')}` : ''}
+          {realtime.isRefreshing && !realtime.isLoading ? ' · обновление...' : ''}
         </span>
         <button
           type="button"
-          onClick={() => loadRealtime(true)}
+          onClick={() => realtime.refresh(true)}
           className="rounded-xl border border-slate-200 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
         >
           Обновить
         </button>
       </div>
 
-      {syncError ? (
+      {realtime.error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {syncError}
+          {realtime.error}
         </div>
       ) : null}
 
@@ -162,7 +120,7 @@ export default function TasksPage() {
         onAiCreateClick={() => setShowAiModal(true)}
       />
 
-      {filteredRequests.length === 0 && !isLoading ? (
+      {filteredRequests.length === 0 && !realtime.isLoading ? (
         <EmptyState
           onCreateClick={() => setShowCreateModal(true)}
           onAiCreateClick={() => setShowAiModal(true)}
@@ -170,7 +128,7 @@ export default function TasksPage() {
       ) : (
         <TasksTable
           requests={filteredRequests}
-          isLoading={isLoading}
+          isLoading={realtime.isLoading}
         />
       )}
 
