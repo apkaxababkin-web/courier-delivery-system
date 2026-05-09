@@ -1,7 +1,7 @@
 // Removed mysql2 - now using postgres driver
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and, gte, lte, lt, inArray, desc, sql, conflict } from "drizzle-orm";
+import { eq, and, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   couriers,
@@ -184,10 +184,10 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-    await db.insert(users).values(values).onConflict((t) => ({
-      target: t.openId,
-      do: db.update(users).set(updateSet),
-    }));
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
+      set: updateSet as Partial<InsertUser>,
+    });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;

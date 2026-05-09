@@ -25,6 +25,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "courier-manager"
+    "courier-manager",
+    "courier-web"
   ]
 }

@@ -176,7 +176,9 @@ function sendError(res: Response, error: unknown, fallback: string) {
 
 async function courierIdFromReq(req: Request): Promise<number | null> {
   const input = inputFrom(req);
-  const token = String(input.token ?? req.query.token ?? "");
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const token = String(input.token ?? req.query.token ?? bearerToken ?? "");
   if (!token) return null;
   const payload = await verifyCourierToken(token);
   return payload?.courierId ?? null;
