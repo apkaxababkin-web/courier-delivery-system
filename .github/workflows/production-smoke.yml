@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  smoke:
+  build-and-docker:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,8 +28,53 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: TypeScript check
+        run: pnpm check
+
       - name: Production build smoke
         run: pnpm smoke:build
 
       - name: Docker smoke
         run: pnpm smoke:docker
+
+  live-smoke:
+    runs-on: ubuntu-latest
+    if: ${{ vars.SMOKE_BASE_URL != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Auth smoke
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: pnpm smoke:auth
+
+      - name: TRPC routes smoke
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: pnpm smoke:trpc
+
+      - name: Manager realtime smoke
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: pnpm smoke:manager
+
+      - name: Manager data integrity smoke
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: pnpm smoke:manager:data
