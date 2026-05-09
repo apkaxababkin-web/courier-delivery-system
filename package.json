@@ -24,6 +24,7 @@
     "smoke:local": "pnpm smoke:build && pnpm smoke:startup && pnpm smoke:docker",
     "smoke:live": "pnpm smoke:trpc && pnpm smoke:auth && pnpm smoke:realtime && pnpm smoke:manager && pnpm smoke:manager:data && pnpm smoke:manifest",
     "smoke:all": "pnpm smoke:local && pnpm smoke:live",
+    "verify:production": "node scripts/verify-production.mjs",
     "db:migrate": "NODE_ENV=production drizzle-kit migrate",
     "check": "tsc --noEmit",
     "lint": "expo lint",
