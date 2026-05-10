@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
+  Linking,
   Modal,
   Pressable,
   Text,
@@ -15,6 +16,40 @@ import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 
+function formatDateTimeInput(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function parseDateTimeInput(value: string): Date | null {
+  const match = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})$/);
+  if (!match) return null;
+
+  const [, day, month, year, hour, minute] = match;
+  const parsed = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+  );
+
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function formatDeliveredAt(value?: string | Date | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return formatDateTimeInput(date);
+}
+
+function normalizePhoneForDial(phone?: string | null) {
+  if (!phone) return "";
+  return phone.replace(/[^+\d]/g, "");
+}
+
 export default function LettersScreen() {
   const colors = useColors();
   const { token } = useCourierAuth();
@@ -24,6 +59,8 @@ export default function LettersScreen() {
   const [filter, setFilter] = useState<"all" | "delivered" | "not_delivered">("all");
   const [selectedMailId, setSelectedMailId] = useState<number | null>(null);
   const [recipientName, setRecipientName] = useState("");
+  const [deliveredAtInput, setDeliveredAtInput] = useState(formatDateTimeInput(new Date()));
+  const [deliveryTimeError, setDeliveryTimeError] = useState("");
 
   const { data: mails = [], refetch } = trpc.mails.all.useQuery(
     { token: token || "" },
@@ -39,6 +76,8 @@ export default function LettersScreen() {
     onSuccess: () => {
       setSelectedMailId(null);
       setRecipientName("");
+      setDeliveryTimeError("");
+      setDeliveredAtInput(formatDateTimeInput(new Date()));
       refetch();
     },
   });
@@ -48,6 +87,7 @@ export default function LettersScreen() {
       const matchesSearch =
         mail.waybillNumber?.toLowerCase().includes(search.toLowerCase()) ||
         mail.recipientName?.toLowerCase().includes(search.toLowerCase()) ||
+        mail.recipientPhone?.toLowerCase().includes(search.toLowerCase()) ||
         mail.deliveryAddress?.toLowerCase().includes(search.toLowerCase());
 
       const matchesFilter =
@@ -60,6 +100,24 @@ export default function LettersScreen() {
       return matchesSearch && matchesFilter;
     });
   }, [mails, search, filter]);
+
+  const openDeliveryModal = (mailId: number) => {
+    setSelectedMailId(mailId);
+    setRecipientName("");
+    setDeliveryTimeError("");
+    setDeliveredAtInput(formatDateTimeInput(new Date()));
+  };
+
+  const callRecipient = async (phone?: string | null) => {
+    const normalizedPhone = normalizePhoneForDial(phone);
+    if (!normalizedPhone) return;
+
+    try {
+      await Linking.openURL(`tel:${normalizedPhone}`);
+    } catch (error) {
+      console.warn("[Letters] Failed to open dialer", error);
+    }
+  };
 
   return (
     <ScreenContainer className="p-4">
@@ -132,6 +190,7 @@ export default function LettersScreen() {
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 120 }}
         renderItem={({ item }: any) => {
           const delivered = item.status === "delivered";
+          const hasPhone = Boolean(normalizePhoneForDial(item.recipientPhone));
 
           return (
             <View
@@ -194,8 +253,21 @@ export default function LettersScreen() {
                   marginBottom: 12,
                 }}
               >
-                {item.recipientName}
+                {item.recipientName || "—"}
               </Text>
+
+              <Text style={{ color: colors.muted, marginBottom: 4 }}>
+                Телефон
+              </Text>
+              {hasPhone ? (
+                <Pressable onPress={() => callRecipient(item.recipientPhone)} style={{ marginBottom: 12 }}>
+                  <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "700" }}>
+                    {item.recipientPhone}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={{ color: colors.foreground, marginBottom: 12 }}>—</Text>
+              )}
 
               <Text style={{ color: colors.muted, marginBottom: 4 }}>
                 Адрес
@@ -210,14 +282,17 @@ export default function LettersScreen() {
               </Text>
 
               {delivered ? (
-                <View style={{ marginTop: 16 }}>
+                <View style={{ marginTop: 16, gap: 4 }}>
                   <Text style={{ color: colors.muted }}>
                     Получил: {item.recipientSignature || "—"}
+                  </Text>
+                  <Text style={{ color: colors.muted }}>
+                    Время вручения: {formatDeliveredAt(item.deliveredAt)}
                   </Text>
                 </View>
               ) : (
                 <Pressable
-                  onPress={() => setSelectedMailId(item.id)}
+                  onPress={() => openDeliveryModal(item.id)}
                   style={{
                     marginTop: 18,
                     backgroundColor: colors.primary,
@@ -285,9 +360,41 @@ export default function LettersScreen() {
               }}
             />
 
+            <Text style={{ color: colors.muted, marginTop: 14, marginBottom: 6 }}>
+              Дата и время вручения
+            </Text>
+            <TextInput
+              value={deliveredAtInput}
+              onChangeText={(value) => {
+                setDeliveredAtInput(value);
+                setDeliveryTimeError("");
+              }}
+              placeholder="ДД.ММ.ГГГГ ЧЧ:ММ"
+              placeholderTextColor={colors.muted}
+              keyboardType="numbers-and-punctuation"
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: 16,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderWidth: 1,
+                borderColor: deliveryTimeError ? colors.error : colors.border,
+                color: colors.foreground,
+              }}
+            />
+
+            {deliveryTimeError ? (
+              <Text style={{ color: colors.error, marginTop: 8 }}>
+                {deliveryTimeError}
+              </Text>
+            ) : null}
+
             <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
               <Pressable
-                onPress={() => setSelectedMailId(null)}
+                onPress={() => {
+                  setSelectedMailId(null);
+                  setDeliveryTimeError("");
+                }}
                 style={{
                   flex: 1,
                   paddingVertical: 14,
@@ -305,11 +412,18 @@ export default function LettersScreen() {
                 onPress={() => {
                   if (!token || !selectedMailId || !recipientName.trim()) return;
 
+                  const deliveredAt = parseDateTimeInput(deliveredAtInput);
+                  if (!deliveredAt) {
+                    setDeliveryTimeError("Введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ");
+                    return;
+                  }
+
                   deliverMutation.mutate({
                     token,
                     mailId: selectedMailId,
                     recipientSignature: recipientName.trim(),
-                  });
+                    deliveredAt,
+                  } as any);
                 }}
                 style={{
                   flex: 1,
@@ -317,10 +431,11 @@ export default function LettersScreen() {
                   borderRadius: 16,
                   backgroundColor: colors.primary,
                   alignItems: "center",
+                  opacity: deliverMutation.isPending ? 0.7 : 1,
                 }}
               >
                 <Text style={{ color: "white", fontWeight: "700" }}>
-                  Подтвердить
+                  {deliverMutation.isPending ? "Сохраняю..." : "Подтвердить"}
                 </Text>
               </Pressable>
             </View>
