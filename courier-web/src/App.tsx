@@ -4,10 +4,11 @@ import { TaskDetailScreen } from './pages/TaskDetailScreen';
 import { ProfileScreen } from './pages/ProfileScreen';
 import { PickupGemotestScreen } from './pages/PickupGemotestScreen';
 import { PickupSberbankScreen } from './pages/PickupSberbankScreen';
+import { MailsScreen } from './pages/MailsScreen';
 import { useState } from 'react';
 import './index.css';
 
-type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'profile';
+type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'mails' | 'profile';
 
 function AppContent() {
   const { loading } = useAuth();
@@ -16,14 +17,7 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        backgroundColor: 'var(--background)',
-        color: 'var(--foreground)',
-      }}>
+      <div className="app-loading">
         <div>Загрузка...</div>
       </div>
     );
@@ -40,19 +34,13 @@ function AppContent() {
   };
 
   const handleNavigate = (screen: Screen) => {
+    setSelectedTaskId(null);
     setCurrentScreen(screen);
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      backgroundColor: 'var(--background)',
-      color: 'var(--foreground)',
-    }}>
-      {/* Main content */}
-      <div style={{ flex: 1, overflow: 'auto', paddingBottom: '60px' }}>
+    <div className="app-shell">
+      <div className="app-content">
         {currentScreen === 'tasks' && (
           <TaskListScreen onTaskSelect={handleTaskSelect} onNavigate={handleNavigate} />
         )}
@@ -65,13 +53,15 @@ function AppContent() {
         {currentScreen === 'pickup-sberbank' && (
           <PickupSberbankScreen onNavigate={handleNavigate} />
         )}
+        {currentScreen === 'mails' && <MailsScreen />}
         {currentScreen === 'profile' && (
           <ProfileScreen onNavigate={handleNavigate} />
         )}
       </div>
 
-      {/* Bottom tab bar */}
-      <BottomTabBar currentScreen={currentScreen} onNavigate={handleNavigate} />
+      {currentScreen !== 'task-detail' && (
+        <BottomTabBar currentScreen={currentScreen} onNavigate={handleNavigate} />
+      )}
     </div>
   );
 }
@@ -84,51 +74,22 @@ interface BottomTabBarProps {
 function BottomTabBar({ currentScreen, onNavigate }: BottomTabBarProps) {
   const tabs: Array<{ id: Screen; label: string; icon: string }> = [
     { id: 'tasks', label: 'Все заявки', icon: '📋' },
-    { id: 'pickup-gemotest', label: 'Гемотест', icon: '🏥' },
-    { id: 'pickup-sberbank', label: 'Сбербанк', icon: '🏦' },
+    { id: 'pickup-gemotest', label: 'Гемотест', icon: '📝' },
+    { id: 'pickup-sberbank', label: 'Сбербанк', icon: '🏢' },
+    { id: 'mails', label: 'Письма', icon: '📮' },
     { id: 'profile', label: 'Профиль', icon: '👤' },
   ];
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      maxWidth: '480px',
-      margin: '0 auto',
-      display: 'flex',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      height: '60px',
-      backgroundColor: 'var(--surface)',
-      borderTop: '1px solid var(--border)',
-      boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.1)',
-      zIndex: 100,
-    }}>
+    <div className="bottom-tab-bar">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onNavigate(tab.id)}
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '4px',
-            padding: '8px',
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            color: currentScreen === tab.id ? 'var(--primary)' : 'var(--muted)',
-            fontSize: '12px',
-            fontWeight: currentScreen === tab.id ? '600' : '500',
-            transition: 'color 0.2s',
-          }}
+          className={`bottom-tab ${currentScreen === tab.id ? 'bottom-tab-active' : ''}`}
         >
-          <div style={{ fontSize: '24px' }}>{tab.icon}</div>
-          <div>{tab.label}</div>
+          <div className="bottom-tab-icon">{tab.icon}</div>
+          <div className="bottom-tab-label">{tab.label}</div>
         </button>
       ))}
     </div>
