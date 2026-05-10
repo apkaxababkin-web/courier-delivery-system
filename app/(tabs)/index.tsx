@@ -48,12 +48,6 @@ export default function TaskListScreen() {
     onSync: useCallback(() => refetch(), [refetch]),
   });
 
-  const seedMutation = trpc.tasks.seedDemo.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-  });
-
   const isToday = useMemo(() => {
     const today = new Date();
     return selectedDate.toDateString() === today.toDateString();
@@ -252,12 +246,7 @@ export default function TaskListScreen() {
               <View style={styles.center}>
                 <Text style={{ fontSize: 48 }}>📋</Text>
                 <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{isToday ? "Нет заявок" : "Нет заявок на эту дату"}</Text>
-                <Text style={[styles.emptySubtitle, { color: colors.muted }]}>{isToday ? "Нажмите на логотип или дату для загрузки демо-данных" : "Выберите другую дату"}</Text>
-                {isToday && (
-                  <TouchableOpacity style={[styles.seedButton, { backgroundColor: colors.primary }]} onPress={() => seedMutation.mutate({ token })}>
-                    <Text style={styles.seedButtonText}>{seedMutation.isPending ? "Загрузка..." : "Загрузить демо-данные"}</Text>
-                  </TouchableOpacity>
-                )}
+                <Text style={[styles.emptySubtitle, { color: colors.muted }]}>{isToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}</Text>
               </View>
             }
             renderItem={({ item }) => {
