@@ -156,7 +156,7 @@ async function courierSnapshot(courierId: number) {
     db.getCourierById(courierId),
     db.getAllTasksWithCourier(),
     db.getCompletedTasksWithCourier(),
-    db.getNotDeliveredMails(),
+    db.getAllMails(),
   ]);
   const allTasks = [...activeTasks, ...completedTasks];
   return {
@@ -229,6 +229,20 @@ export function registerCompatRoutes(app: Express) {
 
   app.get("/api/trpc/mails.notDelivered", async (_req, res) => {
     try { res.json(trpcJson(await db.getNotDeliveredMails())); } catch (error) { sendError(res, error, "Failed to load not delivered mails"); }
+  });
+
+  app.post("/api/trpc/mails.deliver", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const courierId = await courierIdFromReq(req);
+      if (!courierId) throw new Error("Invalid courier token");
+      const waybillNumber = String(input.waybillNumber || "").trim();
+      const recipientSignature = String(input.recipientSignature || input.receivedBy || "").trim();
+      if (!waybillNumber) throw new Error("waybillNumber is required");
+      if (!recipientSignature) throw new Error("recipientSignature is required");
+      const mail = await db.updateMailDelivery(waybillNumber, recipientSignature, courierId);
+      res.json(trpcJson({ success: true, mail }));
+    } catch (error) { sendError(res, error, "Failed to deliver mail"); }
   });
 
   app.get("/api/trpc/managerTasks.all", async (_req, res) => {
@@ -388,6 +402,27 @@ export function registerCompatRoutes(app: Express) {
       const mail = await db.createMail({ waybillNumber, recipientName: input.recipientName ? String(input.recipientName) : null, recipientPhone: String(input.recipientPhone || ""), deliveryAddress: String(input.deliveryAddress || "Адрес не указан"), status: "not_delivered" });
       res.json(trpcJson(mail));
     } catch (error) { sendError(res, error, "Failed to create mail"); }
+  });
+
+  app.post("/api/trpc/managerMails.delete", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+      const input = inputFrom(req);
+      const id = Number(input.id);
+      if (!id) throw new Error("id is required");
+      await conn.delete(mails).where(eq(mails.id, id));
+      res.json(trpcJson({ success: true }));
+    } catch (error) { sendError(res, error, "Failed to delete mail"); }
+  });
+
+  app.post("/api/trpc/managerMails.clear", async (_req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+      await conn.delete(mails);
+      res.json(trpcJson({ success: true }));
+    } catch (error) { sendError(res, error, "Failed to clear mails"); }
   });
 
   app.post("/api/trpc/managerMails.bulkCreate", async (req, res) => {
