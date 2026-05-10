@@ -45,7 +45,12 @@ export function getApiBaseUrl(): string {
     }
   }
 
-  // Fallback to empty (will use relative URL)
+  // On native (Android/iOS), always use production API URL
+  if (ReactNative.Platform.OS !== "web") {
+    return "https://courier.couriermig.ru";
+  }
+
+  // Fallback to empty (will use relative URL on web)
   return "";
 }
 

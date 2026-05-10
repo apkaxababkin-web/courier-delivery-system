@@ -22,10 +22,28 @@ import { ToastProvider } from "react-native-toast-notifications";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
-import { CourierAuthProvider } from "@/lib/courier-auth";
+import { CourierAuthProvider, useCourierAuth } from "@/lib/courier-auth";
 import { FilterProvider } from "@/lib/filter-context";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * Redirects to /login when not authenticated, and to /(tabs) when authenticated.
+ * Must be rendered inside CourierAuthProvider.
+ */
+function AuthRedirect() {
+  const { isAuthenticated, loading } = useCourierAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!isAuthenticated) {
+      router.replace("/login" as never);
+    }
+  }, [isAuthenticated, loading]);
+
+  return null;
+}
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
 export const unstable_settings = {
@@ -144,7 +162,9 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <FilterProvider>
               <CourierAuthProvider>
+                <AuthRedirect />
                 <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="login" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="task/[id]" options={{ headerShown: false }} />
                   <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
