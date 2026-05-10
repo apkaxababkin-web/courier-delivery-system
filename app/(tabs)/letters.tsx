@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
   Modal,
@@ -11,6 +11,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useColors } from "@/hooks/use-colors";
+import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 
 export default function LettersScreen() {
   const colors = useColors();
@@ -25,6 +26,11 @@ export default function LettersScreen() {
     { token: token || "" },
     { enabled: !!token, refetchInterval: 5000 }
   );
+
+  useMobileLiveSync({
+    enabled: !!token,
+    onSync: useCallback(() => refetch(), [refetch]),
+  });
 
   const deliverMutation = trpc.mails.deliver.useMutation({
     onSuccess: () => {
