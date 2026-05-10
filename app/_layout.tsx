@@ -26,11 +26,8 @@ import { CourierAuthProvider, useCourierAuth } from "@/lib/courier-auth";
 import { FilterProvider } from "@/lib/filter-context";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
-/**
- * Redirects to /login when not authenticated, and to /(tabs) when authenticated.
- * Must be rendered inside CourierAuthProvider.
- */
 function AuthRedirect() {
   const { isAuthenticated, loading } = useCourierAuth();
   const router = useRouter();
@@ -40,11 +37,10 @@ function AuthRedirect() {
     if (!isAuthenticated) {
       router.replace("/login" as never);
     }
-  }, [isAuthenticated, loading]);
+  }, [isAuthenticated, loading, router]);
 
   return null;
 }
-const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -57,11 +53,9 @@ export default function RootLayout() {
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
 
-  // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
-    
-    // Set up notification handler
+
     if (Platform.OS !== "web") {
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
@@ -75,6 +69,21 @@ export default function RootLayout() {
     }
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    Notifications.setNotificationChannelAsync("default", {
+      name: "МИГ Курьер",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#0A7EA4",
+      sound: "default",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    }).catch((error) => {
+      console.warn("[App] Failed to configure Android notification channel", error);
+    });
+  }, []);
+
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {
     setInsets(metrics.insets);
     setFrame(metrics.frame);
@@ -86,15 +95,12 @@ export default function RootLayout() {
     return () => unsubscribe();
   }, [handleSafeAreaUpdate]);
 
-  // Create clients once and reuse them
   const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Disable automatic refetching on window focus for mobile
             refetchOnWindowFocus: false,
-            // Retry failed requests once
             retry: 1,
           },
         },
@@ -104,17 +110,14 @@ export default function RootLayout() {
 
   const router = useRouter();
 
-  // Register push token when app starts
   useEffect(() => {
     if (Platform.OS === "web") return;
-    
+
     const registerPushToken = async () => {
       try {
-        // Request permission first
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== "granted") return;
-        // getExpoPushTokenAsync requires projectId in standalone builds.
-        // Skip silently if not configured to prevent crash.
+
         const projectId =
           (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
           undefined;
@@ -122,37 +125,32 @@ export default function RootLayout() {
           console.log("[App] Push token skipped: no projectId configured");
           return;
         }
+
         const token = await Notifications.getExpoPushTokenAsync({ projectId });
         console.log("[App] Expo Push Token:", token.data);
       } catch (error) {
         console.warn("[App] Failed to get push token:", error);
       }
     };
-    
+
     registerPushToken();
   }, []);
 
-  // Handle push notification responses (when user taps on notification)
   useEffect(() => {
     if (Platform.OS === "web") return;
 
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data;
-        console.log("[App] Push notification tapped:", data);
-        
-        // Handle deep link navigation
-        if (data.url) {
-          console.log("[App] Navigating to:", data.url);
-          router.push(`/${data.url}` as any);
-        }
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      console.log("[App] Push notification tapped:", data);
+
+      if (data.url) {
+        router.push(`/${data.url}` as any);
       }
-    );
+    });
 
     return () => subscription.remove();
   }, [router]);
 
-  // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {
     const metrics = initialWindowMetrics ?? { insets: initialInsets, frame: initialFrame };
     return {
@@ -188,9 +186,7 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 
-  const shouldOverrideSafeArea = Platform.OS === "web";
-
-  if (shouldOverrideSafeArea) {
+  if (Platform.OS === "web") {
     return (
       <ThemeProvider>
         <SafeAreaProvider initialMetrics={providerInitialMetrics}>
