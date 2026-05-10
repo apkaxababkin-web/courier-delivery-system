@@ -4,8 +4,9 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import * as Haptics from "expo-haptics";
+import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 
 interface PickupPoint {
   id: number;
@@ -19,24 +20,26 @@ interface PickupPoint {
 export default function SberbankScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { token, courier } = useCourierAuth();
+  const { token } = useCourierAuth();
   const [selectedDate] = useState(new Date());
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
   const [lastTapTime, setLastTapTime] = useState<number>(0);
 
-  // Fetch pickup points
   const { data: pickupPoints = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(
     { token: token || "", date: selectedDate },
-    { enabled: !!token }
+    { enabled: !!token },
   );
 
-  // Fetch picked count
   const { data: pickedCount = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(
     { token: token || "", date: selectedDate },
-    { enabled: !!token }
+    { enabled: !!token },
   );
 
-  // Toggle pickup mutation
+  useMobileLiveSync({
+    enabled: !!token,
+    onSync: useCallback(() => Promise.all([refetch(), refetchCount()]), [refetch, refetchCount]),
+  });
+
   const toggleMutation = trpc.sberbank.togglePickup.useMutation({
     onSuccess: () => {
       refetch();
@@ -48,22 +51,16 @@ export default function SberbankScreen() {
   const handleTogglePickup = (pointId: number) => {
     const now = Date.now();
     const timeSinceLastTap = now - lastTapTime;
-    
-    // Если это первый тап или прошло больше 500мс - выделяем точку
+
     if (selectedPointId !== pointId || timeSinceLastTap > 500) {
       setSelectedPointId(pointId);
       setLastTapTime(now);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       return;
     }
-    
-    // Если второй тап на той же точке в течение 500мс - подтверждаем выбор
+
     if (!token) return;
-    toggleMutation.mutate({
-      token,
-      pointId,
-      date: selectedDate,
-    });
+    toggleMutation.mutate({ token, pointId, date: selectedDate });
     setSelectedPointId(null);
   };
 
@@ -91,9 +88,7 @@ export default function SberbankScreen() {
       ]}
     >
       <View className="flex-row items-center justify-between gap-3">
-        {/* Left side: checkbox + name + address */}
         <View className="flex-row items-start gap-3 flex-1">
-          {/* Telegram-style checkbox */}
           <View
             style={{
               width: 20,
@@ -108,55 +103,21 @@ export default function SberbankScreen() {
               flexShrink: 0,
             }}
           >
-            {item.isPicked && (
-              <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>✓</Text>
-            )}
+            {item.isPicked && <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>✓</Text>}
           </View>
 
-          {/* Point info */}
           <View className="flex-1">
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: item.isPicked ? "rgba(76, 175, 80, 0.8)" : colors.foreground,
-              }}
-            >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: item.isPicked ? "rgba(76, 175, 80, 0.8)" : colors.foreground }}>
               {item.name}
             </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: colors.muted,
-                marginTop: 2,
-              }}
-            >
-              {item.address}
-            </Text>
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{item.address}</Text>
           </View>
         </View>
 
-        {/* Right side: time + courier name */}
         {item.isPicked && item.courierName && (
           <View style={{ alignItems: "flex-end", justifyContent: "flex-start" }}>
-            <Text
-              style={{
-                fontSize: 11,
-                color: "rgba(76, 175, 80, 0.7)",
-                fontWeight: "500",
-              }}
-            >
-              {formatTime(item.pickedAt)}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: "rgba(76, 175, 80, 0.7)",
-                marginTop: 2,
-              }}
-            >
-              {item.courierName}
-            </Text>
+            <Text style={{ fontSize: 11, color: "rgba(76, 175, 80, 0.7)", fontWeight: "500" }}>{formatTime(item.pickedAt)}</Text>
+            <Text style={{ fontSize: 11, color: "rgba(76, 175, 80, 0.7)", marginTop: 2 }}>{item.courierName}</Text>
           </View>
         )}
       </View>
@@ -165,35 +126,18 @@ export default function SberbankScreen() {
 
   return (
     <ScreenContainer className="p-0">
-      {/* Header with counter */}
-      <View
-        style={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}
-      >
-        <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>
-          Сбербанк
-        </Text>
-        <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>
-          Забрано: {pickedCount} из {pickupPoints.length}
-        </Text>
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Сбербанк</Text>
+        <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>Забрано: {pickedCount} из {pickupPoints.length}</Text>
       </View>
 
-      {/* Pickup points list */}
       {pickupPoints.length > 0 ? (
         <FlatList
           data={pickupPoints}
           renderItem={renderPickupPoint}
           keyExtractor={(item) => item.id.toString()}
           scrollEnabled={true}
-          contentContainerStyle={{
-            paddingVertical: 4,
-            paddingBottom: Math.max(insets.bottom, 16),
-          }}
+          contentContainerStyle={{ paddingVertical: 4, paddingBottom: Math.max(insets.bottom, 16) }}
         />
       ) : isLoading ? (
         <View className="flex-1 items-center justify-center">
