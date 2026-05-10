@@ -1,5 +1,5 @@
 import "@/global.css";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
 import { Stack, Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,6 +38,40 @@ function AuthRedirect() {
       router.replace("/login" as never);
     }
   }, [isAuthenticated, loading, router]);
+
+  return null;
+}
+
+function SessionValidator() {
+  const { token, isAuthenticated, loading, logout } = useCourierAuth();
+  const router = useRouter();
+
+  const { error } = trpc.courierAuth.me.useQuery(
+    token && isAuthenticated && !loading ? { token } : skipToken,
+    {
+      enabled: !!token && isAuthenticated && !loading,
+      retry: false,
+      staleTime: 60_000,
+    },
+  );
+
+  useEffect(() => {
+    if (!error || !isAuthenticated) return;
+
+    const message = error.message?.toLowerCase() ?? "";
+    const authError =
+      message.includes("token") ||
+      message.includes("токен") ||
+      message.includes("недейств") ||
+      message.includes("unauthorized") ||
+      message.includes("forbidden");
+
+    if (!authError) return;
+
+    logout()
+      .then(() => router.replace("/login" as never))
+      .catch((logoutError) => console.warn("[Session] Failed to clear invalid session", logoutError));
+  }, [error, isAuthenticated, logout, router]);
 
   return null;
 }
@@ -170,6 +204,7 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <FilterProvider>
               <CourierAuthProvider>
+                <SessionValidator />
                 <AuthRedirect />
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="login" options={{ headerShown: false }} />
