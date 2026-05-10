@@ -45,3 +45,15 @@
 - [x] Добавить градиентный фон на боковую панель (от темного синего к светлому синему)
 - [x] Обновить цвета текста для лучшей читаемости на градиенте
 - [x] Обновить цвет активного пункта меню (голубой)
+
+## Android APK Crash Fix - SDK version mismatch (IN PROGRESS)
+- [x] Downgrade expo-task-manager from 55.0.15 to ~14.0.9 (SDK 54)
+- [x] Downgrade expo-background-fetch from 55.0.15 to ~14.0.9 (SDK 54)
+- [x] Downgrade expo-brightness from 55.0.13 to ~14.0.8 (SDK 54)
+- [x] Downgrade expo-clipboard from 55.0.13 to ~8.0.8 (SDK 54)
+- [x] Downgrade expo-location from 55.1.8 to ~19.0.8 (SDK 54)
+- [x] Downgrade @react-native-community/netinfo from 12.0.1 to 11.4.1 (SDK 54)
+- [x] Update expo and other expo packages to latest SDK 54 patch versions
+- [x] Reinstall node_modules with corrected versions
+- [x] Verify TypeScript still compiles
+- [x] Commit and push to GitHub
