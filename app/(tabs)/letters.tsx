@@ -8,14 +8,17 @@ import {
   View,
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
+import { NetworkBanner } from "@/components/network-banner";
 import { trpc } from "@/lib/trpc";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
+import { useNetworkStatus } from "@/hooks/use-network-status";
 
 export default function LettersScreen() {
   const colors = useColors();
   const { token } = useCourierAuth();
+  const { isOnline } = useNetworkStatus();
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "delivered" | "not_delivered">("all");
@@ -60,6 +63,8 @@ export default function LettersScreen() {
 
   return (
     <ScreenContainer className="p-4">
+      <NetworkBanner visible={!isOnline} />
+
       <View style={{ gap: 12 }}>
         <Text
           style={{
