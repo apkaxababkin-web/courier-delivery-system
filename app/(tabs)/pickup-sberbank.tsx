@@ -1,12 +1,14 @@
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
+import { NetworkBanner } from "@/components/network-banner";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import { useCallback, useState } from "react";
 import * as Haptics from "expo-haptics";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
+import { useNetworkStatus } from "@/hooks/use-network-status";
 
 interface PickupPoint {
   id: number;
@@ -21,6 +23,7 @@ export default function SberbankScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { token } = useCourierAuth();
+  const { isOnline } = useNetworkStatus();
   const [selectedDate] = useState(new Date());
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
   const [lastTapTime, setLastTapTime] = useState<number>(0);
@@ -126,6 +129,8 @@ export default function SberbankScreen() {
 
   return (
     <ScreenContainer className="p-0">
+      <NetworkBanner visible={!isOnline} />
+
       <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Сбербанк</Text>
         <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>Забрано: {pickedCount} из {pickupPoints.length}</Text>
