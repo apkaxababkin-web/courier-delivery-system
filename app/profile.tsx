@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   Switch,
@@ -75,11 +76,23 @@ export default function ProfileModal() {
   }, [notificationsEnabled, notificationTypes]);
 
   useEffect(() => {
-    if (!token || !notificationsEnabled) return;
+    if (!token || !notificationsEnabled || Platform.OS === "web") return;
 
     const registerPushToken = async () => {
       try {
-        const pushToken = await Notifications.getExpoPushTokenAsync();
+        const permission = await Notifications.requestPermissionsAsync();
+        if (permission.status !== "granted") return;
+
+        const projectId =
+          (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
+          undefined;
+
+        if (!projectId) {
+          console.log("[Profile] Push token skipped: no projectId configured");
+          return;
+        }
+
+        const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
         await AsyncStorage.setItem("pushToken", pushToken.data);
         await registerPushTokenMutation.mutateAsync({ token, pushToken: pushToken.data });
       } catch (error) {
@@ -88,7 +101,7 @@ export default function ProfileModal() {
     };
 
     registerPushToken();
-  }, [token, notificationsEnabled]);
+  }, [token, notificationsEnabled, registerPushTokenMutation]);
 
   const handleLogin = async () => {
     const cleanUsername = username.trim();
@@ -173,9 +186,7 @@ export default function ProfileModal() {
             style={inputStyle}
           />
 
-          {loginError ? (
-            <Text style={{ color: colors.error, textAlign: "center" }}>{loginError}</Text>
-          ) : null}
+          {loginError ? <Text style={{ color: colors.error, textAlign: "center" }}>{loginError}</Text> : null}
 
           <Pressable
             onPress={handleLogin}
@@ -189,11 +200,7 @@ export default function ProfileModal() {
               opacity: loginMutation.isPending ? 0.7 : 1,
             }}
           >
-            {loginMutation.isPending ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>Войти</Text>
-            )}
+            {loginMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>Войти</Text>}
           </Pressable>
         </View>
       </View>
@@ -259,10 +266,7 @@ export default function ProfileModal() {
         <View style={{ flex: 1 }} />
 
         <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
-          <Pressable
-            onPress={handleLogout}
-            style={{ backgroundColor: colors.error, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8 }}
-          >
+          <Pressable onPress={handleLogout} style={{ backgroundColor: colors.error, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8 }}>
             <Text style={{ textAlign: "center", color: "white", fontWeight: "600", fontSize: 16 }}>Выход</Text>
           </Pressable>
         </View>
