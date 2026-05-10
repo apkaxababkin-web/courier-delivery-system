@@ -110,10 +110,20 @@ export default function RootLayout() {
     
     const registerPushToken = async () => {
       try {
-        const token = await Notifications.getExpoPushTokenAsync();
+        // Request permission first
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== "granted") return;
+        // getExpoPushTokenAsync requires projectId in standalone builds.
+        // Skip silently if not configured to prevent crash.
+        const projectId =
+          (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
+          undefined;
+        if (!projectId) {
+          console.log("[App] Push token skipped: no projectId configured");
+          return;
+        }
+        const token = await Notifications.getExpoPushTokenAsync({ projectId });
         console.log("[App] Expo Push Token:", token.data);
-        // Note: We'll send this token to the server from the profile screen
-        // after the courier logs in
       } catch (error) {
         console.warn("[App] Failed to get push token:", error);
       }
