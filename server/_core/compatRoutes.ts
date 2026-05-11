@@ -2,12 +2,17 @@ import type { Express, Request, Response } from "express";
 import { desc, eq } from "drizzle-orm";
 import {
   couriers,
+  hemotestPickups,
+  hemotestPickupPoints,
   mails,
   requests,
+  sberbankPickups,
+  sberbankPickupPoints,
   tasks,
   type InsertMail,
   type InsertRequest,
   type InsertTask,
+  type Mail,
   type Request as DeliveryRequest,
   type Task,
 } from "../../drizzle/schema";
@@ -92,16 +97,97 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
   };
 }
 
+async function courierNameMap() {
+  const conn = await db.getDb();
+  if (!conn) return new Map<number, string>();
+  const allCouriers = await conn.select({ id: couriers.id, name: couriers.name }).from(couriers);
+  return new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+}
+
 async function requestRows() {
   const conn = await db.getDb();
   if (!conn) return [];
   const allRequests = await conn.select().from(requests).orderBy(desc(requests.createdAt));
-  const allCouriers = await conn.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  const courierMap = await courierNameMap();
   return allRequests.map((request: DeliveryRequest) => ({
     ...request,
     courierName: request.courierId ? courierMap.get(request.courierId) ?? null : null,
   }));
+}
+
+async function mailsWithCourierName(mailList: Mail[]) {
+  const courierMap = await courierNameMap();
+  return mailList.map((mail) => ({
+    ...mail,
+    courierName: mail.courierId ? courierMap.get(mail.courierId) ?? null : null,
+  }));
+}
+
+async function pickupFeedbackSummary() {
+  const conn = await db.getDb();
+  const date = new Date().toISOString().split("T")[0];
+  if (!conn) {
+    return {
+      date,
+      hemotest: { total: 0, picked: 0, items: [] },
+      sberbank: { total: 0, picked: 0, items: [] },
+    };
+  }
+
+  const [courierMap, hemotestRows, hemotestPoints, sberbankRows, sberbankPoints] = await Promise.all([
+    courierNameMap(),
+    conn.select().from(hemotestPickups).where(eq(hemotestPickups.date, date)),
+    conn.select({ id: hemotestPickupPoints.id, name: hemotestPickupPoints.name, address: hemotestPickupPoints.address }).from(hemotestPickupPoints),
+    conn.select().from(sberbankPickups).where(eq(sberbankPickups.date, date)),
+    conn.select({ id: sberbankPickupPoints.id, name: sberbankPickupPoints.name, address: sberbankPickupPoints.address }).from(sberbankPickupPoints),
+  ]);
+
+  const hemotestPointMap = new Map(hemotestPoints.map((point: { id: number; name: string; address: string }) => [point.id, point]));
+  const sberbankPointMap = new Map(sberbankPoints.map((point: { id: number; name: string; address: string }) => [point.id, point]));
+
+  const hemotestItems = hemotestRows.map((row: any) => {
+    const point = hemotestPointMap.get(row.pointId);
+    return {
+      id: row.id,
+      pointId: row.pointId,
+      pointName: point?.name ?? null,
+      address: point?.address ?? null,
+      courierId: row.courierId,
+      courierName: courierMap.get(row.courierId) ?? null,
+      date: row.date,
+      isPicked: row.isPicked,
+      pickedAt: row.pickedAt,
+    };
+  });
+
+  const sberbankItems = sberbankRows.map((row: any) => {
+    const point = sberbankPointMap.get(row.pointId);
+    return {
+      id: row.id,
+      pointId: row.pointId,
+      pointName: point?.name ?? null,
+      address: point?.address ?? null,
+      courierId: row.courierId,
+      courierName: courierMap.get(row.courierId) ?? null,
+      date: row.date,
+      isPicked: row.isPicked,
+      pickedAt: row.pickedAt,
+    };
+  });
+
+  return {
+    date,
+    hemotest: {
+      total: hemotestItems.length,
+      picked: hemotestItems.filter((item) => item.isPicked).length,
+      items: hemotestItems,
+    },
+    sberbank: {
+      total: sberbankItems.length,
+      picked: sberbankItems.filter((item) => item.isPicked).length,
+      items: sberbankItems,
+    },
+  };
 }
 
 async function findTaskForRequest(requestId: number): Promise<Task | null> {
@@ -142,13 +228,21 @@ async function updateRequestStatusFromTask(taskId: number, status: Task["status"
 }
 
 async function managerSnapshot() {
-  const [activeTasks, completedTasks, requestList, mailList] = await Promise.all([
+  const [activeTasks, completedTasks, requestList, mailList, pickupFeedback] = await Promise.all([
     db.getAllTasksWithCourier(),
     db.getCompletedTasksWithCourier(),
     requestRows(),
     db.getAllMails(),
+    pickupFeedbackSummary(),
   ]);
-  return { ok: true, updatedAt: new Date().toISOString(), tasks: [...activeTasks, ...completedTasks], requests: requestList, mails: mailList };
+  return {
+    ok: true,
+    updatedAt: new Date().toISOString(),
+    tasks: [...activeTasks, ...completedTasks],
+    requests: requestList,
+    mails: await mailsWithCourierName(mailList),
+    pickupFeedback,
+  };
 }
 
 async function courierSnapshot(courierId: number) {
@@ -388,7 +482,8 @@ export function registerCompatRoutes(app: Express) {
     try {
       const input = inputFrom(req);
       const status = input.status === "delivered" || input.status === "not_delivered" ? input.status : undefined;
-      res.json(trpcJson(await db.getMailsByFilter(status, input.dateFrom as string | undefined, input.dateTo as string | undefined)));
+      const mailList = await db.getMailsByFilter(status, input.dateFrom as string | undefined, input.dateTo as string | undefined);
+      res.json(trpcJson(await mailsWithCourierName(mailList)));
     } catch (error) { sendError(res, error, "Failed to load manager mails"); }
   });
 
