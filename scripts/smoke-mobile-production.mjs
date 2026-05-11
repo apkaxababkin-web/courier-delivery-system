@@ -61,10 +61,13 @@ assert(eas.build?.preview?.android?.buildType === "apk", "eas.json preview profi
 assert(JSON.stringify(eas).includes("https://couriermig.ru"), "eas.json must include production API URL");
 
 const appConfig = read("app.config.ts");
-assert(appConfig.includes("МИГ Курьер"), "app.config.ts must use production app name");
+assert(appConfig.includes("МИГ Courier"), "app.config.ts must use production app name");
+assert(appConfig.includes("Courier Delivery System"), "app.config.ts must use production app description");
 assert(appConfig.includes("mig-courier"), "app.config.ts must use production slug");
 
 const letters = read("app/(tabs)/letters.tsx");
+assert(letters.includes("trpc.mails.all.useQuery"), "letters screen must use typed mails.all query");
+assert(letters.includes("trpc.mails.deliver.useMutation"), "letters screen must use typed mails.deliver mutation");
 assert(letters.includes("Linking.openURL(`tel:"), "letters screen must open phone dialer");
 assert(letters.includes("recipientPhone"), "letters screen must show/search recipient phone");
 assert(letters.includes("deliveredAtInput"), "letters screen must include editable delivery date/time input");
@@ -79,6 +82,12 @@ assert(serverIndex.includes("eq(mails.id, mailId)"), "backend mail delivery rout
 assert(serverIndex.includes("deliveredAt,"), "backend mail delivery route must persist deliveredAt");
 assert(serverIndex.includes("trpcBatchJson"), "backend mail delivery route must support batched tRPC responses");
 assert(serverIndex.includes("isBatch"), "backend mail delivery route must detect batched tRPC bodies");
-assert(serverIndex.includes("body?.[0]"), "backend mail delivery route must parse batched tRPC body input");
+assert(serverIndex.includes("firstArrayBatchItem"), "backend mail delivery route must parse array batched tRPC body input");
+assert(serverIndex.includes("firstKeyedBatchItem"), "backend mail delivery route must parse keyed batched tRPC body input");
+
+const routers = read("server/routers.ts");
+assert(routers.includes("mails: router"), "typed AppRouter must expose mails router");
+assert(routers.includes("db.getAllMails"), "typed AppRouter must expose mails.all query");
+assert(routers.includes("deliver: publicProcedure") && routers.includes("recipientSignature"), "typed AppRouter must expose mails.deliver mutation");
 
 console.log("✅ Mobile production smoke check passed");
