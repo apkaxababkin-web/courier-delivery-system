@@ -4,11 +4,13 @@ import { createServer } from "http";
 import net from "net";
 import path from "path";
 import bcrypt from "bcryptjs";
+import { eq } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
-import { appRouter } from "../routers";
+import { appRouter, verifyCourierToken } from "../routers";
 import { createContext } from "./context";
+import { mails } from "../../drizzle/schema";
 import * as db from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -32,6 +34,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 
 function trpcJson(data: unknown) {
   return { result: { data: { json: data } } };
+}
+
+function inputFromBody(body: any): Record<string, unknown> {
+  return (body?.json ?? body ?? {}) as Record<string, unknown>;
 }
 
 async function startServer() {
@@ -61,6 +67,50 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   registerOAuthRoutes(app);
+
+  app.post("/api/trpc/mails.deliver", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const input = inputFromBody(req.body);
+      const authHeader = req.headers.authorization;
+      const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      const token = String(input.token ?? bearerToken ?? "");
+      const payload = await verifyCourierToken(token);
+      if (!payload) throw new Error("Invalid courier token");
+
+      const mailId = Number(input.mailId || input.id || 0);
+      const waybillNumber = String(input.waybillNumber || "").trim();
+      const recipientSignature = String(input.recipientSignature || input.receivedBy || "").trim();
+      const deliveredAtRaw = input.deliveredAt ? new Date(String(input.deliveredAt)) : new Date();
+      const deliveredAt = Number.isNaN(deliveredAtRaw.getTime()) ? new Date() : deliveredAtRaw;
+
+      if (!mailId && !waybillNumber) throw new Error("mailId or waybillNumber is required");
+      if (!recipientSignature) throw new Error("recipientSignature is required");
+
+      const updateData = {
+        status: "delivered" as const,
+        recipientSignature,
+        courierId: payload.courierId,
+        deliveredAt,
+        updatedAt: new Date(),
+      };
+
+      const updated = mailId
+        ? await conn.update(mails).set(updateData).where(eq(mails.id, mailId)).returning()
+        : await conn.update(mails).set(updateData).where(eq(mails.waybillNumber, waybillNumber)).returning();
+
+      if (!updated[0]) throw new Error("Mail not found");
+
+      res.json(trpcJson({ success: true, mail: updated[0] }));
+    } catch (error) {
+      console.error("Failed to deliver mail", error);
+      const message = error instanceof Error ? error.message : "Failed to deliver mail";
+      res.status(500).json({ error: { message } });
+    }
+  });
+
   registerCompatRoutes(app);
 
   app.get("/api/health", (_req, res) => {
