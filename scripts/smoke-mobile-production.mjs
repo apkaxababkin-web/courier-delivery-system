@@ -64,4 +64,18 @@ const appConfig = read("app.config.ts");
 assert(appConfig.includes("МИГ Курьер"), "app.config.ts must use production app name");
 assert(appConfig.includes("mig-courier"), "app.config.ts must use production slug");
 
+const letters = read("app/(tabs)/letters.tsx");
+assert(letters.includes("Linking.openURL(`tel:"), "letters screen must open phone dialer");
+assert(letters.includes("recipientPhone"), "letters screen must show/search recipient phone");
+assert(letters.includes("deliveredAtInput"), "letters screen must include editable delivery date/time input");
+assert(letters.includes("deliveredAt,"), "letters screen must send deliveredAt to mail delivery mutation");
+assert(letters.includes("parseDateTimeInput"), "letters screen must validate editable delivery date/time");
+
+const serverIndex = read("server/_core/index.ts");
+assert(serverIndex.includes("/api/trpc/mails.deliver"), "backend must expose mail delivery override route");
+assert(serverIndex.includes("input.deliveredAt"), "backend mail delivery route must accept deliveredAt");
+assert(serverIndex.includes("mailId"), "backend mail delivery route must accept mailId");
+assert(serverIndex.includes("eq(mails.id, mailId)"), "backend mail delivery route must update by mailId");
+assert(serverIndex.includes("deliveredAt,"), "backend mail delivery route must persist deliveredAt");
+
 console.log("✅ Mobile production smoke check passed");
