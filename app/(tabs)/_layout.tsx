@@ -12,8 +12,8 @@ const icon = (name: string) => name as any;
 export default function TabLayout() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
-  const tabBarHeight = 56 + bottomPadding;
+  const bottomSafeArea = Platform.OS === "web" ? 12 : Math.max(insets.bottom, Platform.OS === "android" ? 22 : 12);
+  const tabBarHeight = 58 + bottomSafeArea;
 
   return (
     <Tabs
@@ -23,24 +23,22 @@ export default function TabLayout() {
         tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.15)",
         tabBarAllowFontScaling: false,
         headerShown: false,
-        tabBarHideOnKeyboard: false,
+        tabBarHideOnKeyboard: true,
         tabBarButton: HapticTab,
-        tabBarBackground: () => {
-          // Transparent background with blur effect
-          return null;
-        },
+        tabBarBackground: () => null,
         sceneStyle: {
           paddingBottom: 0,
+          backgroundColor: colors.background,
         },
         tabBarStyle: {
           position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
-          paddingTop: 12,
-          paddingBottom: 16,
+          paddingTop: 10,
+          paddingBottom: bottomSafeArea,
           paddingHorizontal: 0,
-          height: "auto",
+          height: tabBarHeight,
           backgroundColor: colors.surface,
           borderColor: "transparent",
           borderWidth: 0,
@@ -57,13 +55,13 @@ export default function TabLayout() {
           fontSize: 9,
           fontWeight: "500",
           marginTop: 2,
-          maxWidth: 50,
+          maxWidth: 56,
         },
         tabBarItemStyle: {
           borderRadius: 12,
           marginHorizontal: 4,
           paddingVertical: 4,
-          paddingHorizontal: 12,
+          paddingHorizontal: 10,
         },
         tabBarIconStyle: {
           marginBottom: 2,
@@ -111,6 +109,4 @@ export default function TabLayout() {
 }
 
 // Note: Profile screen is accessed via header button (👤), not tab bar
-// Note: Tab bar uses same surface color as header bar for unified design
-// Note: Same width as header bar (12px left/right margins, 16px horizontal padding)
-// Note: Increased padding and spacing to match header bar proportions
+// Note: Tab bar uses safe-area bottom padding to avoid Android system navigation overlap
