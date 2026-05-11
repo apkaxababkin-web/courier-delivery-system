@@ -77,5 +77,8 @@ assert(serverIndex.includes("input.deliveredAt"), "backend mail delivery route m
 assert(serverIndex.includes("mailId"), "backend mail delivery route must accept mailId");
 assert(serverIndex.includes("eq(mails.id, mailId)"), "backend mail delivery route must update by mailId");
 assert(serverIndex.includes("deliveredAt,"), "backend mail delivery route must persist deliveredAt");
+assert(serverIndex.includes("trpcBatchJson"), "backend mail delivery route must support batched tRPC responses");
+assert(serverIndex.includes("isBatch"), "backend mail delivery route must detect batched tRPC bodies");
+assert(serverIndex.includes("body?.[0]"), "backend mail delivery route must parse batched tRPC body input");
 
 console.log("✅ Mobile production smoke check passed");
