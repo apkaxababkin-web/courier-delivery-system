@@ -36,8 +36,17 @@ function trpcJson(data: unknown) {
   return { result: { data: { json: data } } };
 }
 
-function inputFromBody(body: any): Record<string, unknown> {
-  return (body?.json ?? body ?? {}) as Record<string, unknown>;
+function trpcBatchJson(data: unknown) {
+  return [trpcJson(data)];
+}
+
+function inputFromBody(body: any): { input: Record<string, unknown>; isBatch: boolean } {
+  const firstBatchItem = body?.[0];
+  if (firstBatchItem) {
+    return { input: (firstBatchItem?.json ?? firstBatchItem ?? {}) as Record<string, unknown>, isBatch: true };
+  }
+
+  return { input: (body?.json ?? body ?? {}) as Record<string, unknown>, isBatch: false };
 }
 
 async function startServer() {
@@ -73,7 +82,7 @@ async function startServer() {
       const conn = await db.getDb();
       if (!conn) throw new Error("Database not available");
 
-      const input = inputFromBody(req.body);
+      const { input, isBatch } = inputFromBody(req.body);
       const authHeader = req.headers.authorization;
       const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
       const token = String(input.token ?? bearerToken ?? "");
@@ -103,7 +112,8 @@ async function startServer() {
 
       if (!updated[0]) throw new Error("Mail not found");
 
-      res.json(trpcJson({ success: true, mail: updated[0] }));
+      const response = { success: true, mail: updated[0] };
+      res.json(isBatch ? trpcBatchJson(response) : trpcJson(response));
     } catch (error) {
       console.error("Failed to deliver mail", error);
       const message = error instanceof Error ? error.message : "Failed to deliver mail";
