@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Package, MapPin, Landmark, Mail, BarChart3, Users, FileText, LogOut, Home, Settings } from 'lucide-react';
+import { Package, MapPin, Landmark, Mail, BarChart3, Users, FileText, LogOut, UserRound } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TasksView from './views/TasksView';
 import ClientsView from './views/ClientsView';
@@ -9,8 +9,9 @@ import MailsView from './views/MailsView';
 import ReportsView from './views/ReportsView';
 import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
+import ManagerProfileView from './views/ManagerProfileView';
 
-type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'archive' | 'couriers';
+type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'archive' | 'couriers' | 'profile';
 
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
@@ -44,9 +45,17 @@ function App() {
     localStorage.removeItem('managerToken');
     localStorage.removeItem('managerName');
     localStorage.removeItem('managerRole');
+    localStorage.removeItem('managerUsername');
+    localStorage.removeItem('managerEmail');
     setIsAuthenticated(false);
     setManagerName('');
     setManagerRole('');
+    setActiveView('tasks');
+  };
+
+  const handleManagerNameChange = (name: string) => {
+    localStorage.setItem('managerName', name);
+    setManagerName(name);
   };
 
   const renderView = () => {
@@ -63,8 +72,10 @@ function App() {
         return <ClientsView />;
       case 'reports':
         return <ReportsView />;
+      case 'profile':
+        return <ManagerProfileView managerName={managerName} managerRole={managerRole} onNameChange={handleManagerNameChange} />;
       case 'archive':
-        return <TasksView />; // TODO: Create ArchiveView
+        return <TasksView />;
       case 'couriers':
         return <CouriersView />;
       default:
@@ -73,11 +84,12 @@ function App() {
   };
 
   const getPageTitle = () => {
+    if (activeView === 'profile') return 'Личный кабинет';
     return menuItems.find((item) => item.id === activeView)?.label || 'Все заявки';
   };
 
   if (!isAuthenticated) {
-    return <LoginView onLogin={(token) => {
+    return <LoginView onLogin={() => {
       setIsAuthenticated(true);
       setManagerName(localStorage.getItem('managerName') || 'Менеджер');
       setManagerRole(localStorage.getItem('managerRole') || 'Менеджер');
@@ -86,40 +98,37 @@ function App() {
 
   return (
     <div className="flex h-screen bg-slate-50">
-      {/* Sidebar */}
       <Sidebar
         menuItems={menuItems as any}
         activeView={activeView}
-        onViewChange={(view) => {
-          setActiveView(view as ViewType);
-        }}
+        onViewChange={(view) => setActiveView(view as ViewType)}
         isOpen={true}
         onClose={() => {}}
       />
 
-      {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden ml-[280px]">
-        {/* Header */}
         <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-8 fixed top-0 right-0 left-[280px] z-30">
-          <h1 className="text-xl font-semibold text-gray-900">
-            {getPageTitle()}
-          </h1>
+          <h1 className="text-xl font-semibold text-gray-900">{getPageTitle()}</h1>
           
-          <div className="flex items-center gap-6">
-            {/* User info */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setActiveView('profile')}
+              className={`flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ${
+                activeView === 'profile' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <div className="w-9 h-9 bg-blue-100 rounded-full flex items-center justify-center">
                 <span className="text-sm font-semibold text-blue-600">
-                  {managerName.charAt(0).toUpperCase()}
+                  {(managerName || 'М').charAt(0).toUpperCase()}
                 </span>
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-gray-900">{managerName}</span>
-                <span className="text-xs text-gray-500">{managerRole}</span>
+              <div className="hidden text-left sm:flex sm:flex-col">
+                <span className="text-sm font-semibold">{managerName || 'Личный кабинет'}</span>
+                <span className="text-xs text-gray-500">Личный кабинет</span>
               </div>
-            </div>
+              <UserRound className="h-4 w-4" />
+            </button>
 
-            {/* Logout button */}
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
@@ -130,11 +139,8 @@ function App() {
           </div>
         </header>
 
-        {/* Content area */}
         <main className="flex-1 overflow-auto pt-16">
-          <div className="p-8">
-            {renderView()}
-          </div>
+          <div className="p-8">{renderView()}</div>
         </main>
       </div>
     </div>
