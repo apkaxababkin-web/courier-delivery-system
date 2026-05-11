@@ -31,9 +31,10 @@ interface FieldMapping {
   phone?: CellRange;
 }
 
+const today = new Date().toISOString().split('T')[0];
+
 export default function MailsView() {
   const realtime = useManagerRealtime(5000);
-  const [activeTab, setActiveTab] = useState<'upload' | 'reports'>('upload');
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showMappingForm, setShowMappingForm] = useState(false);
@@ -46,10 +47,7 @@ export default function MailsView() {
     address: { column: 'C', startRow: 2, endRow: 100 },
   });
   const [filterStatus, setFilterStatus] = useState<'all' | 'not_delivered' | 'delivered' | 'failed'>('all');
-  const [dateRange, setDateRange] = useState({
-    from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    to: new Date().toISOString().split('T')[0],
-  });
+  const [selectedDate, setSelectedDate] = useState(today);
 
   const mails = (realtime.snapshot?.mails ?? []) as Mail[];
 
@@ -140,11 +138,10 @@ export default function MailsView() {
     return mails.filter(mail => {
       if (filterStatus !== 'all' && mail.status !== filterStatus) return false;
       const createdAt = mail.createdAt ? mail.createdAt.slice(0, 10) : '';
-      if (dateRange.from && createdAt && createdAt < dateRange.from) return false;
-      if (dateRange.to && createdAt && createdAt > dateRange.to) return false;
+      if (selectedDate && createdAt && createdAt !== selectedDate) return false;
       return true;
     });
-  }, [mails, filterStatus, dateRange.from, dateRange.to]);
+  }, [mails, filterStatus, selectedDate]);
 
   const handleExportReport = async () => {
     try {
@@ -163,7 +160,7 @@ export default function MailsView() {
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `report_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `mails_${selectedDate || today}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -176,22 +173,44 @@ export default function MailsView() {
   };
 
   const stats = useMemo(() => ({
-    total: mails.length,
-    delivered: mails.filter(m => m.status === 'delivered').length,
-    notDelivered: mails.filter(m => m.status === 'not_delivered').length,
-    failed: mails.filter(m => m.status === 'failed').length,
-  }), [mails]);
+    total: filteredMails.length,
+    delivered: filteredMails.filter(m => m.status === 'delivered').length,
+    notDelivered: filteredMails.filter(m => m.status === 'not_delivered').length,
+    failed: filteredMails.filter(m => m.status === 'failed').length,
+  }), [filteredMails]);
 
   const isBusy = loading || realtime.isLoading;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <RealtimeStatusCard
         isRefreshing={realtime.isRefreshing}
         error={realtime.error}
         lastSyncAt={realtime.lastSyncAt}
         onRefresh={() => realtime.refresh(true)}
       />
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Почтовые отправления</p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">Диспетчерская по письмам</h2>
+            <p className="mt-1 text-sm text-slate-500">Просмотр доставок по выбранной дате.</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelect} className="hidden" id="mail-manifest-input" />
+            <label htmlFor="mail-manifest-input" className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
+              <Upload size={18} />
+              Манифест
+            </label>
+            <button onClick={handleExportReport} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+              <Download size={18} />
+              Экспорт
+            </button>
+          </div>
+        </div>
+      </div>
 
       {importResult ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -200,66 +219,120 @@ export default function MailsView() {
         </div>
       ) : null}
 
-      <div className="flex gap-4 border-b border-gray-200">
-        <button onClick={() => setActiveTab('upload')} className={`pb-3 px-4 font-medium transition ${activeTab === 'upload' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
-          <Upload size={18} className="inline mr-2" />
-          Загрузка манифеста
-        </button>
-        <button onClick={() => setActiveTab('reports')} className={`pb-3 px-4 font-medium transition ${activeTab === 'reports' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
-          <FileText size={18} className="inline mr-2" />
-          Отчёты о доставке
-        </button>
+      <div className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-sm text-slate-500">Всего</div><div className="mt-2 text-3xl font-bold text-slate-900">{stats.total}</div></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center gap-2 text-sm text-slate-500"><CheckCircle size={16} />Доставлено</div><div className="mt-2 text-3xl font-bold text-slate-900">{stats.delivered}</div></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center gap-2 text-sm text-slate-500"><Clock size={16} />В работе</div><div className="mt-2 text-3xl font-bold text-slate-900">{stats.notDelivered}</div></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-sm text-slate-500">Проблемы</div><div className="mt-2 text-3xl font-bold text-slate-900">{stats.failed}</div></div>
       </div>
 
-      {activeTab === 'upload' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-8 border-2 border-dashed border-gray-300 hover:border-blue-500 transition cursor-pointer">
-            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelect} className="hidden" id="file-input" />
-            <label htmlFor="file-input" className="flex flex-col items-center gap-3 cursor-pointer">
-              <Upload size={48} className="text-gray-400" />
-              <div className="text-center">
-                <p className="text-lg font-semibold text-gray-900">Загрузите манифест</p>
-                <p className="text-sm text-gray-600">Поддерживаются файлы Excel (.xlsx, .xls) и CSV</p>
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid gap-4 border-b border-slate-200 p-4 lg:grid-cols-[280px_220px_1fr_auto] lg:items-end">
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Статус</span>
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+              <option value="all">Все статусы</option>
+              <option value="delivered">Доставлено</option>
+              <option value="not_delivered">В работе</option>
+              <option value="failed">Проблемы</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Дата</span>
+            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </label>
+
+          <div className="text-sm text-slate-500 lg:pb-2">Показаны доставки только за выбранную дату.</div>
+
+          <button onClick={() => realtime.refresh(true)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Обновить</button>
+        </div>
+
+        <div className="p-4">
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h3 className="font-semibold text-slate-900">Операционная очередь</h3>
+              <p className="text-sm text-slate-500">Показано: {filteredMails.length}</p>
+            </div>
+
+            {isBusy ? (
+              <div className="p-12 text-center text-slate-500">Загрузка...</div>
+            ) : filteredMails.length === 0 ? (
+              <div className="flex min-h-80 flex-col items-center justify-center p-12 text-center text-slate-500">
+                <FileText size={36} className="mb-3 text-slate-300" />
+                <p className="font-semibold text-slate-900">Нет писем для отображения</p>
+                <p className="mt-1 text-sm">Выберите другую дату или загрузите новый манифест.</p>
               </div>
-              {selectedFile && <p className="text-sm text-green-600 font-medium">✓ Выбран файл: {selectedFile.name}</p>}
-            </label>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Накладная</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Получатель</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Адрес</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Статус</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Дата доставки</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMails.map((mail) => (
+                      <tr key={mail.id} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-6 py-3 font-semibold text-slate-900">{mail.waybillNumber}</td>
+                        <td className="px-6 py-3 text-slate-900">{mail.recipientName}</td>
+                        <td className="px-6 py-3 text-slate-600">{mail.deliveryAddress}</td>
+                        <td className="px-6 py-3"><span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">{mail.status === 'delivered' ? 'Доставлено' : mail.status === 'not_delivered' ? 'В работе' : 'Проблемы'}</span></td>
+                        <td className="px-6 py-3 text-slate-600">{mail.deliveredAt ? new Date(mail.deliveredAt).toLocaleDateString('ru-RU') : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-
-          {showMappingForm && fileData.length > 0 && createPortal(
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, overflowY: 'auto', paddingTop: 80 }}>
-              <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-5xl my-8 max-h-[90vh] overflow-y-auto">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Выберите диапазон ячеек</h3>
-                <p className="text-sm text-gray-600 mb-6">Укажите столбец и диапазон строк для каждого поля</p>
-                <form onSubmit={handleUploadManifest} className="space-y-6">
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 overflow-x-auto max-h-64 mb-6">
-                    <table className="w-full text-xs border-collapse">
-                      <thead><tr className="bg-gray-200"><th className="border border-gray-300 px-2 py-1 text-left">Строка</th>{columns.map(col => <th key={col} className="border border-gray-300 px-2 py-1 text-left bg-gray-300 font-semibold">{col}</th>)}</tr></thead>
-                      <tbody>{fileData.slice(0, 10).map((row, idx) => <tr key={idx} className={idx === 0 ? 'bg-yellow-50' : ''}><td className="border border-gray-300 px-2 py-1 font-semibold text-gray-600">{idx + 1}</td>{columns.map(col => <td key={col} className="border border-gray-300 px-2 py-1 text-gray-700">{String(row[columnToIndex(col)] || '').substring(0, 20)}</td>)}</tr>)}</tbody>
-                    </table>
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                    {(['waybill', 'recipient', 'address'] as const).map((field) => <div key={field} className="space-y-3"><label className="block text-sm font-semibold text-gray-900">{field === 'waybill' ? 'Номер накладной' : field === 'recipient' ? 'Имя получателя' : 'Адрес доставки'} *</label><select value={mapping[field].column} onChange={(e) => setMapping({ ...mapping, [field]: { ...mapping[field], column: e.target.value } })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select><div className="flex gap-2"><div className="flex-1"><label className="text-xs text-gray-600">От строки</label><input type="number" min="1" value={mapping[field].startRow} onChange={(e) => setMapping({ ...mapping, [field]: { ...mapping[field], startRow: parseInt(e.target.value) } })} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /></div><div className="flex-1"><label className="text-xs text-gray-600">До строки</label><input type="number" min="1" value={mapping[field].endRow} onChange={(e) => setMapping({ ...mapping, [field]: { ...mapping[field], endRow: parseInt(e.target.value) } })} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /></div></div></div>)}
-                    <div className="space-y-3"><label className="block text-sm font-semibold text-gray-900">Телефон (опционально)</label><select value={mapping.phone?.column || ''} onChange={(e) => setMapping({ ...mapping, phone: e.target.value ? { column: e.target.value, startRow: mapping.phone?.startRow || 2, endRow: mapping.phone?.endRow || 100 } : undefined })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Не использовать</option>{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select></div>
-                  </div>
-                  <div className="flex gap-3 pt-4"><button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50">{loading ? 'Загрузка...' : 'Загрузить'}</button><button type="button" onClick={() => { setShowMappingForm(false); setSelectedFile(null); setFileData([]); }} className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition font-medium">Отмена</button></div>
-                </form>
-              </div>
-            </div>, document.body)}
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4"><h4 className="font-semibold text-blue-900 mb-2">Инструкция:</h4><ul className="text-sm text-blue-800 space-y-1"><li>1. Подготовьте файл Excel с данными писем</li><li>2. Загрузите файл — система покажет превью данных</li><li>3. Выберите столбцы и диапазон строк</li><li>4. Письма загрузятся bulk-импортом с пропуском дубликатов</li></ul></div>
         </div>
-      )}
-
-      {activeTab === 'reports' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-4 gap-4"><div className="bg-white rounded-lg shadow p-4"><div className="text-gray-600 text-sm font-medium">Всего писем</div><div className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</div></div><div className="bg-green-50 rounded-lg shadow p-4 border border-green-200"><div className="text-green-700 text-sm font-medium flex items-center gap-2"><CheckCircle size={16} />Доставлено</div><div className="text-3xl font-bold text-green-600 mt-2">{stats.delivered}</div></div><div className="bg-orange-50 rounded-lg shadow p-4 border border-orange-200"><div className="text-orange-700 text-sm font-medium flex items-center gap-2"><Clock size={16} />Не доставлено</div><div className="text-3xl font-bold text-orange-600 mt-2">{stats.notDelivered}</div></div><div className="bg-red-50 rounded-lg shadow p-4 border border-red-200"><div className="text-red-700 text-sm font-medium">Ошибки</div><div className="text-3xl font-bold text-red-600 mt-2">{stats.failed}</div></div></div>
-          <div className="bg-white rounded-lg shadow p-4 space-y-4"><div className="grid grid-cols-3 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-1">Статус</label><select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="all">Все</option><option value="delivered">Доставлено</option><option value="not_delivered">Не доставлено</option><option value="failed">Ошибка</option></select></div><div><label className="block text-sm font-medium text-gray-700 mb-1">От даты</label><input type="date" value={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">До даты</label><input type="date" value={dateRange.to} onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div></div><button onClick={handleExportReport} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition font-medium"><Download size={20} />Экспортировать</button></div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {isBusy ? <div className="p-8 text-center text-gray-500">Загрузка...</div> : filteredMails.length === 0 ? <div className="p-8 text-center text-gray-500">Нет писем для отображения</div> : <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b border-gray-200"><tr><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Номер накладной</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Получатель</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Адрес</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Статус</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Дата доставки</th></tr></thead><tbody>{filteredMails.map((mail) => <tr key={mail.id} className="border-b border-gray-200 hover:bg-gray-50"><td className="px-6 py-3 text-gray-900 font-medium">{mail.waybillNumber}</td><td className="px-6 py-3 text-gray-900">{mail.recipientName}</td><td className="px-6 py-3 text-gray-600">{mail.deliveryAddress}</td><td className="px-6 py-3"><span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${mail.status === 'delivered' ? 'bg-green-100 text-green-800' : mail.status === 'not_delivered' ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800'}`}>{mail.status === 'delivered' ? 'Доставлено' : mail.status === 'not_delivered' ? 'Не доставлено' : 'Ошибка'}</span></td><td className="px-6 py-3 text-gray-600">{mail.deliveredAt ? new Date(mail.deliveredAt).toLocaleDateString('ru-RU') : '-'}</td></tr>)}</tbody></table></div>}
       </div>
+
+      {showMappingForm && fileData.length > 0 && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, overflowY: 'auto', padding: 24 }}>
+          <div className="w-full max-w-5xl rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-slate-900">Выберите диапазон ячеек</h3>
+            <p className="mt-1 text-sm text-slate-500">Укажите столбец и диапазон строк для каждого поля.</p>
+
+            <form onSubmit={handleUploadManifest} className="mt-6 space-y-6">
+              <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-200"><th className="border border-slate-300 px-2 py-1 text-left">Строка</th>{columns.map(col => <th key={col} className="border border-slate-300 px-2 py-1 text-left">{col}</th>)}</tr>
+                  </thead>
+                  <tbody>{fileData.slice(0, 10).map((row, idx) => <tr key={idx}><td className="border border-slate-300 px-2 py-1 font-semibold text-slate-600">{idx + 1}</td>{columns.map(col => <td key={col} className="border border-slate-300 px-2 py-1 text-slate-700">{String(row[columnToIndex(col)] || '').substring(0, 20)}</td>)}</tr>)}</tbody>
+                </table>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                {(['waybill', 'recipient', 'address'] as const).map((field) => (
+                  <div key={field} className="space-y-3">
+                    <label className="block text-sm font-semibold text-slate-900">{field === 'waybill' ? 'Номер накладной' : field === 'recipient' ? 'Имя получателя' : 'Адрес доставки'} *</label>
+                    <select value={mapping[field].column} onChange={(e) => setMapping({ ...mapping, [field]: { ...mapping[field], column: e.target.value } })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="number" min="1" value={mapping[field].startRow} onChange={(e) => setMapping({ ...mapping, [field]: { ...mapping[field], startRow: parseInt(e.target.value) } })} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="От строки" />
+                      <input type="number" min="1" value={mapping[field].endRow} onChange={(e) => setMapping({ ...mapping, [field]: { ...mapping[field], endRow: parseInt(e.target.value) } })} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="До строки" />
+                    </div>
+                  </div>
+                ))}
+                <div className="space-y-3">
+                  <label className="block text-sm font-semibold text-slate-900">Телефон</label>
+                  <select value={mapping.phone?.column || ''} onChange={(e) => setMapping({ ...mapping, phone: e.target.value ? { column: e.target.value, startRow: mapping.phone?.startRow || 2, endRow: mapping.phone?.endRow || 100 } : undefined })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"><option value="">Не использовать</option>{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="submit" disabled={loading} className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50">{loading ? 'Загрузка...' : 'Загрузить'}</button>
+                <button type="button" onClick={() => { setShowMappingForm(false); setSelectedFile(null); setFileData([]); }} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Отмена</button>
+              </div>
+            </form>
+          </div>
+        </div>, document.body)}
     </div>
   );
 }
