@@ -246,21 +246,25 @@ export async function addPointToSberbankList(listId: number, pointId: number): P
 
 // ─── Mails API ─────────────────────────────────────────────────────────────
 
+export type MailStatus = 'not_delivered' | 'delivered';
+
 export interface Mail {
   id: number;
   waybillNumber: string;
-  recipientName: string;
+  recipientName: string | null;
   recipientPhone?: string;
   deliveryAddress: string;
-  status: 'not_delivered' | 'delivered' | 'failed';
+  status: MailStatus;
   createdAt: string;
-  deliveredAt?: string;
-  recipientSignature?: string;
-  courierId?: number;
+  updatedAt?: string;
+  deliveredAt?: string | null;
+  recipientSignature?: string | null;
+  courierId?: number | null;
+  courierName?: string | null;
 }
 
 export async function getAllMails(filters?: {
-  status?: 'all' | 'not_delivered' | 'delivered' | 'failed';
+  status?: 'all' | MailStatus;
   dateFrom?: string;
   dateTo?: string;
 }): Promise<Mail[]> {
@@ -271,11 +275,11 @@ export async function getAllMails(filters?: {
   }, []));
 }
 
-export async function createMail(mail: Omit<Mail, 'id' | 'createdAt' | 'status' | 'deliveredAt' | 'courierId'>): Promise<Mail> {
+export async function createMail(mail: Omit<Mail, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'deliveredAt' | 'courierId' | 'courierName'>): Promise<Mail> {
   return await trpcPost('managerMails.create', mail as unknown as JsonRecord, {} as Mail);
 }
 
-export async function bulkCreateMails(mails: Array<Omit<Mail, 'id' | 'createdAt' | 'status' | 'deliveredAt' | 'courierId'>>): Promise<{ created: number; skipped: number; errors: string[] }> {
+export async function bulkCreateMails(mails: Array<Omit<Mail, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'deliveredAt' | 'courierId' | 'courierName'>>): Promise<{ created: number; skipped: number; errors: string[] }> {
   return await trpcPost('managerMails.bulkCreate', { mails }, { created: 0, skipped: 0, errors: [] });
 }
 
