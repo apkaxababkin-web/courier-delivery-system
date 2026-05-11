@@ -40,13 +40,22 @@ function trpcBatchJson(data: unknown) {
   return [trpcJson(data)];
 }
 
+function unwrapTrpcInput(item: any): Record<string, unknown> {
+  return (item?.json ?? item ?? {}) as Record<string, unknown>;
+}
+
 function inputFromBody(body: any): { input: Record<string, unknown>; isBatch: boolean } {
-  const firstBatchItem = body?.[0];
-  if (firstBatchItem) {
-    return { input: (firstBatchItem?.json ?? firstBatchItem ?? {}) as Record<string, unknown>, isBatch: true };
+  const firstArrayBatchItem = body?.[0];
+  if (firstArrayBatchItem) {
+    return { input: unwrapTrpcInput(firstArrayBatchItem), isBatch: true };
   }
 
-  return { input: (body?.json ?? body ?? {}) as Record<string, unknown>, isBatch: false };
+  const firstKeyedBatchItem = body?.["0"];
+  if (firstKeyedBatchItem) {
+    return { input: unwrapTrpcInput(firstKeyedBatchItem), isBatch: true };
+  }
+
+  return { input: unwrapTrpcInput(body), isBatch: false };
 }
 
 async function startServer() {
