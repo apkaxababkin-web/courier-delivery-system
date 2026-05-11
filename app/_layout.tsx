@@ -1,6 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
-import { Stack, Tabs } from "expo-router";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -107,7 +107,7 @@ export default function RootLayout() {
     if (Platform.OS !== "android") return;
 
     Notifications.setNotificationChannelAsync("default", {
-      name: "МИГ Курьер",
+      name: "МИГ Courier",
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#0A7EA4",
