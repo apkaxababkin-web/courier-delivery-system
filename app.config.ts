@@ -11,13 +11,13 @@ const bundleId =
     .replace(/^\.+|\.+$/g, "")
     .toLowerCase()
     .split(".")
-    .map((segment) => /^[a-zA-Z]/.test(segment) ? segment : "x" + segment)
+    .map((segment) => (/^[a-zA-Z]/.test(segment) ? segment : "x" + segment))
     .join(".") || "space.manus.app";
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
-  appName: "МИГ Курьер",
+  appName: "МИГ Courier",
   appSlug: "mig-courier",
   logoUrl: "",
   scheme: schemeFromBundleId,
@@ -34,6 +34,7 @@ const config: ExpoConfig = {
   scheme: env.scheme,
   userInterfaceStyle: "light",
   newArchEnabled: true,
+  description: "Courier Delivery System",
   ios: {
     supportsTablet: false,
     bundleIdentifier: env.iosBundleId,
@@ -43,7 +44,7 @@ const config: ExpoConfig = {
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#E6F4FE",
+      backgroundColor: "#EAF3FF",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -90,11 +91,11 @@ const config: ExpoConfig = {
       "expo-splash-screen",
       {
         image: "./assets/images/splash-icon.png",
-        imageWidth: 200,
+        imageWidth: 220,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#F5F9FF",
         dark: {
-          backgroundColor: "#000000",
+          backgroundColor: "#0F172A",
         },
       },
     ],
