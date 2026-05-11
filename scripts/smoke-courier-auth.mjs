@@ -25,8 +25,8 @@ const loginResponse = await fetch(`${baseUrl}/api/trpc/courierAuth.login`, {
   },
   body: JSON.stringify({
     json: {
-      username: process.env.SMOKE_COURIER_USERNAME || 'smoke-courier',
-      password: process.env.SMOKE_COURIER_PASSWORD || 'invalid-password',
+      username: process.env.SMOKE_COURIER_USERNAME || 'demo',
+      password: process.env.SMOKE_COURIER_PASSWORD || 'demo123',
     },
   }),
 });
