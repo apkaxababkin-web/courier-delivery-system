@@ -27,7 +27,7 @@ BEGIN
     ELSE 'regular'::task_type
   END;
 
-  mapped_package_type := COALESCE(NEW."packageType", 'small'::package_type);
+  mapped_package_type := COALESCE(NEW."packageType"::text, 'small')::package_type;
   mapped_recipient_name := COALESCE(NULLIF(NEW."recipientName", ''), NULLIF(NEW."recipientCompany", ''), NULLIF(NEW."description", ''), 'Получатель');
   mapped_delivery_address := COALESCE(NULLIF(NEW."deliveryAddress", ''), NULLIF(NEW."recipientAddress", ''), NULLIF(NEW."tcAddress", ''), NULLIF(NEW."senderAddress", ''), 'Адрес не указан');
 
@@ -191,7 +191,7 @@ SELECT
   COALESCE(NULLIF(r."deliveryAddress", ''), NULLIF(r."recipientAddress", ''), NULLIF(r."tcAddress", ''), NULLIF(r."senderAddress", ''), 'Адрес не указан'),
   COALESCE(r."deliveryCity", r."recipientCity"),
   COALESCE(r."packageDescription", r."description", r."callReason"),
-  COALESCE(r."packageType", 'small'::package_type),
+  COALESCE(r."packageType"::text, 'small')::package_type,
   r."specialInstructions",
   COALESCE(r."placesCount", 1),
   r."estimatedMinutes",
