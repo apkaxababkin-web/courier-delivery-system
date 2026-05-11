@@ -4,22 +4,37 @@ import { KeyRound, ShieldCheck, UserRound } from 'lucide-react';
 interface ManagerProfileViewProps {
   managerName: string;
   managerRole: string;
+  onNameChange?: (name: string) => void;
 }
 
 function getTrpcErrorMessage(payload: any, fallback: string) {
   return payload?.error?.message || payload?.error?.json?.message || fallback;
 }
 
-export default function ManagerProfileView({ managerName, managerRole }: ManagerProfileViewProps) {
+export default function ManagerProfileView({ managerName, managerRole, onNameChange }: ManagerProfileViewProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [repeatPassword, setRepeatPassword] = useState('');
+  const [displayName, setDisplayName] = useState(managerName || 'Менеджер');
   const [loading, setLoading] = useState(false);
+  const [savingName, setSavingName] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   const managerUsername = localStorage.getItem('managerUsername') || 'manager';
   const managerEmail = localStorage.getItem('managerEmail') || 'Не указан';
+
+  const handleNameSave = (event: React.FormEvent) => {
+    event.preventDefault();
+    const normalizedName = displayName.trim() || 'Менеджер';
+    setSavingName(true);
+    localStorage.setItem('managerName', normalizedName);
+    onNameChange?.(normalizedName);
+    setDisplayName(normalizedName);
+    setSavingName(false);
+    setSuccess('Имя профиля сохранено');
+    setError('');
+  };
 
   const handlePasswordChange = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -102,10 +117,23 @@ export default function ManagerProfileView({ managerName, managerRole }: Manager
           </div>
 
           <div className="space-y-4 text-sm">
-            <div>
-              <p className="text-slate-500">Имя</p>
-              <p className="mt-1 font-semibold text-slate-900">{managerName || 'Менеджер'}</p>
-            </div>
+            <form onSubmit={handleNameSave}>
+              <label className="block">
+                <span className="text-slate-500">Имя</span>
+                <input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={savingName}
+                className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {savingName ? 'Сохраняем...' : 'Сохранить имя'}
+              </button>
+            </form>
             <div>
               <p className="text-slate-500">Роль</p>
               <p className="mt-1 font-semibold text-slate-900">{managerRole || 'Менеджер'}</p>
