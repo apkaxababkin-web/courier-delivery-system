@@ -12,13 +12,15 @@ import type { Request, Client, StatusFilter, TaskFormData } from './model/types'
 import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
 
+const today = new Date().toISOString().split('T')[0];
+
 export default function TasksPage() {
   const realtime = useManagerRealtime(5000);
   const requests = (realtime.snapshot?.requests ?? []) as unknown as Request[];
+
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [selectedDate, setSelectedDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -27,28 +29,32 @@ export default function TasksPage() {
 
   useEffect(() => {
     let cancelled = false;
+
     getAllClients()
       .then((clientsData) => {
         if (!cancelled) setClients(clientsData);
       })
       .catch((error) => console.error('Failed to load clients:', error));
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const filteredRequests = getFilteredRequests(requests, selectedStatus, dateFrom, dateTo, searchQuery);
-  const stats = getStatistics(requests);
+  const filteredRequests = getFilteredRequests(requests, selectedStatus, selectedDate, searchQuery);
+  const stats = getStatistics(filteredRequests);
 
   const handleCreateTask = async (data: TaskFormData) => {
     try {
       setIsCreating(true);
+
       await createRequest({
         requestType: data.requestType || 'delivery',
         recipientName: data.recipientName || '',
         recipientPhone: data.recipientPhone || '',
         ...data,
       } as never);
+
       setShowCreateModal(false);
       await realtime.refresh(false);
     } catch (error) {
@@ -85,10 +91,8 @@ export default function TasksPage() {
       <TasksToolbar
         selectedStatus={selectedStatus}
         onStatusChange={setSelectedStatus}
-        dateFrom={dateFrom}
-        onDateFromChange={setDateFrom}
-        dateTo={dateTo}
-        onDateToChange={setDateTo}
+        selectedDate={selectedDate}
+        onDateChange={setSelectedDate}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onCreateClick={() => setShowCreateModal(true)}
@@ -96,7 +100,10 @@ export default function TasksPage() {
       />
 
       {filteredRequests.length === 0 && !realtime.isLoading ? (
-        <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
+        <EmptyState
+          onCreateClick={() => setShowCreateModal(true)}
+          onAiCreateClick={() => setShowAiModal(true)}
+        />
       ) : (
         <TasksTable requests={filteredRequests} isLoading={realtime.isLoading} />
       )}
