@@ -44,6 +44,13 @@ export default function TaskListScreen() {
     isRefetching: isRefetchingQuery,
   } = trpc.tasks.all.useQuery(token ? { token, date: selectedDate } : skipToken, {
     enabled: !!token,
+    refetchInterval: token && isOnline ? 5000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnMount: "always",
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   useMobileLiveSync({
