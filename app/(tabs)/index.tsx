@@ -27,6 +27,55 @@ import { type TaskStatus } from "@/shared/types";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useMemo, useState } from "react";
 
+type AnyTask = Record<string, any>;
+
+function getTaskDedupeKey(task: AnyTask): string {
+  const sourceRequestId = task.sourceRequestId ?? task.requestId ?? task.request?.id;
+  if (sourceRequestId) return `request:${sourceRequestId}`;
+
+  const marker = String(task.comments ?? "").match(/\[request:(\d+)\]/)?.[1];
+  if (marker) return `request:${marker}`;
+
+  const recipient = String(task.recipientName ?? "").trim().toLowerCase();
+  const address = String(task.deliveryAddress ?? task.recipientAddress ?? "").trim().toLowerCase();
+  const phone = String(task.recipientPhone ?? "").replace(/\D/g, "");
+  const packageText = String(task.packageDescription ?? task.description ?? "").trim().toLowerCase();
+  const createdDate = String(task.createdAt ?? "").slice(0, 10);
+
+  return `signature:${recipient}|${address}|${phone}|${packageText}|${createdDate}`;
+}
+
+function dedupeTasks<T extends AnyTask>(tasks: T[]): T[] {
+  const byKey = new Map<string, T>();
+
+  for (const task of tasks) {
+    const key = getTaskDedupeKey(task);
+    const existing = byKey.get(key);
+
+    if (!existing) {
+      byKey.set(key, task);
+      continue;
+    }
+
+    const existingHasRequestLink = Boolean(existing.sourceRequestId ?? existing.requestId ?? String(existing.comments ?? "").match(/\[request:(\d+)\]/));
+    const currentHasRequestLink = Boolean(task.sourceRequestId ?? task.requestId ?? String(task.comments ?? "").match(/\[request:(\d+)\]/));
+
+    if (!existingHasRequestLink && currentHasRequestLink) {
+      byKey.set(key, task);
+      continue;
+    }
+
+    const existingTime = new Date(existing.updatedAt ?? existing.createdAt ?? 0).getTime();
+    const currentTime = new Date(task.updatedAt ?? task.createdAt ?? 0).getTime();
+
+    if (currentTime > existingTime) {
+      byKey.set(key, task);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
 export default function TaskListScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -63,13 +112,14 @@ export default function TaskListScreen() {
     return selectedDate.toDateString() === today.toDateString();
   }, [selectedDate]);
 
+  const uniqueTasksData = useMemo(() => dedupeTasks(tasksData ?? []), [tasksData]);
+
   const filteredTasks = useMemo(() => {
-    if (!tasksData) return [];
     if (filterMode === "mine") {
-      return tasksData.filter((task) => task.courierName === courier?.name);
+      return uniqueTasksData.filter((task) => task.courierName === courier?.name);
     }
-    return tasksData;
-  }, [tasksData, filterMode, courier?.name]);
+    return uniqueTasksData;
+  }, [uniqueTasksData, filterMode, courier?.name]);
 
   const sortedTasks = useMemo(
     () =>
@@ -82,9 +132,9 @@ export default function TaskListScreen() {
   );
 
   const myTasksCount = useMemo(() => {
-    if (!tasksData || !courier?.name) return 0;
-    return tasksData.filter((task) => task.courierName === courier.name).length;
-  }, [tasksData, courier?.name]);
+    if (!courier?.name) return 0;
+    return uniqueTasksData.filter((task) => task.courierName === courier.name).length;
+  }, [uniqueTasksData, courier?.name]);
 
   useFocusEffect(
     useCallback(() => {
