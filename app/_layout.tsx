@@ -1,5 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
+import Constants from "expo-constants";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -76,6 +77,53 @@ function SessionValidator() {
   return null;
 }
 
+function CourierPushTokenRegistrar() {
+  const { token, isAuthenticated, loading } = useCourierAuth();
+  const registerPushToken = trpc.couriers.registerPushToken.useMutation();
+  const [registeredForToken, setRegisteredForToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (!token || !isAuthenticated || loading) return;
+    if (registeredForToken === token) return;
+
+    let cancelled = false;
+
+    const register = async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== "granted") return;
+
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ??
+          Constants.easConfig?.projectId;
+
+        if (!projectId) {
+          console.log("[Push] Push token skipped: no EAS projectId configured");
+          return;
+        }
+
+        const expoPushToken = await Notifications.getExpoPushTokenAsync({ projectId });
+        if (cancelled || !expoPushToken.data) return;
+
+        await registerPushToken.mutateAsync({ token, pushToken: expoPushToken.data });
+        setRegisteredForToken(token);
+        console.log("[Push] Courier push token registered");
+      } catch (error) {
+        console.warn("[Push] Failed to register courier push token", error);
+      }
+    };
+
+    register();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, loading, registerPushToken, registeredForToken, token]);
+
+  return null;
+}
+
 export const unstable_settings = {
   anchor: "(tabs)",
 };
@@ -147,32 +195,6 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === "web") return;
 
-    const registerPushToken = async () => {
-      try {
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== "granted") return;
-
-        const projectId =
-          (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
-          undefined;
-        if (!projectId) {
-          console.log("[App] Push token skipped: no projectId configured");
-          return;
-        }
-
-        const token = await Notifications.getExpoPushTokenAsync({ projectId });
-        console.log("[App] Expo Push Token:", token.data);
-      } catch (error) {
-        console.warn("[App] Failed to get push token:", error);
-      }
-    };
-
-    registerPushToken();
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
       console.log("[App] Push notification tapped:", data);
@@ -206,6 +228,7 @@ export default function RootLayout() {
               <CourierAuthProvider>
                 <SessionValidator />
                 <AuthRedirect />
+                <CourierPushTokenRegistrar />
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="login" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
