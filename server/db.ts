@@ -1,7 +1,7 @@
 // Removed mysql2 - now using postgres driver
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, lt, inArray, desc, sql, conflict } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   couriers,
@@ -184,10 +184,10 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-    await db.insert(users).values(values).onConflictDoUpdate({
-      target: users.openId,
-      set: updateSet as Partial<InsertUser>,
-    });
+    await db.insert(users).values(values).onConflict((t) => ({
+      target: t.openId,
+      do: db.update(users).set(updateSet),
+    }));
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -1379,11 +1379,22 @@ export async function addPointToSberbankList(listId: number, pointId: number): P
 export async function createRequest(data: InsertRequest): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  const {
+    id,
+    createdAt,
+    updatedAt,
+    acceptedAt,
+    completedAt,
+    ...cleanData
+  } = data as any;
+
   const result = await db.insert(requests).values({
-    ...data,
-    createdByUserId: data.createdByUserId || 1, // Default to admin user
+    ...cleanData,
+    createdByUserId: data.createdByUserId || 1,
     status: "pending",
   }).returning({ id: requests.id });
+
   return result[0].id as number;
 }
 

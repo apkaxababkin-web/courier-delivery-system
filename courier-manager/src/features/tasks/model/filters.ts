@@ -3,50 +3,38 @@ import type { Request, StatusFilter } from './types';
 export function getFilteredRequests(
   requests: Request[],
   status: StatusFilter,
-  selectedDate: string,
+  dateFrom: string,
+  dateTo: string,
   searchQuery: string
 ): Request[] {
-  const query = searchQuery.trim().toLowerCase();
-
-  return requests.filter((request) => {
+  return requests.filter(request => {
+    // Filter by status
     if (status !== 'all' && request.status !== status) {
       return false;
     }
 
-    if (selectedDate) {
-      const requestDate = request.createdAt ? request.createdAt.slice(0, 10) : '';
-      if (requestDate !== selectedDate) return false;
+    // Filter by date range
+    if (dateFrom || dateTo) {
+      const requestDate = new Date(request.createdAt).getTime();
+      if (dateFrom) {
+        const fromDate = new Date(dateFrom).getTime();
+        if (requestDate < fromDate) return false;
+      }
+      if (dateTo) {
+        const toDate = new Date(dateTo).getTime();
+        if (requestDate > toDate) return false;
+      }
     }
 
-    if (query) {
-      const searchable = [
-        request.id,
-        request.recipientName,
-        request.recipientPhone,
-        request.recipientAddress,
-        request.recipientCompany,
-        request.recipientCity,
-        request.deliveryAddress,
-        request.deliveryCity,
-        request.senderName,
-        request.senderPhone,
-        request.senderAddress,
-        request.senderCompany,
-        request.senderCity,
-        request.packageDescription,
-        request.specialInstructions,
-        request.comments,
-        request.description,
-        request.tcName,
-        request.tcAddress,
-        request.trackingNumber,
-        request.items,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return searchable.includes(query);
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      return (
+        request.recipientName?.toLowerCase().includes(query) ||
+        request.deliveryAddress?.toLowerCase().includes(query) ||
+        request.senderName?.toLowerCase().includes(query) ||
+        request.senderAddress?.toLowerCase().includes(query)
+      );
     }
 
     return true;

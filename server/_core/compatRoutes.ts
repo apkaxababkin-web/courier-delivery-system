@@ -279,6 +279,63 @@ async function courierIdFromReq(req: Request): Promise<number | null> {
 }
 
 export function registerCompatRoutes(app: Express) {
+  app.get("/api/manager/couriers", async (_req, res) => {
+    try {
+      res.json(await db.getAllCouriers());
+    } catch (error) {
+      sendError(res, error, "Failed to load manager couriers");
+    }
+  });
+
+  app.post("/api/manager/couriers", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const name = String(input.name || "").trim();
+      const username = String(input.username || "").trim().toLowerCase();
+      const password = String(input.password || "");
+      const phone = input.phone ? String(input.phone).trim() : null;
+      const vehicleType = String(input.vehicleType || "car");
+
+      if (!name || !username || !password) {
+        res.status(400).json({ error: "Укажите имя, логин и пароль курьера" });
+        return;
+      }
+
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.default.hash(password, 10);
+
+      const id = await db.createCourier({
+        name,
+        username,
+        passwordHash,
+        phone,
+        vehicleType: vehicleType as any,
+        isActive: true,
+        totalDeliveries: 0,
+      } as any);
+
+      const courier = await db.getCourierById(id);
+      res.json(courier);
+    } catch (error) {
+      sendError(res, error, "Failed to create manager courier");
+    }
+  });
+
+  app.delete("/api/manager/couriers/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) {
+        res.status(400).json({ error: "Некорректный ID курьера" });
+        return;
+      }
+
+      await db.updateCourier(id, { isActive: false } as any);
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to deactivate manager courier");
+    }
+  });
+
   app.get("/api/realtime/manager", async (_req, res) => {
     try { res.json(await managerSnapshot()); } catch (error) { sendError(res, error, "Failed to load manager realtime snapshot"); }
   });

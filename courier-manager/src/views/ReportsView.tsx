@@ -1,75 +1,157 @@
-import { BarChart3, CheckCircle2, Mail, Package, RefreshCcw, Truck } from 'lucide-react';
-import { useManagerRealtime } from '../lib/useManagerRealtime';
-import { RealtimeStatusCard } from '../components/RealtimeStatusCard';
+import { BarChart3, Clock3, Download, FileSpreadsheet, PackageCheck, TrendingUp } from 'lucide-react';
 
-function pct(part: number, total: number) {
-  return total ? Math.round((part / total) * 100) : 0;
-}
+const metrics = [
+  {
+    label: 'Заявок за неделю',
+    value: '128',
+    description: 'Всего создано заявок',
+    icon: FileSpreadsheet,
+  },
+  {
+    label: 'Выполнено вовремя',
+    value: '94%',
+    description: 'SLA по доставкам',
+    icon: PackageCheck,
+  },
+  {
+    label: 'Среднее время',
+    value: '31 мин',
+    description: 'От создания до завершения',
+    icon: Clock3,
+  },
+  {
+    label: 'Рост нагрузки',
+    value: '+12%',
+    description: 'К прошлой неделе',
+    icon: TrendingUp,
+  },
+];
 
-function StatCard({ title, value, hint, icon: Icon }: { title: string; value: number | string; hint: string; icon: any }) {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p className="mt-2 text-3xl font-bold text-slate-900">{value}</p>
-        </div>
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-          <Icon size={24} />
-        </div>
-      </div>
-      <p className="mt-3 text-sm text-slate-500">{hint}</p>
-    </div>
-  );
-}
+const reportRows = [
+  { name: 'Ежедневный отчёт по заявкам', type: 'Excel', period: 'Сегодня', status: 'Готов' },
+  { name: 'Курьерская загрузка', type: 'Excel', period: 'Неделя', status: 'Готов' },
+  { name: 'Клиентская активность', type: 'Excel', period: 'Месяц', status: 'В разработке' },
+];
 
 export default function ReportsView() {
-  const realtime = useManagerRealtime(5000);
-  const tasks = realtime.snapshot?.tasks ?? [];
-  const requests = realtime.snapshot?.requests ?? [];
-  const mails = realtime.snapshot?.mails ?? [];
-  const completedTasks = tasks.filter((task) => task.status === 'completed').length;
-  const activeTasks = tasks.filter((task) => task.status === 'assigned' || task.status === 'in_progress').length;
-  const completedRequests = requests.filter((request) => request.status === 'completed').length;
-  const pendingRequests = requests.filter((request) => request.status === 'pending' || request.status === 'assigned').length;
-  const deliveredMails = mails.filter((mail) => mail.status === 'delivered').length;
-  const notDeliveredMails = mails.filter((mail) => mail.status === 'not_delivered').length;
-
   return (
-    <div className="space-y-6 p-6">
-      <RealtimeStatusCard isRefreshing={realtime.isRefreshing} error={realtime.error} lastSyncAt={realtime.lastSyncAt} onRefresh={() => realtime.refresh(true)} />
-
-      <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-8 text-white shadow-sm">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-sm text-slate-200"><BarChart3 size={16} />Realtime analytics</div>
-            <h2 className="mt-4 text-3xl font-bold">Отчёты по доставкам</h2>
-            <p className="mt-2 max-w-2xl text-slate-300">Показатели строятся по реальным данным realtime snapshot: заявки, задачи, письма и статусы доставки.</p>
-          </div>
-          <button onClick={() => realtime.refresh(true)} className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100">
-            <RefreshCcw size={16} className={realtime.isRefreshing ? 'animate-spin' : ''} />Обновить
-          </button>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Отчёты</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Операционная аналитика, выгрузки и контроль показателей доставки.
+          </p>
         </div>
+
+        <button className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 transition hover:opacity-95">
+          <Download className="h-4 w-4" />
+          Скачать отчёт
+        </button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Всего задач" value={tasks.length} hint={`${completedTasks} завершено, ${activeTasks} активно`} icon={Package} />
-        <StatCard title="Всего заявок" value={requests.length} hint={`${completedRequests} завершено, ${pendingRequests} ожидают`} icon={Truck} />
-        <StatCard title="Писем в системе" value={mails.length} hint={`${deliveredMails} доставлено, ${notDeliveredMails} не доставлено`} icon={Mail} />
-        <StatCard title="Completion rate" value={`${pct(completedTasks, tasks.length)}%`} hint="По завершённым задачам" icon={CheckCircle2} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => {
+          const Icon = metric.icon;
+
+          return (
+            <div key={metric.label} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">{metric.label}</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+                    {metric.value}
+                  </p>
+                </div>
+
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500">
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs text-slate-500">{metric.description}</p>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Сводка по заявкам</h3>
-          <div className="mt-5 space-y-3">
-            {['pending', 'assigned', 'in_progress', 'completed', 'cancelled'].map((status) => <div key={status} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><span className="text-sm font-medium text-slate-600">{status}</span><span className="text-sm font-bold text-slate-900">{requests.filter((request) => request.status === status).length}</span></div>)}
+      <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">Доступные отчёты</h2>
+              <p className="mt-1 text-xs text-slate-500">Выгрузки для контроля заявок, клиентов и курьеров.</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-semibold">Отчёт</th>
+                  <th className="px-5 py-3 font-semibold">Тип</th>
+                  <th className="px-5 py-3 font-semibold">Период</th>
+                  <th className="px-5 py-3 font-semibold">Статус</th>
+                  <th className="px-5 py-3 text-right font-semibold">Действие</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {reportRows.map((row) => (
+                  <tr key={row.name} className="hover:bg-slate-50/80">
+                    <td className="px-5 py-4 font-medium text-slate-950">{row.name}</td>
+                    <td className="px-5 py-4 text-slate-600">{row.type}</td>
+                    <td className="px-5 py-4 text-slate-600">{row.period}</td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
+                          row.status === 'Готов'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-amber-200 bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950">
+                        Скачать
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Сводка по письмам</h3>
+
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
+              <BarChart3 className="h-5 w-5" />
+            </div>
+
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">Сводка по операциям</h2>
+              <p className="mt-1 text-xs text-slate-500">Ключевые сигналы за текущий период.</p>
+            </div>
+          </div>
+
           <div className="mt-5 space-y-3">
-            {['not_delivered', 'delivered', 'failed'].map((status) => <div key={status} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><span className="text-sm font-medium text-slate-600">{status}</span><span className="text-sm font-bold text-slate-900">{mails.filter((mail) => mail.status === status).length}</span></div>)}
+            {[
+              ['Новые заявки', '7', 'Нужно обработать сегодня'],
+              ['Проблемные доставки', '2', 'Требуют внимания менеджера'],
+              ['Свободные курьеры', '5', 'Можно назначить на новые заявки'],
+            ].map(([label, value, description]) => (
+              <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-slate-950">{label}</p>
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+                    {value}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{description}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

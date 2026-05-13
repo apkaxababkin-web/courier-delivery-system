@@ -131,5 +131,6 @@
     "overrides": {
       "mysql2": "null"
     }
-  }
+  },
+  "type": "module"
 }

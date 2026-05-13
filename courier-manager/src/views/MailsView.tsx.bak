@@ -183,21 +183,22 @@ export default function MailsView() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <Stat label="Всего" value={stats.total} /><Stat label="Доставлено" value={stats.delivered} /><Stat label="В работе" value={stats.notDelivered} /><Stat label="Проблемы" value={stats.failed} />
       </div>
 
       <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="grid flex-1 gap-3 md:grid-cols-3">
+          <div className="grid flex-1 gap-3 md:grid-cols-4">
             <FieldShell label="Статус"><select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as MailStatus)} className={inputClass}><option value="all">Все статусы</option><option value="delivered">Доставлено</option><option value="not_delivered">В работе</option><option value="failed">Проблема</option></select></FieldShell>
-            <FieldShell label="Дата"><input type="date" value={dateRange.from} onChange={(e) => setDateRange({ from: e.target.value, to: e.target.value })} className={inputClass} /></FieldShell>
+            <FieldShell label="С даты"><input type="date" value={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} className={inputClass} /></FieldShell>
+            <FieldShell label="По дату"><input type="date" value={dateRange.to} onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} className={inputClass} /></FieldShell>
             <FieldShell label="Поиск"><input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Накладная, адрес, получатель" className={inputClass} /></FieldShell>
           </div>
           <div className="flex flex-wrap gap-2"><button type="button" onClick={loadMails} disabled={loading} className={secondaryButtonClass}><Filter size={16} />{loading ? 'Обновление...' : 'Применить'}</button><button type="button" onClick={handleExportReport} className={secondaryButtonClass}><Download size={16} />Экспорт</button></div>
         </div>
 
-        {activeTab === 'upload' && <div className="p-4"><MailsTable mails={filteredMails.slice(0, 30)} loading={loading} compactTitle="Операционная очередь" /></div>}
+        {activeTab === 'upload' && <div className="grid gap-4 p-4 lg:grid-cols-[320px_minmax(0,1fr)]"><UploadPanel selectedFile={selectedFile} onFileSelect={handleFileSelect} /><MailsTable mails={filteredMails.slice(0, 30)} loading={loading} compactTitle="Операционная очередь" /></div>}
         {activeTab === 'reports' && <div className="p-4"><MailsTable mails={filteredMails} loading={loading} compactTitle="Отчёты доставки" showReportColumns /></div>}
       </div>
 

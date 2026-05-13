@@ -1,9 +1,20 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Edit2, Trash2, X, Download, ChevronRight } from 'lucide-react';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  X,
+  Download,
+  ChevronRight,
+  Search,
+  Building2,
+  Loader2,
+  ArrowLeft,
+  MapPin,
+  Store,
+} from 'lucide-react';
 import * as api from '../lib/api';
-import { useManagerRealtime } from '../lib/useManagerRealtime';
-import { RealtimeStatusCard } from '../components/RealtimeStatusCard';
 
 interface Client {
   id: number;
@@ -24,70 +35,112 @@ interface FormData {
   email: string;
 }
 
-interface ClientRequest {
+interface ClientPoint {
+  id: string;
+  name: string;
+  address: string;
+  contactPerson?: string;
+  phone?: string;
+  isPrimary?: boolean;
+}
+
+interface PointFormData {
+  name: string;
+  address: string;
+  contactPerson: string;
+  phone: string;
+}
+
+interface Task {
   id: number;
-  clientId?: number;
-  recipientName?: string;
-  deliveryAddress?: string;
-  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'failed';
+  clientId: number;
+  recipientName: string;
+  deliveryAddress: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
   createdAt: string;
   completedAt?: string;
 }
 
-const EXPORT_FIELDS = [
-  { id: 'id', name: 'ID заявки' },
-  { id: 'recipientName', name: 'Получатель' },
-  { id: 'deliveryAddress', name: 'Адрес доставки' },
-  { id: 'status', name: 'Статус' },
-  { id: 'createdAt', name: 'Дата создания' },
-  { id: 'completedAt', name: 'Дата завершения' },
-];
-
-function csvCell(value: unknown) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+interface ExportField {
+  id: string;
+  name: string;
+  selected: boolean;
+  order: number;
 }
 
-function exportClientCsv(client: Client, rows: ClientRequest[], selectedFields: string[]) {
-  const fields = EXPORT_FIELDS.filter((field) => selectedFields.includes(field.id));
-  const header = fields.map((field) => csvCell(field.name)).join(',');
-  const body = rows.map((row) => fields.map((field) => csvCell((row as any)[field.id])).join(',')).join('\n');
-  const csv = [header, body].filter(Boolean).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `client_${client.id}_${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+const taskStatusClass: Record<Task['status'], string> = {
+  completed: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+  failed: 'border border-red-200 bg-red-50 text-red-700',
+  in_progress: 'border border-blue-200 bg-blue-50 text-blue-700',
+  pending: 'border border-slate-200 bg-slate-100 text-slate-600',
+};
+
+const taskStatusLabel: Record<Task['status'], string> = {
+  completed: 'Завершено',
+  failed: 'Ошибка',
+  in_progress: 'В процессе',
+  pending: 'Ожидание',
+};
+
+const emptyPointForm: PointFormData = {
+  name: '',
+  address: '',
+  contactPerson: '',
+  phone: '',
+};
+
+function getClientPointsKey(clientId: number) {
+  return `client-points:${clientId}`;
+}
+
+function getPrimaryPoint(client: Client): ClientPoint {
+  return {
+    id: 'primary',
+    name: 'Основная точка',
+    address: client.address,
+    contactPerson: client.contactPerson,
+    phone: client.phone,
+    isPrimary: true,
+  };
 }
 
 export default function ClientsView() {
-  const realtime = useManagerRealtime(5000);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [clientTasks, setClientTasks] = useState<Task[]>([]);
+  const [clientPoints, setClientPoints] = useState<ClientPoint[]>([]);
+  const [showPointForm, setShowPointForm] = useState(false);
+  const [pointFormData, setPointFormData] = useState<PointFormData>(emptyPointForm);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showExportForm, setShowExportForm] = useState(false);
-  const [selectedExportFields, setSelectedExportFields] = useState<string[]>(EXPORT_FIELDS.slice(0, 5).map((field) => field.id));
-  const [formData, setFormData] = useState<FormData>({ name: '', address: '', contactPerson: '', phone: '', email: '' });
+  const [exportFields, setExportFields] = useState<ExportField[]>([
+    { id: 'id', name: 'ID заявки', selected: true, order: 1 },
+    { id: 'recipientName', name: 'Получатель', selected: true, order: 2 },
+    { id: 'deliveryAddress', name: 'Адрес доставки', selected: true, order: 3 },
+    { id: 'status', name: 'Статус', selected: true, order: 4 },
+    { id: 'createdAt', name: 'Дата создания', selected: true, order: 5 },
+    { id: 'completedAt', name: 'Дата завершения', selected: false, order: 6 },
+  ]);
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    address: '',
+    contactPerson: '',
+    phone: '',
+    email: '',
+  });
 
   useEffect(() => {
     loadClients();
   }, []);
 
-  const requests = (realtime.snapshot?.requests ?? []) as ClientRequest[];
-  const clientRequests = useMemo(() => {
-    if (!selectedClient) return [];
-    return requests.filter((request) => request.clientId === selectedClient.id);
-  }, [requests, selectedClient]);
-
   const loadClients = async () => {
     try {
       setLoading(true);
-      setClients(await api.getAllClients());
+      const data = await api.getAllClients();
+      setClients(data);
     } catch (error) {
       console.error('Error loading clients:', error);
       alert('Ошибка при загрузке клиентов');
@@ -96,17 +149,47 @@ export default function ClientsView() {
     }
   };
 
+  const loadClientTasks = async (_clientId: number) => {
+    try {
+      setClientTasks([]);
+    } catch (error) {
+      console.error('Error loading tasks:', error);
+    }
+  };
+
+  const loadClientPoints = (client: Client) => {
+    try {
+      const saved = localStorage.getItem(getClientPointsKey(client.id));
+      const additionalPoints = saved ? (JSON.parse(saved) as ClientPoint[]) : [];
+      setClientPoints([getPrimaryPoint(client), ...additionalPoints.filter((point) => !point.isPrimary)]);
+    } catch (error) {
+      console.error('Error loading client points:', error);
+      setClientPoints([getPrimaryPoint(client)]);
+    }
+  };
+
+  const saveClientPoints = (clientId: number, points: ClientPoint[]) => {
+    const additionalPoints = points.filter((point) => !point.isPrimary);
+    localStorage.setItem(getClientPointsKey(clientId), JSON.stringify(additionalPoints));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!formData.name.trim() || !formData.address.trim()) {
       alert('Название и адрес обязательны');
       return;
     }
+
     try {
-      if (editingId) await api.updateClient(editingId, formData);
-      else await api.createClient(formData);
+      if (editingId) {
+        await api.updateClient(editingId, formData);
+      } else {
+        await api.createClient(formData);
+      }
+
       resetForm();
-      await loadClients();
+      loadClients();
     } catch (error) {
       console.error('Error saving client:', error);
       alert('Ошибка при сохранении клиента');
@@ -114,94 +197,481 @@ export default function ClientsView() {
   };
 
   const handleEdit = (client: Client) => {
-    setFormData({ name: client.name, address: client.address, contactPerson: client.contactPerson || '', phone: client.phone || '', email: client.email || '' });
+    setFormData({
+      name: client.name,
+      address: client.address,
+      contactPerson: client.contactPerson || '',
+      phone: client.phone || '',
+      email: client.email || '',
+    });
     setEditingId(client.id);
     setShowForm(true);
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('Вы уверены что хотите удалить этого клиента?')) return;
+
     try {
       await api.deleteClient(id);
-      await loadClients();
+      localStorage.removeItem(getClientPointsKey(id));
+      if (selectedClient?.id === id) setSelectedClient(null);
+      loadClients();
     } catch (error) {
       console.error('Error deleting client:', error);
       alert('Ошибка при удалении клиента');
     }
   };
 
-  const handleExport = () => {
+  const handleViewClient = (client: Client) => {
+    setSelectedClient(client);
+    loadClientTasks(client.id);
+    loadClientPoints(client);
+  };
+
+  const handleAddPoint = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!selectedClient) return;
-    exportClientCsv(selectedClient, clientRequests, selectedExportFields);
-    setShowExportForm(false);
+
+    if (!pointFormData.name.trim() || !pointFormData.address.trim()) {
+      alert('Название точки и адрес обязательны');
+      return;
+    }
+
+    const nextPoints = [
+      ...clientPoints,
+      {
+        id: `${Date.now()}`,
+        name: pointFormData.name.trim(),
+        address: pointFormData.address.trim(),
+        contactPerson: pointFormData.contactPerson.trim() || undefined,
+        phone: pointFormData.phone.trim() || undefined,
+      },
+    ];
+
+    setClientPoints(nextPoints);
+    saveClientPoints(selectedClient.id, nextPoints);
+    setPointFormData(emptyPointForm);
+    setShowPointForm(false);
+  };
+
+  const handleDeletePoint = (pointId: string) => {
+    if (!selectedClient) return;
+    const point = clientPoints.find((item) => item.id === pointId);
+    if (!point || point.isPrimary) return;
+    if (!confirm('Удалить эту точку клиента?')) return;
+
+    const nextPoints = clientPoints.filter((item) => item.id !== pointId);
+    setClientPoints(nextPoints);
+    saveClientPoints(selectedClient.id, nextPoints);
+  };
+
+  const handleExport = async () => {
+    if (!selectedClient) return;
+
+    try {
+      alert('Отчёт будет загружен (функция в разработке)');
+    } catch (error) {
+      console.error('Error exporting report:', error);
+      alert('Ошибка при экспорте отчёта');
+    }
   };
 
   const toggleField = (fieldId: string) => {
-    setSelectedExportFields((prev) => prev.includes(fieldId) ? prev.filter((id) => id !== fieldId) : [...prev, fieldId]);
+    setExportFields((prev) =>
+      prev.map((f) => (f.id === fieldId ? { ...f, selected: !f.selected } : f))
+    );
   };
 
   const resetForm = () => {
-    setFormData({ name: '', address: '', contactPerson: '', phone: '', email: '' });
+    setFormData({
+      name: '',
+      address: '',
+      contactPerson: '',
+      phone: '',
+      email: '',
+    });
     setEditingId(null);
     setShowForm(false);
   };
 
+  const filteredClients = clients.filter((client) => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
+
+    return [client.name, client.address, client.phone, client.contactPerson, client.email]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+
   if (selectedClient) {
     const stats = {
-      total: clientRequests.length,
-      completed: clientRequests.filter((request) => request.status === 'completed').length,
-      inProgress: clientRequests.filter((request) => request.status === 'in_progress').length,
-      failed: clientRequests.filter((request) => request.status === 'failed' || request.status === 'cancelled').length,
+      total: clientTasks.length,
+      completed: clientTasks.filter((t) => t.status === 'completed').length,
+      inProgress: clientTasks.filter((t) => t.status === 'in_progress').length,
+      failed: clientTasks.filter((t) => t.status === 'failed').length,
     };
 
     return (
-      <div className="space-y-6 p-8">
-        <RealtimeStatusCard isRefreshing={realtime.isRefreshing} error={realtime.error} lastSyncAt={realtime.lastSyncAt} onRefresh={() => realtime.refresh(true)} />
+      <div className="space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4">
+            <button
+              onClick={() => setSelectedClient(null)}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
 
-        <div className="flex items-center gap-4">
-          <button onClick={() => setSelectedClient(null)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">← Назад</button>
-          <div className="flex-1">
-            <h2 className="text-3xl font-bold text-gray-900">{selectedClient.name}</h2>
-            <p className="text-gray-600 mt-1">{selectedClient.address}</p>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{selectedClient.name}</h1>
+              <p className="mt-1 text-sm text-slate-500">Клиентская карточка, точки и история заявок.</p>
+            </div>
           </div>
-          <button onClick={() => setShowExportForm(true)} className="flex items-center gap-2 rounded-2xl bg-green-600 px-4 py-2 font-semibold text-white transition hover:bg-green-700"><Download size={20} />Экспортировать</button>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={() => setShowPointForm(true)}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить точку
+            </button>
+
+            <button
+              onClick={() => setShowExportForm(true)}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 transition hover:opacity-95"
+            >
+              <Download className="h-4 w-4" />
+              Экспортировать
+            </button>
+          </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-sm font-medium text-gray-600">Всего заявок</div><div className="mt-2 text-3xl font-bold text-gray-900">{stats.total}</div></div>
-          <div className="rounded-3xl border border-blue-200 bg-blue-50 p-4 shadow-sm"><div className="text-sm font-medium text-blue-700">В процессе</div><div className="mt-2 text-3xl font-bold text-blue-600">{stats.inProgress}</div></div>
-          <div className="rounded-3xl border border-green-200 bg-green-50 p-4 shadow-sm"><div className="text-sm font-medium text-green-700">Завершено</div><div className="mt-2 text-3xl font-bold text-green-600">{stats.completed}</div></div>
-          <div className="rounded-3xl border border-red-200 bg-red-50 p-4 shadow-sm"><div className="text-sm font-medium text-red-700">Ошибки/отмена</div><div className="mt-2 text-3xl font-bold text-red-600">{stats.failed}</div></div>
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="text-sm font-semibold text-slate-950">Основная информация</h2>
+              <p className="mt-1 text-xs text-slate-500">Базовая карточка клиента.</p>
+            </div>
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              <InfoItem label="Основной адрес" value={selectedClient.address} icon={<MapPin className="h-4 w-4" />} className="sm:col-span-2" />
+              <InfoItem label="Контактное лицо" value={selectedClient.contactPerson || '—'} />
+              <InfoItem label="Телефон" value={selectedClient.phone || '—'} />
+              <InfoItem label="Email" value={selectedClient.email || '—'} className="sm:col-span-2" />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            {[
+              ['Всего заявок', stats.total, 'border-slate-200 bg-white text-slate-950'],
+              ['В процессе', stats.inProgress, 'border-blue-200 bg-blue-50 text-blue-700'],
+              ['Завершено', stats.completed, 'border-emerald-200 bg-emerald-50 text-emerald-700'],
+              ['Ошибки', stats.failed, 'border-red-200 bg-red-50 text-red-700'],
+            ].map(([label, value, className]) => (
+              <div key={label} className={`rounded-[22px] border p-4 shadow-sm ${className}`}>
+                <p className="text-xs font-medium opacity-75">{label}</p>
+                <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 p-4"><h3 className="font-semibold text-gray-900">Заявки клиента</h3></div>
-          {clientRequests.length === 0 ? <div className="p-8 text-center text-gray-500">Нет заявок для этого клиента</div> : (
-            <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b border-gray-200"><tr><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">ID</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Получатель</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Адрес</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Статус</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Дата создания</th></tr></thead><tbody className="divide-y divide-gray-200">{clientRequests.map((request) => <tr key={request.id} className="hover:bg-gray-50"><td className="px-6 py-4 text-sm font-medium text-gray-900">#{request.id}</td><td className="px-6 py-4 text-sm text-gray-600">{request.recipientName || '-'}</td><td className="px-6 py-4 text-sm text-gray-600">{request.deliveryAddress || '-'}</td><td className="px-6 py-4"><span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{request.status}</span></td><td className="px-6 py-4 text-sm text-gray-600">{new Date(request.createdAt).toLocaleDateString('ru-RU')}</td></tr>)}</tbody></table></div>
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">Точки и магазины клиента</h2>
+              <p className="mt-1 text-xs text-slate-500">У одного клиента может быть несколько адресов, магазинов или точек забора.</p>
+            </div>
+            <button
+              onClick={() => setShowPointForm(true)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-medium text-white shadow-sm hover:opacity-95"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить магазин
+            </button>
+          </div>
+
+          <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
+            {clientPoints.map((point) => (
+              <div key={point.id} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                      <Store className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">{point.name}</p>
+                      {point.isPrimary && <p className="text-xs text-slate-500">Основная точка клиента</p>}
+                    </div>
+                  </div>
+
+                  {!point.isPrimary && (
+                    <button
+                      onClick={() => handleDeletePoint(point.id)}
+                      className="rounded-xl border border-red-200 bg-white p-2 text-red-600 shadow-sm hover:bg-red-50"
+                      title="Удалить точку"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-sm text-slate-700">{point.address}</p>
+                {(point.contactPerson || point.phone) && (
+                  <div className="mt-3 space-y-1 text-xs text-slate-500">
+                    {point.contactPerson && <p>Контакт: {point.contactPerson}</p>}
+                    {point.phone && <p>Телефон: {point.phone}</p>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <h2 className="text-sm font-semibold text-slate-950">Заявки клиента</h2>
+            <p className="mt-1 text-xs text-slate-500">История и статусы заявок по выбранному клиенту.</p>
+          </div>
+
+          {clientTasks.length === 0 ? (
+            <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-slate-500">
+              <Building2 className="mb-3 h-8 w-8 text-slate-300" />
+              <p className="text-sm font-medium text-slate-950">Нет заявок для этого клиента</p>
+              <p className="mt-1 text-sm text-slate-500">Когда появятся заявки, они будут отображаться здесь.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold">ID</th>
+                    <th className="px-5 py-3 font-semibold">Получатель</th>
+                    <th className="px-5 py-3 font-semibold">Адрес</th>
+                    <th className="px-5 py-3 font-semibold">Статус</th>
+                    <th className="px-5 py-3 font-semibold">Дата создания</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {clientTasks.map((task) => (
+                    <tr key={task.id} className="hover:bg-slate-50">
+                      <td className="px-5 py-4 font-semibold text-slate-950">#{task.id}</td>
+                      <td className="px-5 py-4 text-slate-700">{task.recipientName}</td>
+                      <td className="px-5 py-4 text-slate-600">{task.deliveryAddress}</td>
+                      <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${taskStatusClass[task.status]}`}>{taskStatusLabel[task.status]}</span></td>
+                      <td className="px-5 py-4 text-slate-500">{new Date(task.createdAt).toLocaleDateString('ru-RU')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
-        {showExportForm && createPortal(<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}><div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg"><div className="mb-4 flex items-center justify-between"><h3 className="text-xl font-bold text-gray-900">Поля экспорта</h3><button onClick={() => setShowExportForm(false)} className="rounded-xl p-2 hover:bg-gray-100"><X size={20} /></button></div><div className="mb-6 max-h-96 space-y-3 overflow-y-auto">{EXPORT_FIELDS.map((field) => <label key={field.id} className="flex cursor-pointer items-center gap-3 rounded-lg p-2 hover:bg-gray-50"><input type="checkbox" checked={selectedExportFields.includes(field.id)} onChange={() => toggleField(field.id)} className="h-4 w-4 rounded text-blue-600" /><span className="text-sm text-gray-700">{field.name}</span></label>)}</div><div className="flex gap-3"><button onClick={handleExport} className="flex-1 rounded-xl bg-green-600 py-2 font-medium text-white transition hover:bg-green-700">Скачать CSV</button><button onClick={() => setShowExportForm(false)} className="flex-1 rounded-xl bg-gray-200 py-2 font-medium text-gray-700 transition hover:bg-gray-300">Отмена</button></div></div></div>, document.body)}
+        {showPointForm && createPortal(
+          <div className="modal-overlay">
+            <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold tracking-tight text-slate-950">Добавить точку</h3>
+                  <p className="mt-1 text-sm text-slate-500">Магазин, склад или адрес забора клиента.</p>
+                </div>
+                <button onClick={() => setShowPointForm(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-950"><X size={18} /></button>
+              </div>
+
+              <form onSubmit={handleAddPoint} className="space-y-4">
+                {[
+                  ['name', 'Название точки *', 'Магазин на Ленина', 'text'],
+                  ['address', 'Адрес *', 'ул. Ленина, 10', 'text'],
+                  ['contactPerson', 'Контактное лицо', 'Анна', 'text'],
+                  ['phone', 'Телефон', '+7...', 'tel'],
+                ].map(([field, label, placeholder, type]) => (
+                  <div key={field}>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">{label}</label>
+                    <input
+                      type={type}
+                      value={pointFormData[field as keyof PointFormData]}
+                      onChange={(e) => setPointFormData({ ...pointFormData, [field]: e.target.value })}
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
+                      placeholder={placeholder}
+                      required={field === 'name' || field === 'address'}
+                    />
+                  </div>
+                ))}
+
+                <div className="flex gap-3 pt-2">
+                  <button type="submit" className="flex-1 rounded-2xl bg-slate-950 py-3 text-sm font-medium text-white hover:opacity-95">Добавить</button>
+                  <button type="button" onClick={() => setShowPointForm(false)} className="flex-1 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">Отмена</button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {showExportForm && createPortal(
+          <div className="modal-overlay">
+            <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold tracking-tight text-slate-950">Выбор полей</h3>
+                  <p className="mt-1 text-sm text-slate-500">Настройте экспорт клиентского отчёта.</p>
+                </div>
+                <button onClick={() => setShowExportForm(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-950"><X size={18} /></button>
+              </div>
+
+              <div className="mb-6 max-h-96 space-y-2 overflow-y-auto">
+                {exportFields.map((field) => (
+                  <label key={field.id} className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 hover:bg-white">
+                    <input type="checkbox" checked={field.selected} onChange={() => toggleField(field.id)} className="h-4 w-4 rounded border-slate-300" />
+                    <span>{field.name}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={handleExport} className="flex-1 rounded-2xl bg-slate-950 py-3 text-sm font-medium text-white hover:opacity-95">Скачать Excel</button>
+                <button onClick={() => setShowExportForm(false)} className="flex-1 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">Отмена</button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-7xl space-y-6 p-8">
-        <RealtimeStatusCard isRefreshing={realtime.isRefreshing} error={realtime.error} lastSyncAt={realtime.lastSyncAt} onRefresh={() => realtime.refresh(true)} />
-
-        <div className="flex items-center justify-between">
-          <div><h2 className="text-3xl font-bold text-gray-900">Клиенты</h2><p className="mt-2 text-gray-600">Управление клиентами и их заявками</p></div>
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-lg font-semibold text-white transition hover:bg-blue-700"><Plus size={20} />Добавить клиента</button>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Клиенты</h1>
+          <p className="mt-1 text-sm text-slate-500">Клиенты как компании, внутри которых могут быть магазины и точки.</p>
         </div>
 
-        {showForm && createPortal(<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}><div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg"><div className="mb-4 flex items-center justify-between"><h3 className="text-xl font-bold text-gray-900">{editingId ? 'Редактировать клиента' : 'Добавить клиента'}</h3><button onClick={resetForm} className="rounded-xl p-2 hover:bg-gray-100"><X size={20} /></button></div><form onSubmit={handleSubmit} className="space-y-4"><input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full rounded-xl border border-gray-300 px-3 py-2" placeholder="Название *" required /><input value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full rounded-xl border border-gray-300 px-3 py-2" placeholder="Адрес *" required /><input value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="w-full rounded-xl border border-gray-300 px-3 py-2" placeholder="Контактное лицо" /><input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="w-full rounded-xl border border-gray-300 px-3 py-2" placeholder="Телефон" /><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full rounded-xl border border-gray-300 px-3 py-2" placeholder="Email" /><div className="flex gap-3 pt-4"><button type="submit" className="flex-1 rounded-xl bg-blue-600 py-2 font-medium text-white hover:bg-blue-700">{editingId ? 'Сохранить' : 'Добавить'}</button><button type="button" onClick={resetForm} className="flex-1 rounded-xl bg-gray-200 py-2 font-medium text-gray-700 hover:bg-gray-300">Отмена</button></div></form></div></div>, document.body)}
-
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          {loading ? <div className="p-8 text-center text-gray-500">Загрузка...</div> : clients.length === 0 ? <div className="p-8 text-center text-gray-500"><p>Нет добавленных клиентов</p><p className="mt-2 text-sm">Нажмите кнопку Добавить клиента чтобы начать</p></div> : <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50 border-b border-gray-200"><tr><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Название</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Адрес</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Контактное лицо</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Телефон</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Заявки</th><th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Действия</th></tr></thead><tbody className="divide-y divide-gray-200">{clients.map((client) => <tr key={client.id} className="hover:bg-gray-50"><td className="px-6 py-4 text-sm font-medium text-gray-900">{client.name}</td><td className="px-6 py-4 text-sm text-gray-600">{client.address}</td><td className="px-6 py-4 text-sm text-gray-600">{client.contactPerson || '-'}</td><td className="px-6 py-4 text-sm text-gray-600">{client.phone || '-'}</td><td className="px-6 py-4 text-sm text-gray-600">{requests.filter((request) => request.clientId === client.id).length}</td><td className="px-6 py-4 text-sm"><div className="flex gap-2"><button onClick={() => setSelectedClient(client)} className="rounded-lg p-2 text-green-600 transition hover:bg-green-50" title="Просмотреть"><ChevronRight size={18} /></button><button onClick={() => handleEdit(client)} className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"><Edit2 size={18} /></button><button onClick={() => handleDelete(client.id)} className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"><Trash2 size={18} /></button></div></td></tr>)}</tbody></table></div>}
-        </div>
+        <button onClick={() => setShowForm(true)} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 transition hover:opacity-95">
+          <Plus className="h-4 w-4" />
+          Добавить клиента
+        </button>
       </div>
+
+      {showForm && createPortal(
+        <div className="modal-overlay">
+          <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold tracking-tight text-slate-950">{editingId ? 'Редактировать клиента' : 'Добавить клиента'}</h3>
+                <p className="mt-1 text-sm text-slate-500">Это основная карточка клиента.</p>
+              </div>
+              <button onClick={resetForm} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-950"><X size={18} /></button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {[
+                ['name', 'Название клиента *', 'Основа движения', 'text'],
+                ['address', 'Основной адрес *', 'ул. Калашникова, 17', 'text'],
+                ['contactPerson', 'Контактное лицо', 'Иван Петров', 'text'],
+                ['phone', 'Телефон', '+7 (914) 111-22-33', 'tel'],
+                ['email', 'Email', 'info@example.com', 'email'],
+              ].map(([field, label, placeholder, type]) => (
+                <div key={field}>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">{label}</label>
+                  <input
+                    type={type}
+                    value={formData[field as keyof FormData]}
+                    onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
+                    placeholder={placeholder}
+                    required={field === 'name' || field === 'address'}
+                  />
+                </div>
+              ))}
+
+              <div className="flex gap-3 pt-2">
+                <button type="submit" className="flex-1 rounded-2xl bg-slate-950 py-3 text-sm font-medium text-white hover:opacity-95">{editingId ? 'Сохранить' : 'Добавить'}</button>
+                <button type="button" onClick={resetForm} className="flex-1 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">Отмена</button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по клиенту, адресу или телефону..."
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
+            />
+          </div>
+          <div className="text-xs text-slate-400">{filteredClients.length} из {clients.length} клиентов</div>
+        </div>
+
+        {loading ? (
+          <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
+            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+            <p className="text-sm text-slate-500">Загрузка клиентов...</p>
+          </div>
+        ) : filteredClients.length === 0 ? (
+          <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center">
+            <Building2 className="mb-3 h-8 w-8 text-slate-300" />
+            <p className="text-sm font-medium text-slate-950">Клиенты не найдены</p>
+            <p className="mt-1 text-sm text-slate-500">Попробуйте изменить поиск или добавьте нового клиента.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-semibold">Клиент</th>
+                  <th className="px-5 py-3 font-semibold">Основной адрес</th>
+                  <th className="px-5 py-3 font-semibold">Контактное лицо</th>
+                  <th className="px-5 py-3 font-semibold">Телефон</th>
+                  <th className="px-5 py-3 text-right font-semibold">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredClients.map((client) => (
+                  <tr key={client.id} className="group hover:bg-slate-50/80">
+                    <td className="px-5 py-4">
+                      <button onClick={() => handleViewClient(client)} className="text-left font-semibold text-slate-950 hover:text-blue-700">
+                        {client.name}
+                      </button>
+                      <p className="mt-1 text-xs text-slate-500">Нажмите, чтобы открыть магазины и точки</p>
+                    </td>
+                    <td className="px-5 py-4 text-slate-600">{client.address}</td>
+                    <td className="px-5 py-4 text-slate-600">{client.contactPerson || '-'}</td>
+                    <td className="px-5 py-4 text-slate-600">{client.phone || '-'}</td>
+                    <td className="px-5 py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => handleViewClient(client)} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-950" title="Открыть карточку клиента"><ChevronRight size={16} /></button>
+                        <button onClick={() => handleEdit(client)} className="rounded-xl border border-slate-200 bg-white p-2 text-blue-600 shadow-sm hover:bg-blue-50" title="Редактировать"><Edit2 size={16} /></button>
+                        <button onClick={() => handleDelete(client.id)} className="rounded-xl border border-slate-200 bg-white p-2 text-red-600 shadow-sm hover:bg-red-50" title="Удалить"><Trash2 size={16} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfoItem({ label, value, icon, className = '' }: { label: string; value: string; icon?: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-2xl border border-slate-200 bg-slate-50 p-4 ${className}`}>
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500">
+        {icon}
+        {label}
+      </div>
+      <p className="text-sm font-medium text-slate-800">{value}</p>
     </div>
   );
 }
