@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
+import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
 import { createContext } from "./context";
 import { mails } from "../../drizzle/schema";
@@ -213,6 +214,7 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`[api] server listening on port ${port}`);
     console.log(`[api] serving static files from ${publicPath}`);
+    startCourierReminderScheduler();
   });
 }
 
