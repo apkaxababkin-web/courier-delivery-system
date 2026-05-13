@@ -1,5 +1,6 @@
 import { FileText, Loader2 } from 'lucide-react';
 import type { Request } from '../model/types';
+import * as api from '../../../lib/api';
 import { getStatusLabel, getStatusBadgeClass, getStatusIcon } from '../model/stats';
 
 interface TasksTableProps {

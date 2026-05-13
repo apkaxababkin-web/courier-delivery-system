@@ -116,6 +116,38 @@ export default function HemotestView() {
     }
   };
 
+
+  const handleDeleteList = async (listId: number) => {
+    if (!window.confirm('Удалить список полностью?')) return;
+
+    try {
+      setLoading(true);
+      await api.deleteHemotestList(listId);
+      await loadLists();
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка удаления списка');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemovePointFromList = async (listId: number, pointId: number) => {
+    if (!window.confirm('Удалить точку из списка?')) return;
+
+    try {
+      setLoading(true);
+      await api.removePointFromHemotestList(listId, pointId);
+      await loadLists();
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка удаления точки');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   const handleAddPoint = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.address.trim()) {
@@ -215,6 +247,17 @@ export default function HemotestView() {
                     <h4 className="font-semibold text-slate-950">{list.name}</h4>
                     <p className="text-sm text-slate-500">{new Date(list.createdAt).toLocaleString('ru-RU')}</p>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteList(list.id);
+                    }}
+                    className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                  >
+                    Удалить список
+                  </button>
                   {expandedListId === list.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </button>
 
@@ -223,7 +266,24 @@ export default function HemotestView() {
                     <div className="mb-4">
                       <h5 className="mb-2 font-medium text-slate-950">Точки в списке:</h5>
                       <div className="max-h-48 space-y-2 overflow-y-auto">
-                        <p className="text-sm text-slate-600">Точки загружаются...</p>
+                        {visiblePoints
+                          .filter(point => selectedPoints.includes(point.id))
+                          .map(point => (
+                            <div key={point.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-2">
+                              <div>
+                                <p className="text-sm font-medium text-slate-900">{point.name}</p>
+                                <p className="text-xs text-slate-500">{point.address}</p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePointFromList(list.id, point.id)}
+                                className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                              >
+                                Удалить
+                              </button>
+                            </div>
+                          ))}
                       </div>
                     </div>
                     <div>

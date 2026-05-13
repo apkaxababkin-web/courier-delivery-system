@@ -696,14 +696,13 @@ export async function getHemotestPickupPointsForDate(
   // Get all pickup points
   const points = await db.select().from(hemotestPickupPoints).orderBy(hemotestPickupPoints.name);
   
-  // Get pickups for this courier and date
+  // Get pickups for all couriers on this date
   const pickups = await db
     .select()
     .from(hemotestPickups)
-    .where(and(
-      eq(hemotestPickups.courierId, courierId),
+    .where(
       eq(hemotestPickups.date, dateStr)
-    ));
+    );
   
   const pickupMap = new Map<number, HemotestPickup>(pickups.map((p: HemotestPickup) => [p.pointId, p]));
   
@@ -804,14 +803,13 @@ export async function getSberbankPickupPointsForDate(
   // Get all pickup points
   const points = await db.select().from(sberbankPickupPoints).orderBy(sberbankPickupPoints.name);
   
-  // Get pickups for this courier and date
+  // Get pickups for all couriers on this date
   const pickups = await db
     .select()
     .from(sberbankPickups)
-    .where(and(
-      eq(sberbankPickups.courierId, courierId),
+    .where(
       eq(sberbankPickups.date, dateStr)
-    ));
+    );
   
   const pickupMap = new Map<number, SberbankPickup>(pickups.map((p: SberbankPickup) => [p.pointId, p]));
   
@@ -1170,15 +1168,37 @@ export async function createHemotestPickupList(data: {
   const listId = result[0]?.id;
   if (!listId) throw new Error("Failed to create list");
 
-  // Add items to the list (with deduplication)
+  // Add items to the list (ignore duplicates from existing lists for this date)
   if (data.pointIds.length > 0) {
-    const uniquePointIds = [...new Set(data.pointIds)];
-    await db.insert(hemotestListItems).values(
-      uniquePointIds.map(pointId => ({
-        listId,
-        pointId,
-      }))
-    );
+    const existingLists = await db
+      .select({ id: hemotestPickupLists.id })
+      .from(hemotestPickupLists)
+      .where(eq(hemotestPickupLists.date, data.date));
+
+    const existingListIds = existingLists.map(l => l.id);
+
+    let existingPointIds: number[] = [];
+
+    if (existingListIds.length > 0) {
+      const existingItems = await db
+        .select({ pointId: hemotestListItems.pointId })
+        .from(hemotestListItems)
+        .where(inArray(hemotestListItems.listId, existingListIds));
+
+      existingPointIds = existingItems.map(i => i.pointId);
+    }
+
+    const uniquePointIds = [...new Set(data.pointIds)]
+      .filter(pointId => !existingPointIds.includes(pointId));
+
+    if (uniquePointIds.length > 0) {
+      await db.insert(hemotestListItems).values(
+        uniquePointIds.map(pointId => ({
+          listId,
+          pointId,
+        }))
+      );
+    }
   }
 
   const list = await db
@@ -1281,15 +1301,37 @@ export async function createSberbankPickupList(data: {
   const listId = result[0]?.id;
   if (!listId) throw new Error("Failed to create list");
 
-  // Add items to the list (with deduplication)
+  // Add items to the list (ignore duplicates from existing lists for this weekday)
   if (data.pointIds.length > 0) {
-    const uniquePointIds = [...new Set(data.pointIds)];
-    await db.insert(sberbankListItems).values(
-      uniquePointIds.map(pointId => ({
-        listId,
-        pointId,
-      }))
-    );
+    const existingLists = await db
+      .select({ id: sberbankPickupLists.id })
+      .from(sberbankPickupLists)
+      .where(eq(sberbankPickupLists.dayOfWeek, data.dayOfWeek));
+
+    const existingListIds = existingLists.map(l => l.id);
+
+    let existingPointIds: number[] = [];
+
+    if (existingListIds.length > 0) {
+      const existingItems = await db
+        .select({ pointId: sberbankListItems.pointId })
+        .from(sberbankListItems)
+        .where(inArray(sberbankListItems.listId, existingListIds));
+
+      existingPointIds = existingItems.map(i => i.pointId);
+    }
+
+    const uniquePointIds = [...new Set(data.pointIds)]
+      .filter(pointId => !existingPointIds.includes(pointId));
+
+    if (uniquePointIds.length > 0) {
+      await db.insert(sberbankListItems).values(
+        uniquePointIds.map(pointId => ({
+          listId,
+          pointId,
+        }))
+      );
+    }
   }
 
   const list = await db
@@ -1472,4 +1514,57 @@ export async function seedDemoManager(): Promise<number> {
 }
 
 // ─── Client helpers ────────────────────────────────────────────────────────────
+
+
+// ─── Delete helpers ─────────────────────────────────────────────────────────
+
+export async function deleteRequest(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(requests).where(eq(requests.id, id));
+}
+
+export async function deleteMail(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(mails).where(eq(mails.id, id));
+}
+
+export async function deleteHemotestList(listId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(hemotestListItems).where(eq(hemotestListItems.listId, listId));
+  await db.delete(hemotestPickupLists).where(eq(hemotestPickupLists.id, listId));
+}
+
+export async function removePointFromHemotestList(listId: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(hemotestListItems).where(and(
+    eq(hemotestListItems.listId, listId),
+    eq(hemotestListItems.pointId, pointId)
+  ));
+}
+
+export async function deleteSberbankList(listId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(sberbankListItems).where(eq(sberbankListItems.listId, listId));
+  await db.delete(sberbankPickupLists).where(eq(sberbankPickupLists.id, listId));
+}
+
+export async function removePointFromSberbankList(listId: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(sberbankListItems).where(and(
+    eq(sberbankListItems.listId, listId),
+    eq(sberbankListItems.pointId, pointId)
+  ));
+}
 

@@ -208,6 +208,14 @@ export async function getHemotestList(listId: number): Promise<HemotestListWithI
   return await trpcGet<HemotestListWithItems | null>('hemotest.getList', { listId }, null);
 }
 
+export async function deleteHemotestList(listId: number): Promise<void> {
+  await trpcPost('hemotest.deleteList', { listId }, { success: true });
+}
+
+export async function removePointFromHemotestList(listId: number, pointId: number): Promise<void> {
+  await trpcPost('hemotest.removePointFromList', { listId, pointId }, { success: true });
+}
+
 export async function addPointToHemotestList(listId: number, pointId: number): Promise<void> {
   await trpcPost('hemotest.addPointToList', { listId, pointId }, { success: true });
 }
@@ -238,6 +246,14 @@ export async function getSberbankListsForDay(dayOfWeek: number): Promise<Sberban
 
 export async function getSberbankList(listId: number): Promise<SberbankListWithItems | null> {
   return await trpcGet<SberbankListWithItems | null>('sberbank.getList', { listId }, null);
+}
+
+export async function deleteSberbankList(listId: number): Promise<void> {
+  await trpcPost('sberbank.deleteList', { listId }, { success: true });
+}
+
+export async function removePointFromSberbankList(listId: number, pointId: number): Promise<void> {
+  await trpcPost('sberbank.removePointFromList', { listId, pointId }, { success: true });
 }
 
 export async function addPointToSberbankList(listId: number, pointId: number): Promise<void> {
@@ -273,6 +289,10 @@ export async function getAllMails(filters?: {
     dateFrom: filters?.dateFrom,
     dateTo: filters?.dateTo,
   }, []));
+}
+
+export async function deleteMail(id: number): Promise<void> {
+  await trpcPost('managerMails.delete', { id }, { success: true });
 }
 
 export async function createMail(mail: Omit<Mail, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'deliveredAt' | 'courierId' | 'courierName'>): Promise<Mail> {
@@ -409,4 +429,9 @@ export interface ParsedRequestData {
 export async function parseRequestWithAI(text: string): Promise<{ success: boolean; data?: ParsedRequestData }> {
   const data = await trpcPost<ParsedRequestData>('ai.parseRequest', { text }, {} as ParsedRequestData);
   return { success: true, data };
+}
+
+
+export async function deleteRequest(id: number): Promise<void> {
+  await trpcPost('requests.delete', { id }, { success: true });
 }

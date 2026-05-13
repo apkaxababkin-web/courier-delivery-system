@@ -211,7 +211,7 @@ export const appRouter = router({
     all: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date().optional(),
+        date: z.coerce.date().optional(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -227,7 +227,7 @@ export const appRouter = router({
     history: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date().optional(),
+        date: z.coerce.date().optional(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -656,10 +656,24 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    deleteList: publicProcedure
+      .input(z.object({ listId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteHemotestList(input.listId);
+        return { success: true };
+      }),
+
+    removePointFromList: publicProcedure
+      .input(z.object({ listId: z.number(), pointId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.removePointFromHemotestList(input.listId, input.pointId);
+        return { success: true };
+      }),
+
     pickupPoints: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -670,7 +684,7 @@ export const appRouter = router({
     pickedCount: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -682,7 +696,7 @@ export const appRouter = router({
       .input(z.object({
         token: z.string(),
         pointId: z.number(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -759,11 +773,25 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    deleteList: publicProcedure
+      .input(z.object({ listId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteSberbankList(input.listId);
+        return { success: true };
+      }),
+
+    removePointFromList: publicProcedure
+      .input(z.object({ listId: z.number(), pointId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.removePointFromSberbankList(input.listId, input.pointId);
+        return { success: true };
+      }),
+
     // Courier endpoints
     pickupPoints: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -774,7 +802,7 @@ export const appRouter = router({
     pickedCount: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -786,7 +814,7 @@ export const appRouter = router({
       .input(z.object({
         token: z.string(),
         pointId: z.number(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -853,6 +881,13 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const id = await db.createMail(input);
         return { id, success: true };
+      }),
+
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteMail(input.id);
+        return { success: true };
       }),
   }),
 
@@ -983,6 +1018,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.assignRequestCourier(input.id, input.courierId);
+        return { success: true };
+      }),
+
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteRequest(input.id);
         return { success: true };
       }),
 

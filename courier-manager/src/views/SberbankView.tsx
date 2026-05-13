@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Download, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Plus, Upload, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
 
 const DAYS_OF_WEEK = [
@@ -11,41 +11,33 @@ const DAYS_OF_WEEK = [
   { id: 5, name: 'Пятница' },
 ];
 
-const HIDDEN_POINTS_STORAGE_KEY = 'courier-manager:hidden-sberbank-points';
+type Mode = 'all' | 'template';
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
 const primaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50';
 const dangerButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950';
 
-const readHiddenPointIds = () => {
-  if (typeof window === 'undefined') return [] as number[];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_POINTS_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.filter((id) => Number.isFinite(Number(id))).map(Number) : [];
-  } catch {
-    return [];
-  }
-};
-
 export default function SberbankView() {
   const [points, setPoints] = useState<api.SberbankPoint[]>([]);
-  const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(readHiddenPointIds);
-  const [lists, setLists] = useState<api.SberbankPickupList[]>([]);
+  const [mode, setMode] = useState<Mode>('template');
   const [selectedDay, setSelectedDay] = useState(1);
-  const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
+  const [templatePointIds, setTemplatePointIds] = useState<number[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [showListForm, setShowListForm] = useState(false);
-  const [expandedListId, setExpandedListId] = useState<number | null>(null);
+  const [showPublishForm, setShowPublishForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', address: '', phone: '', contactPerson: '' });
   const [loading, setLoading] = useState(false);
 
-  const visiblePoints = points.filter((point) => !hiddenPointIds.includes(point.id));
+  const selectedDayName = DAYS_OF_WEEK.find(day => day.id === selectedDay)?.name || 'День';
+  const templatePoints = points.filter(point => templatePointIds.includes(point.id));
 
   useEffect(() => {
     loadPoints();
-    loadLists();
-  }, [selectedDay]);
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'template') loadTemplate();
+  }, [selectedDay, mode]);
 
   const loadPoints = async () => {
     try {
@@ -60,46 +52,60 @@ export default function SberbankView() {
     }
   };
 
-  const loadLists = async () => {
+  const loadTemplate = async () => {
     try {
-      const data = await api.getSberbankListsForDay(selectedDay);
-      setLists(data);
+      const data = await api.getSberbankScheduleForDay(selectedDay);
+      setTemplatePointIds(data.map(point => point.id));
     } catch (error) {
-      console.error('Error loading Sberbank lists:', error);
-      setLists([]);
+      console.error('Error loading Sberbank template:', error);
+      setTemplatePointIds([]);
     }
   };
 
-  const handleTogglePoint = (pointId: number) => {
-    setSelectedPoints(prev => prev.includes(pointId) ? prev.filter(id => id !== pointId) : [...prev, pointId]);
+  const saveTemplate = async (nextIds: number[]) => {
+    setTemplatePointIds(nextIds);
+    await api.setSberbankScheduleForDay(selectedDay, nextIds);
   };
 
-  const handleSelectAll = () => {
-    if (selectedPoints.length === visiblePoints.length) setSelectedPoints([]);
-    else setSelectedPoints(visiblePoints.map(p => p.id));
+  const handleToggleTemplatePoint = async (pointId: number) => {
+    const nextIds = templatePointIds.includes(pointId)
+      ? templatePointIds.filter(id => id !== pointId)
+      : [...templatePointIds, pointId];
+
+    try {
+      await saveTemplate(nextIds);
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка сохранения шаблона');
+      await loadTemplate();
+    }
   };
 
-  const handleHidePoint = (point: api.SberbankPoint) => {
-    if (!window.confirm(`Удалить точку «${point.name}» из рабочего списка?`)) return;
-    const nextHiddenIds = Array.from(new Set([...hiddenPointIds, point.id]));
-    setHiddenPointIds(nextHiddenIds);
-    window.localStorage.setItem(HIDDEN_POINTS_STORAGE_KEY, JSON.stringify(nextHiddenIds));
-    setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
+  const handleSelectAllTemplate = async () => {
+    const nextIds = templatePointIds.length === points.length ? [] : points.map(point => point.id);
+
+    try {
+      await saveTemplate(nextIds);
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка сохранения шаблона');
+      await loadTemplate();
+    }
   };
 
-  const handleCreateList = async (e: React.FormEvent) => {
+  const handlePublishTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedPoints.length === 0) return alert('Выберите хотя бы одну точку');
+    if (templatePointIds.length === 0) return alert('В шаблоне нет точек');
 
     try {
       setLoading(true);
-      await api.createSberbankPickupList(selectedDay, new Date().toLocaleDateString('ru-RU'), selectedPoints);
-      setSelectedPoints([]);
-      setShowListForm(false);
-      loadLists();
+      const today = new Date().toLocaleDateString('ru-RU');
+      await api.createSberbankPickupList(selectedDay, `${selectedDayName} ${today}`, templatePointIds);
+      setShowPublishForm(false);
+      alert('Шаблон выложен в список для курьеров');
     } catch (error) {
-      console.error('Error creating Sberbank list:', error);
-      alert('Ошибка при создании списка');
+      console.error('Error publishing Sberbank template:', error);
+      alert('Ошибка при выкладке шаблона');
     } finally {
       setLoading(false);
     }
@@ -117,7 +123,8 @@ export default function SberbankView() {
       await api.createSberbankPoint(formData);
       setFormData({ name: '', address: '', phone: '', contactPerson: '' });
       setShowForm(false);
-      loadPoints();
+      await loadPoints();
+      if (mode === 'template') await loadTemplate();
     } catch (error) {
       console.error('Error adding Sberbank point:', error);
       alert('Ошибка при добавлении точки');
@@ -126,18 +133,32 @@ export default function SberbankView() {
     }
   };
 
+  const displayedPoints = mode === 'all' ? points : points;
+
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0 flex-1">
-            <label className="mb-3 block text-xs font-semibold text-slate-500">День недели</label>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <label className="mb-3 block text-xs font-semibold text-slate-500">Сбербанк</label>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setMode('all')}
+                className={`rounded-xl px-4 py-2 text-sm font-medium transition ${mode === 'all' ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+              >
+                Все точки
+              </button>
+
               {DAYS_OF_WEEK.map(day => (
                 <button
                   key={day.id}
-                  onClick={() => setSelectedDay(day.id)}
-                  className={`rounded-xl px-4 py-2 text-sm font-medium transition ${selectedDay === day.id ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+                  type="button"
+                  onClick={() => {
+                    setMode('template');
+                    setSelectedDay(day.id);
+                  }}
+                  className={`rounded-xl px-4 py-2 text-sm font-medium transition ${mode === 'template' && selectedDay === day.id ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
                 >
                   {day.name}
                 </button>
@@ -145,16 +166,18 @@ export default function SberbankView() {
             </div>
           </div>
 
-          <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-            <button onClick={() => setShowForm(true)} className={primaryButtonClass}>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setShowForm(true)} className={secondaryButtonClass}>
               <Plus size={18} />
               Добавить точку
             </button>
 
-            <button className={secondaryButtonClass}>
-              <Download size={18} />
-              Отчёт
-            </button>
+            {mode === 'template' && (
+              <button type="button" onClick={() => setShowPublishForm(true)} disabled={templatePointIds.length === 0} className={primaryButtonClass}>
+                <Upload size={18} />
+                Выложить в список
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -164,7 +187,7 @@ export default function SberbankView() {
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-950">Добавить точку Сбербанка</h3>
             <form onSubmit={handleAddPoint} className="mt-4 space-y-3">
-              <input type="text" placeholder="Номер отделения, например 8601/0105" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className={inputClass} required />
+              <input type="text" placeholder="Номер отделения" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className={inputClass} required />
               <input type="text" placeholder="Адрес" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className={inputClass} required />
               <input type="text" placeholder="Телефон" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className={inputClass} />
               <input type="text" placeholder="Комментарий" value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className={inputClass} />
@@ -177,77 +200,83 @@ export default function SberbankView() {
         </div>, document.body
       )}
 
-      {showListForm && createPortal(
+      {showPublishForm && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-950">Создать список</h3>
-            <form onSubmit={handleCreateList} className="mt-4 space-y-4">
-              <p className="text-sm text-slate-700"><strong>День:</strong> {DAYS_OF_WEEK.find(day => day.id === selectedDay)?.name}</p>
-              <p className="text-sm text-slate-500">Выбрано точек: {selectedPoints.length}</p>
+            <h3 className="text-lg font-semibold text-slate-950">Выложить шаблон в список</h3>
+            <form onSubmit={handlePublishTemplate} className="mt-4 space-y-4">
+              <p className="text-sm text-slate-700"><strong>Шаблон:</strong> {selectedDayName}</p>
+              <p className="text-sm text-slate-500">Точек в шаблоне: {templatePointIds.length}</p>
               <div className="flex gap-2">
-                <button type="submit" className={`flex-1 ${primaryButtonClass}`}>Создать</button>
-                <button type="button" onClick={() => setShowListForm(false)} className={`flex-1 ${secondaryButtonClass}`}>Отмена</button>
+                <button type="submit" disabled={loading} className={`flex-1 ${primaryButtonClass}`}>Выложить</button>
+                <button type="button" onClick={() => setShowPublishForm(false)} className={`flex-1 ${secondaryButtonClass}`}>Отмена</button>
               </div>
             </form>
           </div>
         </div>, document.body
       )}
 
-      {lists.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-slate-950">Созданные списки</h3>
-          <div className="space-y-2">
-            {lists.map(list => (
-              <div key={list.id} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <button onClick={() => setExpandedListId(expandedListId === list.id ? null : list.id)} className="flex w-full items-center justify-between p-4 text-left transition hover:bg-slate-50">
-                  <div>
-                    <h4 className="font-semibold text-slate-950">{list.name}</h4>
-                    <p className="text-sm text-slate-500">{new Date(list.createdAt).toLocaleString('ru-RU')}</p>
-                  </div>
-                  {expandedListId === list.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 p-4">
-          <div className="flex items-center gap-4">
-            <input type="checkbox" checked={selectedPoints.length === visiblePoints.length && visiblePoints.length > 0} onChange={handleSelectAll} className="h-5 w-5 rounded border-slate-300 text-slate-950 focus:ring-slate-300" />
-            <span className="text-sm font-medium text-slate-700">Выбрано: {selectedPoints.length} из {visiblePoints.length}</span>
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-slate-950">
+              {mode === 'all' ? 'Все точки Сбербанка' : `Шаблон: ${selectedDayName}`}
+            </h3>
+            <p className="text-sm text-slate-500">
+              {mode === 'all'
+                ? `Всего точек: ${points.length}`
+                : `Выбрано в шаблон: ${templatePointIds.length} из ${points.length}`}
+            </p>
           </div>
 
-          {selectedPoints.length > 0 && (
-            <button onClick={() => setShowListForm(true)} className={primaryButtonClass}>Создать список</button>
+          {mode === 'template' && (
+            <button type="button" onClick={handleSelectAllTemplate} className={secondaryButtonClass}>
+              {templatePointIds.length === points.length ? 'Снять все' : 'Выбрать все'}
+            </button>
           )}
         </div>
 
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-500">Загрузка...</div>
-        ) : visiblePoints.length === 0 ? (
+        ) : displayedPoints.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">Нет точек Сбербанка</div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {visiblePoints.map(point => (
+            {displayedPoints.map(point => (
               <div key={point.id} className="flex items-start gap-4 p-4 hover:bg-slate-50">
-                <input type="checkbox" checked={selectedPoints.includes(point.id)} onChange={() => handleTogglePoint(point.id)} className="mt-1 h-5 w-5 rounded border-slate-300 text-slate-950 focus:ring-slate-300" />
+                {mode === 'template' && (
+                  <input
+                    type="checkbox"
+                    checked={templatePointIds.includes(point.id)}
+                    onChange={() => handleToggleTemplatePoint(point.id)}
+                    className="mt-1 h-5 w-5 rounded border-slate-300 text-slate-950 focus:ring-slate-300"
+                  />
+                )}
+
                 <div className="min-w-0 flex-1">
                   <h4 className="font-semibold text-slate-950">{point.name}</h4>
                   <p className="text-sm text-slate-600">{point.address}</p>
                   {point.phone && <p className="text-xs text-slate-500">Тел: {point.phone}</p>}
                   {point.contactPerson && <p className="text-xs text-slate-500">{point.contactPerson}</p>}
                 </div>
-                <button type="button" onClick={() => handleHidePoint(point)} className={dangerButtonClass} title="Убрать точку из списка">
-                  <Trash2 size={16} />
-                  Удалить
-                </button>
+
+                {mode === 'template' && templatePointIds.includes(point.id) && (
+                  <button type="button" onClick={() => handleToggleTemplatePoint(point.id)} className={dangerButtonClass}>
+                    <Trash2 size={16} />
+                    Убрать
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {mode === 'template' && templatePoints.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">
+          Эти точки будут выложены курьерам после нажатия «Выложить в список».
+        </div>
+      )}
     </div>
   );
 }
