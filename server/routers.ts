@@ -3,6 +3,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { syncTaskForRequestId } from "./_core/requestTaskSync";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
@@ -952,6 +953,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const createdByUserId = ctx.user?.id ?? 0;
         const id = await db.createRequest({ ...input, createdByUserId });
+        await syncTaskForRequestId(id);
         return { id, success: true };
       }),
 
@@ -973,6 +975,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.updateRequestStatus(input.id, input.status);
+        await syncTaskForRequestId(input.id);
         return { success: true };
       }),
 
@@ -983,6 +986,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.assignRequestCourier(input.id, input.courierId);
+        await syncTaskForRequestId(input.id);
         return { success: true };
       }),
 
