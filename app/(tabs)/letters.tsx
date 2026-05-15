@@ -1,13 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  FlatList,
-  Linking,
-  Modal,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { FlatList, Linking, Modal, Pressable, Text, TextInput, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { NetworkBanner } from "@/components/network-banner";
 import { trpc } from "@/lib/trpc";
@@ -24,25 +16,10 @@ function formatDateTimeInput(date: Date) {
 function parseDateTimeInput(value: string): Date | null {
   const match = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})$/);
   if (!match) return null;
-
   const [, day, month, year, hour, minute] = match;
-  const parsed = new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-  );
-
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
-}
-
-function formatDeliveredAt(value?: string | Date | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return formatDateTimeInput(date);
 }
 
 function normalizePhoneForDial(phone?: string | null) {
@@ -54,30 +31,42 @@ function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
 }
 
+function groupLabel(value?: string | Date | null) {
+  if (!value) return "Без даты";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Без даты";
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return "Сегодня";
+  if (date.toDateString() === yesterday.toDateString()) return "Вчера";
+  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
+
+function shortTime(value?: string | Date | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function LettersScreen() {
   const colors = useColors();
   const { token } = useCourierAuth();
   const { isOnline } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
-  const cardBorder = dark ? "rgba(148,163,184,0.20)" : colors.border;
-  const softSurface = dark ? "rgba(148,163,184,0.08)" : "#F8FAFC";
+  const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
+  const soft = dark ? "rgba(148,163,184,0.07)" : "#F8FAFC";
 
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "delivered" | "not_delivered">("all");
   const [selectedMailId, setSelectedMailId] = useState<number | null>(null);
   const [recipientName, setRecipientName] = useState("");
   const [deliveredAtInput, setDeliveredAtInput] = useState(formatDateTimeInput(new Date()));
   const [deliveryTimeError, setDeliveryTimeError] = useState("");
 
-  const { data: mails = [], refetch } = trpc.mails.all.useQuery(
-    { token: token || "" },
-    { enabled: !!token, refetchInterval: 5000 }
-  );
+  const { data: mails = [], refetch } = trpc.mails.all.useQuery({ token: token || "" }, { enabled: !!token, refetchInterval: 5000 });
 
-  useMobileLiveSync({
-    enabled: !!token,
-    onSync: useCallback(() => refetch(), [refetch]),
-  });
+  useMobileLiveSync({ enabled: !!token, onSync: useCallback(() => refetch(), [refetch]) });
 
   const deliverMutation = (trpc.mails as any).deliver.useMutation({
     onSuccess: () => {
@@ -89,24 +78,40 @@ export default function LettersScreen() {
     },
   });
 
-  const filteredMails = useMemo(() => {
-    return mails.filter((mail: any) => {
-      const matchesSearch =
-        mail.waybillNumber?.toLowerCase().includes(search.toLowerCase()) ||
-        mail.recipientName?.toLowerCase().includes(search.toLowerCase()) ||
-        mail.recipientPhone?.toLowerCase().includes(search.toLowerCase()) ||
-        mail.deliveryAddress?.toLowerCase().includes(search.toLowerCase());
-
-      const matchesFilter =
-        filter === "all"
-          ? true
-          : filter === "delivered"
-          ? mail.status === "delivered"
-          : mail.status !== "delivered";
-
-      return matchesSearch && matchesFilter;
+  const groupedMails = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = mails.filter((mail: any) => {
+      if (!q) return true;
+      return (
+        mail.waybillNumber?.toLowerCase().includes(q) ||
+        mail.recipientName?.toLowerCase().includes(q) ||
+        mail.recipientPhone?.toLowerCase().includes(q) ||
+        mail.deliveryAddress?.toLowerCase().includes(q)
+      );
     });
-  }, [mails, search, filter]);
+
+    const rows: Array<{ type: "header"; title: string } | { type: "mail"; mail: any }> = [];
+    let current = "";
+    filtered.forEach((mail: any) => {
+      const label = groupLabel(mail.deliveredAt || mail.createdAt);
+      if (label !== current) {
+        current = label;
+        rows.push({ type: "header", title: label });
+      }
+      rows.push({ type: "mail", mail });
+    });
+    return rows;
+  }, [mails, search]);
+
+  const callRecipient = async (phone?: string | null) => {
+    const normalizedPhone = normalizePhoneForDial(phone);
+    if (!normalizedPhone) return;
+    try {
+      await Linking.openURL(`tel:${normalizedPhone}`);
+    } catch (error) {
+      console.warn("[Letters] Failed to open dialer", error);
+    }
+  };
 
   const openDeliveryModal = (mailId: number) => {
     setSelectedMailId(mailId);
@@ -115,247 +120,103 @@ export default function LettersScreen() {
     setDeliveredAtInput(formatDateTimeInput(new Date()));
   };
 
-  const callRecipient = async (phone?: string | null) => {
-    const normalizedPhone = normalizePhoneForDial(phone);
-    if (!normalizedPhone) return;
-
-    try {
-      await Linking.openURL(`tel:${normalizedPhone}`);
-    } catch (error) {
-      console.warn("[Letters] Failed to open dialer", error);
-    }
-  };
-
   return (
     <ScreenContainer className="p-0">
       <NetworkBanner visible={!isOnline} />
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12, gap: 12, backgroundColor: colors.background }}>
-        <View style={{ backgroundColor: colors.surface, borderRadius: 24, borderWidth: 1, borderColor: cardBorder, padding: 16 }}>
-          <Text style={{ fontSize: 28, fontWeight: "900", color: colors.foreground }}>Письма</Text>
-          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4, fontWeight: "700" }}>
-            Вручение и подтверждение получателя
-          </Text>
-        </View>
-
+      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, backgroundColor: colors.background }}>
+        <Text style={{ fontSize: 26, fontWeight: "900", color: colors.foreground, marginBottom: 12 }}>Письма</Text>
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Поиск по накладной, получателю, телефону"
+          placeholder="Поиск по № накладной или адресу"
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.surface,
-            borderRadius: 18,
-            paddingHorizontal: 16,
-            paddingVertical: 14,
+            borderRadius: 16,
+            paddingHorizontal: 15,
+            paddingVertical: 13,
             borderWidth: 1,
-            borderColor: cardBorder,
+            borderColor: border,
             color: colors.foreground,
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: "700",
           }}
         />
-
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {[
-            ["all", "Все"],
-            ["not_delivered", "Не вручено"],
-            ["delivered", "Вручено"],
-          ].map(([value, label]) => {
-            const active = filter === value;
-            return (
-              <Pressable
-                key={value}
-                onPress={() => setFilter(value as any)}
-                style={{
-                  backgroundColor: active ? colors.primary : colors.surface,
-                  paddingHorizontal: 14,
-                  paddingVertical: 11,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: active ? colors.primary : cardBorder,
-                }}
-              >
-                <Text
-                  style={{
-                    color: active ? "white" : colors.foreground,
-                    fontWeight: "900",
-                    fontSize: 13,
-                  }}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
       </View>
 
       <FlatList
-        data={filteredMails}
-        keyExtractor={(item: any) => item.id.toString()}
+        data={groupedMails}
+        keyExtractor={(item: any, index) => item.type === "header" ? `h-${item.title}-${index}` : `m-${item.mail.id}`}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 128, backgroundColor: colors.background }}
         renderItem={({ item }: any) => {
-          const delivered = item.status === "delivered";
-          const hasPhone = Boolean(normalizePhoneForDial(item.recipientPhone));
+          if (item.type === "header") {
+            return <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "900", marginTop: 10, marginBottom: 8 }}>{item.title}</Text>;
+          }
+
+          const mail = item.mail;
+          const delivered = mail.status === "delivered";
+          const hasPhone = Boolean(normalizePhoneForDial(mail.recipientPhone));
 
           return (
-            <View
-              style={{
+            <Pressable
+              onPress={() => !delivered && openDeliveryModal(mail.id)}
+              style={({ pressed }) => ({
                 backgroundColor: colors.surface,
-                borderRadius: 22,
-                padding: 16,
-                marginBottom: 12,
+                borderRadius: 18,
+                padding: 14,
+                marginBottom: 10,
                 borderWidth: 1,
-                borderColor: cardBorder,
-                shadowColor: dark ? "#020617" : "#94A3B8",
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: dark ? 0.26 : 0.12,
-                shadowRadius: 18,
-                elevation: 5,
-              }}
+                borderColor: border,
+                opacity: pressed ? 0.82 : 1,
+              })}
             >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <Text style={{ fontSize: 18, fontWeight: "900", color: colors.foreground }}>#{item.waybillNumber}</Text>
-
-                <View
-                  style={{
-                    backgroundColor: delivered
-                      ? dark ? "rgba(34,197,94,0.16)" : "#DCFCE7"
-                      : dark ? "rgba(249,115,22,0.16)" : "#FFEDD5",
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 999,
-                  }}
-                >
-                  <Text style={{ color: delivered ? "#16a34a" : "#f97316", fontWeight: "900", fontSize: 12 }}>
-                    {delivered ? "Вручено" : "В пути"}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ backgroundColor: softSurface, borderRadius: 18, padding: 12, gap: 10 }}>
-                <View>
-                  <Text style={{ color: colors.muted, marginBottom: 4, fontWeight: "800", fontSize: 12 }}>Получатель</Text>
-                  <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "900" }}>{item.recipientName || "—"}</Text>
-                </View>
-
-                <View>
-                  <Text style={{ color: colors.muted, marginBottom: 4, fontWeight: "800", fontSize: 12 }}>Телефон</Text>
-                  {hasPhone ? (
-                    <Pressable onPress={() => callRecipient(item.recipientPhone)}>
-                      <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "900" }}>{item.recipientPhone}</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "900" }}>Письмо №-{mail.waybillNumber}</Text>
+                  <Text style={{ color: colors.muted, marginTop: 4, fontSize: 12, fontWeight: "700" }}>{mail.recipientName || "—"}</Text>
+                  <Text style={{ color: colors.muted, marginTop: 3, fontSize: 12, fontWeight: "700" }} numberOfLines={1}>{mail.deliveryAddress || "—"}</Text>
+                  {hasPhone && (
+                    <Pressable onPress={() => callRecipient(mail.recipientPhone)}>
+                      <Text style={{ color: colors.primary, marginTop: 5, fontSize: 12, fontWeight: "900" }}>{mail.recipientPhone}</Text>
                     </Pressable>
-                  ) : (
-                    <Text style={{ color: colors.foreground, fontWeight: "700" }}>—</Text>
                   )}
                 </View>
-
-                <View>
-                  <Text style={{ color: colors.muted, marginBottom: 4, fontWeight: "800", fontSize: 12 }}>Адрес</Text>
-                  <Text style={{ color: colors.foreground, lineHeight: 21, fontWeight: "700" }}>{item.deliveryAddress}</Text>
+                <View style={{ alignItems: "flex-end", gap: 6 }}>
+                  <View style={{ backgroundColor: delivered ? "rgba(34,197,94,0.16)" : "rgba(59,130,246,0.14)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 }}>
+                    <Text style={{ color: delivered ? "#22C55E" : colors.primary, fontSize: 11, fontWeight: "900" }}>{delivered ? "Получено" : "В пути"}</Text>
+                  </View>
+                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>{shortTime(mail.deliveredAt || mail.createdAt)}</Text>
                 </View>
               </View>
-
-              {delivered ? (
-                <View style={{ marginTop: 14, gap: 4, paddingHorizontal: 2 }}>
-                  <Text style={{ color: colors.muted, fontWeight: "700" }}>Получил: {item.recipientSignature || "—"}</Text>
-                  <Text style={{ color: colors.muted, fontWeight: "700" }}>Время вручения: {formatDeliveredAt(item.deliveredAt)}</Text>
-                </View>
-              ) : (
-                <Pressable
-                  onPress={() => openDeliveryModal(item.id)}
-                  style={{
-                    marginTop: 16,
-                    backgroundColor: colors.primary,
-                    borderRadius: 16,
-                    paddingVertical: 14,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "900", fontSize: 16 }}>Вручено</Text>
-                </Pressable>
-              )}
-            </View>
+            </Pressable>
           );
         }}
       />
 
       <Modal visible={selectedMailId !== null} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }}>
-          <View style={{ backgroundColor: colors.background, borderRadius: 26, padding: 20, borderWidth: 1, borderColor: cardBorder }}>
-            <Text style={{ fontSize: 22, fontWeight: "900", color: colors.foreground, marginBottom: 16 }}>Кто получил?</Text>
-
-            <TextInput
-              value={recipientName}
-              onChangeText={setRecipientName}
-              placeholder="Введите ФИО"
-              placeholderTextColor={colors.muted}
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 16,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                borderWidth: 1,
-                borderColor: cardBorder,
-                color: colors.foreground,
-                fontWeight: "700",
-              }}
-            />
-
-            <Text style={{ color: colors.muted, marginTop: 14, marginBottom: 6, fontWeight: "800" }}>Дата и время вручения</Text>
-            <TextInput
-              value={deliveredAtInput}
-              onChangeText={(value) => {
-                setDeliveredAtInput(value);
-                setDeliveryTimeError("");
-              }}
-              placeholder="ДД.ММ.ГГГГ ЧЧ:ММ"
-              placeholderTextColor={colors.muted}
-              keyboardType="numbers-and-punctuation"
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 16,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                borderWidth: 1,
-                borderColor: deliveryTimeError ? colors.error : cardBorder,
-                color: colors.foreground,
-                fontWeight: "700",
-              }}
-            />
-
+          <View style={{ backgroundColor: colors.background, borderRadius: 24, padding: 18, borderWidth: 1, borderColor: border }}>
+            <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground, marginBottom: 14 }}>Кто получил?</Text>
+            <TextInput value={recipientName} onChangeText={setRecipientName} placeholder="Введите ФИО" placeholderTextColor={colors.muted} style={{ backgroundColor: colors.surface, borderRadius: 15, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: border, color: colors.foreground, fontWeight: "700" }} />
+            <Text style={{ color: colors.muted, marginTop: 12, marginBottom: 6, fontWeight: "800" }}>Дата и время вручения</Text>
+            <TextInput value={deliveredAtInput} onChangeText={(value) => { setDeliveredAtInput(value); setDeliveryTimeError(""); }} placeholder="ДД.ММ.ГГГГ ЧЧ:ММ" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" style={{ backgroundColor: colors.surface, borderRadius: 15, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: deliveryTimeError ? colors.error : border, color: colors.foreground, fontWeight: "700" }} />
             {deliveryTimeError ? <Text style={{ color: colors.error, marginTop: 8, fontWeight: "800" }}>{deliveryTimeError}</Text> : null}
-
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
-              <Pressable
-                onPress={() => {
-                  setSelectedMailId(null);
-                  setDeliveryTimeError("");
-                }}
-                style={{ flex: 1, paddingVertical: 14, borderRadius: 16, backgroundColor: colors.surface, alignItems: "center", borderWidth: 1, borderColor: cardBorder }}
-              >
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+              <Pressable onPress={() => { setSelectedMailId(null); setDeliveryTimeError(""); }} style={{ flex: 1, paddingVertical: 13, borderRadius: 15, backgroundColor: soft, alignItems: "center", borderWidth: 1, borderColor: border }}>
                 <Text style={{ color: colors.foreground, fontWeight: "900" }}>Отмена</Text>
               </Pressable>
-
               <Pressable
                 onPress={() => {
                   if (!token || !selectedMailId || !recipientName.trim()) return;
-
                   const deliveredAt = parseDateTimeInput(deliveredAtInput);
                   if (!deliveredAt) {
                     setDeliveryTimeError("Введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ");
                     return;
                   }
-
-                  deliverMutation.mutate({
-                    token,
-                    mailId: selectedMailId,
-                    recipientSignature: recipientName.trim(),
-                    deliveredAt,
-                  } as any);
+                  deliverMutation.mutate({ token, mailId: selectedMailId, recipientSignature: recipientName.trim(), deliveredAt } as any);
                 }}
-                style={{ flex: 1, paddingVertical: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", opacity: deliverMutation.isPending ? 0.7 : 1 }}
+                style={{ flex: 1, paddingVertical: 13, borderRadius: 15, backgroundColor: colors.primary, alignItems: "center", opacity: deliverMutation.isPending ? 0.7 : 1 }}
               >
                 <Text style={{ color: "white", fontWeight: "900" }}>{deliverMutation.isPending ? "Сохраняю..." : "Подтвердить"}</Text>
               </Pressable>
