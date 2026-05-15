@@ -57,3 +57,12 @@
 - [x] Reinstall node_modules with corrected versions
 - [x] Verify TypeScript still compiles
 - [x] Commit and push to GitHub
+
+## UI Design Refresh (IN PROGRESS)
+- [ ] Update theme colors - richer blue primary, warmer surfaces
+- [ ] Redesign task card - cleaner shadow, better spacing, refined left border
+- [ ] Redesign header bar - thinner shadow, bolder date, cleaner look
+- [ ] Redesign tab bar - pill highlight for active tab
+- [ ] Redesign login screen - icon/logo, better button
+- [ ] Redesign status badges - more saturated, pill shape
+- [ ] Redesign pickup screens header

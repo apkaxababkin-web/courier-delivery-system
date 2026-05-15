@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import {
   couriers,
   hemotestPickups,
@@ -14,42 +14,102 @@ import {
   type InsertTask,
   type Mail,
   type Request as DeliveryRequest,
+  type Task,
 } from "../../drizzle/schema";
 import * as db from "../db";
 import { verifyCourierToken } from "../routers";
-import { normalizeRequestStatus, normalizeTaskStatus, syncTaskForRequest, updateRequestStatusFromTask } from "./requestTaskSync";
 
 function trpcJson(data: unknown) {
   return { result: { data: { json: data } } };
 }
 
+// tRPC httpBatchLink wraps responses in an array: [{result:{data:{json:...}}}]
+function trpcBatchJson(data: unknown) {
+  return [{ result: { data: { json: data } } }];
+}
+
+// Unwrap tRPC batch input format: {"0":{"json":{...}}} -> {...}
+function unwrapBatchInput(obj: Record<string, unknown>): Record<string, unknown> {
+  const firstKey = Object.keys(obj)[0];
+  if (firstKey === "0" && obj["0"] && typeof obj["0"] === "object") {
+    const inner = (obj["0"] as Record<string, unknown>).json;
+    if (inner && typeof inner === "object") return inner as Record<string, unknown>;
+  }
+  return obj;
+}
+
 function inputFrom(req: Request): Record<string, unknown> {
-  const pick = (value: unknown): Record<string, unknown> => {
-    if (!value || typeof value !== "object") return {};
-    const obj = value as Record<string, unknown>;
-    const first = obj["0"];
-
-    if (first && typeof first === "object") {
-      const firstObj = first as Record<string, unknown>;
-      if (firstObj.json && typeof firstObj.json === "object") {
-        return firstObj.json as Record<string, unknown>;
-      }
-      return firstObj;
-    }
-
-    if (obj.json && typeof obj.json === "object") {
-      return obj.json as Record<string, unknown>;
-    }
-
-    return obj;
-  };
-
-  const body = pick(req.body);
-  if (Object.keys(body).length > 0) return body;
-
+  const body = (req.body?.json ?? req.body ?? {}) as Record<string, unknown>;
+  if (Object.keys(body).length > 0) return unwrapBatchInput(body);
   const raw = req.query.input;
   if (typeof raw !== "string" || !raw) return {};
-  try { return pick(JSON.parse(raw)); } catch { return {}; }
+  try { return unwrapBatchInput(JSON.parse(raw) as Record<string, unknown>); } catch { return {}; }
+}
+
+function normalizeTaskStatus(status: unknown): Task["status"] {
+  if (status === "in_progress" || status === "completed" || status === "cancelled") return status;
+  return "assigned";
+}
+
+function normalizeRequestStatus(status: unknown): DeliveryRequest["status"] {
+  if (status === "assigned" || status === "in_progress" || status === "completed" || status === "cancelled") return status;
+  return "pending";
+}
+
+function taskTypeFromRequest(type: unknown): InsertTask["taskType"] {
+  if (type === "courier_call") return "courier_call";
+  if (type === "nuts") return "warehouse_pickup";
+  return "regular";
+}
+
+function requestStatusFromTask(status: Task["status"]): DeliveryRequest["status"] {
+  if (status === "assigned") return "assigned";
+  return status;
+}
+
+function requestMarker(id: number) {
+  return `[request:${id}]`;
+}
+
+function taskFromRequest(request: DeliveryRequest): InsertTask {
+  const fallbackAddress = request.deliveryAddress || request.recipientAddress || request.senderAddress || request.tcAddress || "Адрес не указан";
+  const fallbackName = request.recipientName || request.recipientCompany || request.senderName || request.senderCompany || "Получатель не указан";
+  const comments = [
+    requestMarker(request.id),
+    request.description,
+    request.callReason,
+    request.comments,
+    request.specialInstructions,
+    request.trackingNumber ? `Трек: ${request.trackingNumber}` : null,
+    request.paymentMethod ? `Оплата: ${request.paymentMethod}` : null,
+    request.paymentAmount ? `Сумма: ${request.paymentAmount}` : null,
+  ].filter(Boolean).join("\n");
+
+  return {
+    courierId: request.courierId ?? null,
+    status: normalizeTaskStatus(request.status),
+    taskType: taskTypeFromRequest(request.requestType),
+    recipientName: fallbackName,
+    recipientPhone: request.recipientPhone || request.senderPhone || "",
+    recipientAddress: request.recipientAddress ?? null,
+    deliveryAddress: fallbackAddress,
+    deliveryCity: request.deliveryCity || request.recipientCity || request.senderCity || null,
+    senderName: request.senderName || request.senderCompany || request.tcName || null,
+    senderAddress: request.senderAddress || request.tcAddress || null,
+    senderPhone: request.senderPhone ?? null,
+    packageDescription: request.packageDescription || request.description || request.callReason || null,
+    packageType: request.packageType ?? "small",
+    placesCount: request.placesCount ?? 1,
+    estimatedMinutes: request.estimatedMinutes ?? null,
+    deliveryTimeFrom: request.deliveryTimeFrom ?? null,
+    deliveryTimeTo: request.deliveryTimeTo ?? null,
+    specialInstructions: request.specialInstructions ?? null,
+    comments,
+    items: request.items ?? null,
+    scheduledAt: request.scheduledAt ?? null,
+    acceptedAt: request.acceptedAt ?? null,
+    completedAt: request.completedAt ?? null,
+  };
 }
 
 async function courierNameMap() {
@@ -101,7 +161,7 @@ async function pickupFeedbackSummary() {
   const sberbankPointMap = new Map(sberbankPoints.map((point: { id: number; name: string; address: string }) => [point.id, point]));
 
   const hemotestItems = hemotestRows.map((row: any) => {
-    const point = hemotestPointMap.get(row.pointId) as any;
+    const point = hemotestPointMap.get(row.pointId);
     return {
       id: row.id,
       pointId: row.pointId,
@@ -116,7 +176,7 @@ async function pickupFeedbackSummary() {
   });
 
   const sberbankItems = sberbankRows.map((row: any) => {
-    const point = sberbankPointMap.get(row.pointId) as any;
+    const point = sberbankPointMap.get(row.pointId);
     return {
       id: row.id,
       pointId: row.pointId,
@@ -134,15 +194,52 @@ async function pickupFeedbackSummary() {
     date,
     hemotest: {
       total: hemotestItems.length,
-      picked: hemotestItems.filter((item: any) => item.isPicked).length,
+      picked: hemotestItems.filter((item) => item.isPicked).length,
       items: hemotestItems,
     },
     sberbank: {
       total: sberbankItems.length,
-      picked: sberbankItems.filter((item: any) => item.isPicked).length,
+      picked: sberbankItems.filter((item) => item.isPicked).length,
       items: sberbankItems,
     },
   };
+}
+
+async function findTaskForRequest(requestId: number): Promise<Task | null> {
+  const conn = await db.getDb();
+  if (!conn) return null;
+  const allTasks = await conn.select().from(tasks).orderBy(desc(tasks.createdAt));
+  return allTasks.find((task: Task) => task.comments?.includes(requestMarker(requestId))) ?? null;
+}
+
+async function syncTaskForRequest(request: DeliveryRequest): Promise<number> {
+  const conn = await db.getDb();
+  if (!conn) throw new Error("Database not available");
+  const existingTask = await findTaskForRequest(request.id);
+  const taskData = taskFromRequest(request);
+  if (existingTask) {
+    await conn.update(tasks).set({ ...taskData, updatedAt: new Date() }).where(eq(tasks.id, existingTask.id));
+    return existingTask.id;
+  }
+  const inserted = await conn.insert(tasks).values(taskData).returning({ id: tasks.id });
+  return inserted[0].id;
+}
+
+async function updateRequestStatusFromTask(taskId: number, status: Task["status"], courierId?: number | null) {
+  const conn = await db.getDb();
+  if (!conn) return;
+  const task = await db.getTaskById(taskId);
+  const marker = task?.comments?.match(/\[request:(\d+)\]/)?.[1];
+  if (!marker) return;
+  const requestId = Number(marker);
+  if (!requestId) return;
+  await conn.update(requests).set({
+    status: requestStatusFromTask(status),
+    courierId: courierId ?? task?.courierId ?? null,
+    acceptedAt: status === "in_progress" ? new Date() : task?.acceptedAt ?? null,
+    completedAt: status === "completed" ? new Date() : null,
+    updatedAt: new Date(),
+  }).where(eq(requests.id, requestId));
 }
 
 async function managerSnapshot() {
@@ -269,9 +366,9 @@ export function registerCompatRoutes(app: Express) {
   app.get("/api/trpc/tasks.all", async (req, res) => {
     try {
       const courierId = await courierIdFromReq(req);
-      if (courierId) { res.json(trpcJson((await courierSnapshot(courierId)).tasks)); return; }
+      if (courierId) { res.json(trpcBatchJson((await courierSnapshot(courierId)).tasks)); return; }
       const [active, completed] = await Promise.all([db.getAllTasksWithCourier(), db.getCompletedTasksWithCourier()]);
-      res.json(trpcJson([...active, ...completed]));
+      res.json(trpcBatchJson([...active, ...completed]));
     } catch (error) { sendError(res, error, "Failed to load tasks"); }
   });
 
@@ -292,12 +389,12 @@ export function registerCompatRoutes(app: Express) {
         updatedAt: new Date(),
       });
       await updateRequestStatusFromTask(taskId, status, assignedCourierId);
-      res.json(trpcJson({ success: true }));
+      res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to set task status"); }
   });
 
   app.get("/api/trpc/mails.notDelivered", async (_req, res) => {
-    try { res.json(trpcJson(await db.getNotDeliveredMails())); } catch (error) { sendError(res, error, "Failed to load not delivered mails"); }
+    try { res.json(trpcBatchJson(await db.getNotDeliveredMails())); } catch (error) { sendError(res, error, "Failed to load not delivered mails"); }
   });
 
   app.post("/api/trpc/mails.deliver", async (req, res) => {
@@ -310,14 +407,14 @@ export function registerCompatRoutes(app: Express) {
       if (!waybillNumber) throw new Error("waybillNumber is required");
       if (!recipientSignature) throw new Error("recipientSignature is required");
       const mail = await db.updateMailDelivery(waybillNumber, recipientSignature, courierId);
-      res.json(trpcJson({ success: true, mail }));
+      res.json(trpcBatchJson({ success: true, mail }));
     } catch (error) { sendError(res, error, "Failed to deliver mail"); }
   });
 
   app.get("/api/trpc/managerTasks.all", async (_req, res) => {
     try {
       const [active, completed] = await Promise.all([db.getAllTasksWithCourier(), db.getCompletedTasksWithCourier()]);
-      res.json(trpcJson([...active, ...completed]));
+      res.json(trpcBatchJson([...active, ...completed]));
     } catch (error) { sendError(res, error, "Failed to load manager tasks"); }
   });
 
@@ -344,7 +441,7 @@ export function registerCompatRoutes(app: Express) {
         comments: input.comments ? String(input.comments) : null,
         items: input.items ? String(input.items) : null,
       });
-      res.json(trpcJson({ id, success: true }));
+      res.json(trpcBatchJson({ id, success: true }));
     } catch (error) { sendError(res, error, "Failed to create manager task"); }
   });
 
@@ -358,7 +455,7 @@ export function registerCompatRoutes(app: Express) {
       if (!task) throw new Error("Task not found");
       await db.updateTaskStatus(taskId, status, { completedAt: status === "completed" ? new Date() : null, updatedAt: new Date() });
       await updateRequestStatusFromTask(taskId, status, task.courierId);
-      res.json(trpcJson({ success: true }));
+      res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to update manager task status"); }
   });
 
@@ -370,12 +467,12 @@ export function registerCompatRoutes(app: Express) {
       if (!taskId) throw new Error("taskId is required");
       await db.assignTaskToCourier(taskId, courierId, "assigned");
       await updateRequestStatusFromTask(taskId, "assigned", courierId);
-      res.json(trpcJson({ success: true }));
+      res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to assign manager task courier"); }
   });
 
   app.get("/api/trpc/requests.all", async (_req, res) => {
-    try { res.json(trpcJson(await requestRows())); } catch (error) { sendError(res, error, "Failed to load requests"); }
+    try { res.json(trpcBatchJson(await requestRows())); } catch (error) { sendError(res, error, "Failed to load requests"); }
   });
 
   app.post("/api/trpc/requests.create", async (req, res) => {
@@ -421,25 +518,8 @@ export function registerCompatRoutes(app: Express) {
       const inserted = await conn.insert(requests).values(payload).returning();
       const request = inserted[0] as DeliveryRequest;
       const taskId = await syncTaskForRequest(request);
-      res.json(trpcJson({ id: request.id, taskId, success: true }));
+      res.json(trpcBatchJson({ id: request.id, taskId, success: true }));
     } catch (error) { sendError(res, error, "Failed to create request"); }
-  });
-
-  app.post("/api/trpc/requests.delete", async (req, res) => {
-    try {
-      const conn = await db.getDb();
-      if (!conn) throw new Error("Database not available");
-      const input = inputFrom(req);
-      const id = Number(input.id ?? input.requestId);
-      if (!id) throw new Error("id is required");
-
-      try { await conn.execute(sql`DELETE FROM "tasks" WHERE "sourceRequestId" = ${id}`); } catch {}
-      try { await conn.execute(sql`DELETE FROM "tasks" WHERE "requestId" = ${id}`); } catch {}
-      await conn.execute(sql`DELETE FROM "tasks" WHERE "comments" LIKE ${`%[request:${id}]%`}`);
-      await conn.delete(requests).where(eq(requests.id, id));
-
-      res.json(trpcJson({ success: true }));
-    } catch (error) { sendError(res, error, "Failed to delete request"); }
   });
 
   app.post("/api/trpc/requests.updateStatus", async (req, res) => {
@@ -452,7 +532,7 @@ export function registerCompatRoutes(app: Express) {
       const status = normalizeRequestStatus(input.status);
       const updated = await conn.update(requests).set({ status, completedAt: status === "completed" ? new Date() : null, updatedAt: new Date() }).where(eq(requests.id, id)).returning();
       if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
-      res.json(trpcJson({ success: true }));
+      res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to update request status"); }
   });
 
@@ -466,7 +546,7 @@ export function registerCompatRoutes(app: Express) {
       if (!id) throw new Error("id is required");
       const updated = await conn.update(requests).set({ courierId, status: courierId ? "assigned" : "pending", updatedAt: new Date() }).where(eq(requests.id, id)).returning();
       if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
-      res.json(trpcJson({ success: true }));
+      res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to assign request courier"); }
   });
 
@@ -475,7 +555,7 @@ export function registerCompatRoutes(app: Express) {
       const input = inputFrom(req);
       const status = input.status === "delivered" || input.status === "not_delivered" ? input.status : undefined;
       const mailList = await db.getMailsByFilter(status, input.dateFrom as string | undefined, input.dateTo as string | undefined);
-      res.json(trpcJson(await mailsWithCourierName(mailList)));
+      res.json(trpcBatchJson(await mailsWithCourierName(mailList)));
     } catch (error) { sendError(res, error, "Failed to load manager mails"); }
   });
 
@@ -485,9 +565,9 @@ export function registerCompatRoutes(app: Express) {
       const waybillNumber = String(input.waybillNumber || "").trim();
       if (!waybillNumber) throw new Error("waybillNumber is required");
       const existing = await db.getMailByWaybill(waybillNumber);
-      if (existing) { res.json(trpcJson(existing)); return; }
+      if (existing) { res.json(trpcBatchJson(existing)); return; }
       const mail = await db.createMail({ waybillNumber, recipientName: input.recipientName ? String(input.recipientName) : null, recipientPhone: String(input.recipientPhone || ""), deliveryAddress: String(input.deliveryAddress || "Адрес не указан"), status: "not_delivered" });
-      res.json(trpcJson(mail));
+      res.json(trpcBatchJson(mail));
     } catch (error) { sendError(res, error, "Failed to create mail"); }
   });
 
@@ -499,7 +579,7 @@ export function registerCompatRoutes(app: Express) {
       const id = Number(input.id);
       if (!id) throw new Error("id is required");
       await conn.delete(mails).where(eq(mails.id, id));
-      res.json(trpcJson({ success: true }));
+      res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to delete mail"); }
   });
 
@@ -508,7 +588,7 @@ export function registerCompatRoutes(app: Express) {
       const conn = await db.getDb();
       if (!conn) throw new Error("Database not available");
       await conn.delete(mails);
-      res.json(trpcJson({ success: true }));
+      res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to clear mails"); }
   });
 
@@ -527,7 +607,7 @@ export function registerCompatRoutes(app: Express) {
         await db.createMail({ waybillNumber, recipientName: item.recipientName ?? null, recipientPhone: String(item.recipientPhone || ""), deliveryAddress: String(item.deliveryAddress || "Адрес не указан"), status: "not_delivered" });
         created += 1;
       }
-      res.json(trpcJson({ created, skipped, errors }));
+      res.json(trpcBatchJson({ created, skipped, errors }));
     } catch (error) { sendError(res, error, "Failed to bulk create mails"); }
   });
 }

@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
+import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
 import { createContext } from "./context";
 import { mails } from "../../drizzle/schema";
@@ -35,7 +36,6 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 function trpcJson(data: unknown) {
   return { result: { data: { json: data } } };
 }
-
 function trpcBatchJson(data: unknown) {
   return [trpcJson(data)];
 }
@@ -139,7 +139,7 @@ async function startServer() {
   app.get("/api/trpc/manager.couriers", async (_req, res) => {
     try {
       const couriers = await db.getAllCouriers();
-      res.json(trpcJson(couriers));
+      res.json(trpcBatchJson(couriers));
     } catch (error) {
       console.error("[manager.couriers] failed", error);
       res.status(500).json({ error: { message: "Failed to load couriers" } });
@@ -177,7 +177,7 @@ async function startServer() {
         totalDeliveries: 0,
       });
 
-      res.json(trpcJson({ id, success: true }));
+      res.json(trpcBatchJson({ id, success: true }));
     } catch (error) {
       console.error("[manager.createCourier] failed", error);
       res.status(500).json({ error: { message: "Failed to create courier" } });
@@ -213,6 +213,7 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`[api] server listening on port ${port}`);
     console.log(`[api] serving static files from ${publicPath}`);
+    startCourierReminderScheduler();
   });
 }
 
