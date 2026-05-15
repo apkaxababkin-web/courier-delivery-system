@@ -9,17 +9,35 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   cancelled: "Отменена",
 };
 
-const STATUS_COLORS: Record<TaskStatus, { bg: string; fg: string }> = {
-  assigned: { bg: "#EAF2FF", fg: "#0B72F0" },
-  in_progress: { bg: "#EAF2FF", fg: "#0B72F0" },
-  completed: { bg: "#DCFCE7", fg: "#15803D" },
-  cancelled: { bg: "#FEE2E2", fg: "#B91C1C" },
+const STATUS_COLORS: Record<TaskStatus, { bg: string; fg: string; darkBg: string; darkFg: string }> = {
+  assigned: { bg: "#EAF2FF", fg: "#1D6FF2", darkBg: "rgba(59,130,246,0.18)", darkFg: "#7DB2FF" },
+  in_progress: { bg: "#EAF2FF", fg: "#1D6FF2", darkBg: "rgba(59,130,246,0.18)", darkFg: "#7DB2FF" },
+  completed: { bg: "#DCFCE7", fg: "#15803D", darkBg: "rgba(34,197,94,0.16)", darkFg: "#86EFAC" },
+  cancelled: { bg: "#FEE2E2", fg: "#B91C1C", darkBg: "rgba(248,113,113,0.16)", darkFg: "#FCA5A5" },
 };
 
 type RequestType = "delivery" | "movement" | "nuts" | "courier_call" | "pickup_from_tc" | "simple";
 type TaskType = "regular" | "warehouse_pickup" | "courier_call";
 
 type CardKind = "delivery" | "movement" | "courier_call" | "tc" | "nuts" | "simple";
+
+type CardPalette = {
+  card: string;
+  elevated: string;
+  border: string;
+  divider: string;
+  title: string;
+  text: string;
+  muted: string;
+  subtext: string;
+  iconBg: string;
+  iconColor: string;
+  accent: string;
+  shadow: string;
+  qtyBg: string;
+  statusBg: string;
+  statusFg: string;
+};
 
 export interface TaskCardData {
   id: number;
@@ -178,32 +196,75 @@ function splitItems(items: ItemLine[]) {
   return [items.slice(0, firstColumnCount), items.slice(firstColumnCount)] as const;
 }
 
-function Field({ label, value, subvalue }: { label: string; value: string; subvalue?: string }) {
+function getPalette(colors: ReturnType<typeof useColors>, status: TaskStatus): CardPalette {
+  const isDark = colors.background.toLowerCase() !== "#f5f3ef" && colors.background.toLowerCase() !== "#ffffff";
+  const statusColors = STATUS_COLORS[status] ?? STATUS_COLORS.assigned;
+
+  if (isDark) {
+    return {
+      card: colors.surface,
+      elevated: "rgba(59,130,246,0.10)",
+      border: "rgba(148,163,184,0.22)",
+      divider: "rgba(148,163,184,0.18)",
+      title: colors.primary,
+      text: colors.foreground,
+      muted: colors.muted,
+      subtext: "#CBD5E1",
+      iconBg: "rgba(59,130,246,0.14)",
+      iconColor: "#7DB2FF",
+      accent: colors.primary,
+      shadow: "#020617",
+      qtyBg: "rgba(59,130,246,0.14)",
+      statusBg: statusColors.darkBg,
+      statusFg: statusColors.darkFg,
+    };
+  }
+
+  return {
+    card: colors.surface,
+    elevated: "#F0F6FF",
+    border: colors.border,
+    divider: "#E2E8F0",
+    title: colors.primary,
+    text: colors.foreground,
+    muted: colors.muted,
+    subtext: "#475569",
+    iconBg: "#EAF2FF",
+    iconColor: "#1D6FF2",
+    accent: colors.primary,
+    shadow: "#94A3B8",
+    qtyBg: "#EAF2FF",
+    statusBg: statusColors.bg,
+    statusFg: statusColors.fg,
+  };
+}
+
+function Field({ label, value, subvalue, palette }: { label: string; value: string; subvalue?: string; palette: CardPalette }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <Text numberOfLines={2} style={styles.fieldValue}>{value}</Text>
-      {!!subvalue && <Text numberOfLines={2} style={styles.fieldSubvalue}>{subvalue}</Text>}
+      <Text style={[styles.fieldLabel, { color: palette.muted }]}>{label}</Text>
+      <Text numberOfLines={2} style={[styles.fieldValue, { color: palette.text }]}>{value}</Text>
+      {!!subvalue && <Text numberOfLines={2} style={[styles.fieldSubvalue, { color: palette.subtext }]}>{subvalue}</Text>}
     </View>
   );
 }
 
-function ItemColumn({ items }: { items: ItemLine[] }) {
+function ItemColumn({ items, palette }: { items: ItemLine[]; palette: CardPalette }) {
   if (items.length === 0) return <View style={styles.itemColumn} />;
 
   return (
     <View style={styles.itemColumn}>
       {items.map((item, index) => (
         <View key={`${item.label}-${index}`} style={styles.itemRow}>
-          <Text style={styles.qtyPill}>{item.quantity} шт.</Text>
-          <Text numberOfLines={1} style={styles.itemLabel}>{item.label}</Text>
+          <Text style={[styles.qtyPill, { backgroundColor: palette.qtyBg, color: palette.accent }]}>{item.quantity} шт.</Text>
+          <Text numberOfLines={1} style={[styles.itemLabel, { color: palette.text }]}>{item.label}</Text>
         </View>
       ))}
     </View>
   );
 }
 
-function DetailsGrid({ kind, task }: { kind: CardKind; task: TaskCardData }) {
+function DetailsGrid({ kind, task, palette }: { kind: CardKind; task: TaskCardData; palette: CardPalette }) {
   const date = formatTaskDate(task);
   const time = formatTaskTime(task);
 
@@ -214,11 +275,11 @@ function DetailsGrid({ kind, task }: { kind: CardKind; task: TaskCardData }) {
 
     return (
       <View style={styles.gridRow}>
-        <Field label="Адрес" value={firstPresent(task.deliveryAddress, task.recipientAddress)} subvalue={task.deliveryCity ?? undefined} />
-        <View style={styles.divider} />
+        <Field palette={palette} label="Адрес" value={firstPresent(task.deliveryAddress, task.recipientAddress)} subvalue={task.deliveryCity ?? undefined} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
         <View style={styles.itemsGrid}>
-          <ItemColumn items={leftItems} />
-          {rightItems.length > 0 && <ItemColumn items={rightItems} />}
+          <ItemColumn palette={palette} items={leftItems} />
+          {rightItems.length > 0 && <ItemColumn palette={palette} items={rightItems} />}
         </View>
       </View>
     );
@@ -227,11 +288,11 @@ function DetailsGrid({ kind, task }: { kind: CardKind; task: TaskCardData }) {
   if (kind === "courier_call") {
     return (
       <View style={styles.gridRow}>
-        <Field label="Адрес" value={firstPresent(task.senderAddress, task.deliveryAddress)} subvalue={firstPresent(task.senderName, task.recipientName)} />
-        <View style={styles.divider} />
-        <Field label="Время вызова" value={time} subvalue={date} />
-        <View style={styles.divider} />
-        <Field label="Комментарий" value={firstPresent(task.specialInstructions, task.packageDescription, task.comments)} />
+        <Field palette={palette} label="Адрес" value={firstPresent(task.senderAddress, task.deliveryAddress)} subvalue={firstPresent(task.senderName, task.recipientName)} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Время вызова" value={time} subvalue={date} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Комментарий" value={firstPresent(task.specialInstructions, task.packageDescription, task.comments)} />
       </View>
     );
   }
@@ -239,11 +300,11 @@ function DetailsGrid({ kind, task }: { kind: CardKind; task: TaskCardData }) {
   if (kind === "movement") {
     return (
       <View style={styles.gridRow}>
-        <Field label="Откуда" value={firstPresent(task.senderAddress, task.deliveryAddress)} />
-        <View style={styles.divider} />
-        <Field label="Куда" value={firstPresent(task.deliveryAddress, task.recipientAddress)} />
-        <View style={styles.divider} />
-        <Field label="Время перемещения" value={time} subvalue={date} />
+        <Field palette={palette} label="Откуда" value={firstPresent(task.senderAddress, task.deliveryAddress)} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Куда" value={firstPresent(task.deliveryAddress, task.recipientAddress)} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Время перемещения" value={time} subvalue={date} />
       </View>
     );
   }
@@ -251,11 +312,11 @@ function DetailsGrid({ kind, task }: { kind: CardKind; task: TaskCardData }) {
   if (kind === "tc") {
     return (
       <View style={styles.gridRow}>
-        <Field label="Откуда" value={firstPresent(task.senderName, task.senderAddress)} subvalue={compact(task.senderName) ? task.senderAddress ?? undefined : undefined} />
-        <View style={styles.divider} />
-        <Field label="Куда" value={firstPresent(task.recipientName, task.deliveryAddress)} subvalue={compact(task.recipientName) ? task.deliveryAddress : undefined} />
-        <View style={styles.divider} />
-        <Field label="Время доставки" value={time} subvalue={date} />
+        <Field palette={palette} label="Откуда" value={firstPresent(task.senderName, task.senderAddress)} subvalue={compact(task.senderName) ? task.senderAddress ?? undefined : undefined} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Куда" value={firstPresent(task.recipientName, task.deliveryAddress)} subvalue={compact(task.recipientName) ? task.deliveryAddress : undefined} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Время доставки" value={time} subvalue={date} />
       </View>
     );
   }
@@ -263,22 +324,22 @@ function DetailsGrid({ kind, task }: { kind: CardKind; task: TaskCardData }) {
   if (kind === "simple") {
     return (
       <View style={styles.gridRow}>
-        <Field label="Адрес" value={firstPresent(task.senderAddress, task.deliveryAddress)} />
-        <View style={styles.divider} />
-        <Field label="Время" value={time} subvalue={date} />
-        <View style={styles.divider} />
-        <Field label="Комментарий" value={firstPresent(task.specialInstructions, task.packageDescription, task.comments)} />
+        <Field palette={palette} label="Адрес" value={firstPresent(task.senderAddress, task.deliveryAddress)} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Время" value={time} subvalue={date} />
+        <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+        <Field palette={palette} label="Комментарий" value={firstPresent(task.specialInstructions, task.packageDescription, task.comments)} />
       </View>
     );
   }
 
   return (
     <View style={styles.gridRow}>
-      <Field label="Отправитель" value={firstPresent(task.senderName, "Отправитель")} subvalue={task.senderAddress ?? undefined} />
-      <View style={styles.divider} />
-      <Field label="Получатель" value={firstPresent(task.recipientName)} subvalue={firstPresent(task.deliveryAddress, task.recipientAddress)} />
-      <View style={styles.divider} />
-      <Field label="Время доставки" value={time} subvalue={date} />
+      <Field palette={palette} label="Отправитель" value={firstPresent(task.senderName, "Отправитель")} subvalue={task.senderAddress ?? undefined} />
+      <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+      <Field palette={palette} label="Получатель" value={firstPresent(task.recipientName)} subvalue={firstPresent(task.deliveryAddress, task.recipientAddress)} />
+      <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+      <Field palette={palette} label="Время доставки" value={time} subvalue={date} />
     </View>
   );
 }
@@ -287,37 +348,44 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
   const kind = getCardKind(task);
   const meta = getCardMeta(kind);
-  const statusColors = STATUS_COLORS[task.status] ?? STATUS_COLORS.assigned;
+  const palette = getPalette(colors, task.status);
   const createdTime = formatTime(task.createdAt);
   const placesCount = task.placesCount ?? null;
 
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      style={[
+        styles.card,
+        {
+          backgroundColor: palette.card,
+          borderColor: palette.border,
+          shadowColor: palette.shadow,
+        },
+      ]}
       onPress={() => onPress(task)}
       activeOpacity={0.74}
     >
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <View style={styles.iconBox}>
-            <Text style={styles.iconText}>{meta.icon}</Text>
+          <View style={[styles.iconBox, { backgroundColor: palette.iconBg, borderColor: palette.border }]}>
+            <Text style={[styles.iconText, { color: palette.iconColor }]}>{meta.icon}</Text>
           </View>
-          <Text numberOfLines={1} style={[styles.title, { color: colors.primary }]}>{meta.title}</Text>
+          <Text numberOfLines={1} style={[styles.title, { color: palette.title }]}>{meta.title}</Text>
         </View>
 
-        <Text style={styles.metaText}>#{task.id}{createdTime ? `  •  ${createdTime}` : ""}</Text>
+        <Text style={[styles.metaText, { color: palette.subtext }]}>#{task.id}{createdTime ? `  •  ${createdTime}` : ""}</Text>
 
-        <View style={[styles.statusPill, { backgroundColor: statusColors.bg }]}>
-          <Text style={[styles.statusText, { color: statusColors.fg }]}>{STATUS_LABELS[task.status] ?? "Статус"}</Text>
+        <View style={[styles.statusPill, { backgroundColor: palette.statusBg }]}>
+          <Text style={[styles.statusText, { color: palette.statusFg }]}>{STATUS_LABELS[task.status] ?? "Статус"}</Text>
         </View>
       </View>
 
-      <DetailsGrid kind={kind} task={task} />
+      <DetailsGrid kind={kind} task={task} palette={palette} />
 
-      <View style={styles.footerRow}>
-        <Text numberOfLines={1} style={styles.footerText}>Курьер: <Text style={styles.footerValue}>{task.courierName || "не назначен"}</Text></Text>
+      <View style={[styles.footerRow, { borderTopColor: palette.divider }]}> 
+        <Text numberOfLines={1} style={[styles.footerText, { color: palette.muted }]}>Курьер: <Text style={[styles.footerValue, { color: palette.text }]}>{task.courierName || "не назначен"}</Text></Text>
         {placesCount != null && kind !== "courier_call" && (
-          <Text style={styles.footerText}>Мест: <Text style={styles.footerValue}>{placesCount}</Text></Text>
+          <Text style={[styles.footerText, { color: palette.muted }]}>Мест: <Text style={[styles.footerValue, { color: palette.text }]}>{placesCount}</Text></Text>
         )}
       </View>
     </TouchableOpacity>
@@ -326,18 +394,17 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 8,
     marginHorizontal: 8,
-    marginBottom: 8,
-    shadowColor: "#111827",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    marginBottom: 9,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 5,
   },
   headerRow: {
     flexDirection: "row",
@@ -354,43 +421,41 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   iconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
+    width: 35,
+    height: 35,
+    borderRadius: 11,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EAF2FF",
   },
   iconText: {
-    color: "#0B72F0",
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "900",
   },
   title: {
     fontSize: 18,
     lineHeight: 22,
-    fontWeight: "800",
+    fontWeight: "900",
     flexShrink: 1,
   },
   metaText: {
     flex: 0.9,
     textAlign: "center",
-    color: "#566176",
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 16,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   statusPill: {
-    minWidth: 76,
-    borderRadius: 8,
-    paddingHorizontal: 10,
+    minWidth: 74,
+    borderRadius: 9,
+    paddingHorizontal: 9,
     paddingVertical: 5,
     alignItems: "center",
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 11,
     lineHeight: 14,
-    fontWeight: "800",
+    fontWeight: "900",
   },
   gridRow: {
     flexDirection: "row",
@@ -404,20 +469,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   fieldLabel: {
-    color: "#64748B",
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: "700",
+    fontWeight: "800",
     marginBottom: 3,
   },
   fieldValue: {
-    color: "#0F172A",
     fontSize: 13,
     lineHeight: 17,
-    fontWeight: "800",
+    fontWeight: "900",
   },
   fieldSubvalue: {
-    color: "#475569",
     fontSize: 12,
     lineHeight: 15,
     fontWeight: "600",
@@ -425,7 +487,6 @@ const styles = StyleSheet.create({
   },
   divider: {
     width: StyleSheet.hairlineWidth,
-    backgroundColor: "#DDE6F2",
     marginVertical: 2,
   },
   itemsGrid: {
@@ -449,41 +510,35 @@ const styles = StyleSheet.create({
     minWidth: 40,
     overflow: "hidden",
     borderRadius: 8,
-    backgroundColor: "#EAF2FF",
-    color: "#0B72F0",
     textAlign: "center",
     paddingHorizontal: 5,
     paddingVertical: 1,
     fontSize: 10,
     lineHeight: 14,
-    fontWeight: "800",
+    fontWeight: "900",
   },
   itemLabel: {
     flex: 1,
     minWidth: 0,
-    color: "#0F172A",
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   footerRow: {
     marginTop: 8,
     paddingTop: 7,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#DDE6F2",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
   footerText: {
-    color: "#64748B",
     fontSize: 12,
     lineHeight: 15,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   footerValue: {
-    color: "#0F172A",
-    fontWeight: "800",
+    fontWeight: "900",
   },
 });
