@@ -9,18 +9,25 @@ import { useColors } from "@/hooks/use-colors";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const icon = (name: string) => name as any;
 
+function isDarkBackground(background: string) {
+  return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
+}
+
 export default function TabLayout() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const bottomSafeArea = Platform.OS === "web" ? 12 : Math.max(insets.bottom, Platform.OS === "android" ? 22 : 12);
-  const tabBarHeight = 58 + bottomSafeArea;
+  const dark = isDarkBackground(colors.background);
+  const bottomSafeArea = Platform.OS === "web" ? 12 : Math.max(insets.bottom, Platform.OS === "android" ? 20 : 12);
+  const tabBarHeight = 64 + bottomSafeArea;
+  const tabBarBackground = dark ? "rgba(17,24,32,0.96)" : "rgba(255,253,248,0.97)";
+  const activeBg = dark ? "rgba(59,130,246,0.18)" : "#EAF2FF";
 
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarActiveBackgroundColor: "rgba(10, 126, 164, 0.15)",
+        tabBarActiveBackgroundColor: activeBg,
         tabBarAllowFontScaling: false,
         headerShown: false,
         tabBarHideOnKeyboard: true,
@@ -32,48 +39,47 @@ export default function TabLayout() {
         },
         tabBarStyle: {
           position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          paddingTop: 10,
+          bottom: 10,
+          left: 12,
+          right: 12,
+          paddingTop: 9,
           paddingBottom: bottomSafeArea,
-          paddingHorizontal: 0,
+          paddingHorizontal: 8,
           height: tabBarHeight,
-          backgroundColor: colors.surface,
-          borderColor: "transparent",
-          borderWidth: 0,
-          borderRadius: 0,
-          marginBottom: 0,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.15,
-          shadowRadius: 16,
-          elevation: 8,
+          backgroundColor: tabBarBackground,
+          borderColor: dark ? "rgba(148,163,184,0.22)" : "rgba(226,232,240,0.95)",
+          borderWidth: 1,
+          borderRadius: 28,
+          shadowColor: dark ? "#020617" : "#94A3B8",
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: dark ? 0.34 : 0.18,
+          shadowRadius: 24,
+          elevation: 14,
           zIndex: 1000,
         },
         tabBarLabelStyle: {
           fontSize: 9,
-          fontWeight: "500",
+          fontWeight: "800",
           marginTop: 2,
-          maxWidth: 56,
+          maxWidth: 64,
         },
         tabBarItemStyle: {
-          borderRadius: 12,
-          marginHorizontal: 4,
+          borderRadius: 18,
+          marginHorizontal: 2,
           paddingVertical: 4,
-          paddingHorizontal: 10,
+          paddingHorizontal: 6,
         },
         tabBarIconStyle: {
-          marginBottom: 2,
+          marginBottom: 1,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Все заявки",
+          title: "Заявки",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("list.bullet")} color={color} />
+            <IconSymbol size={25} name={icon("list.bullet")} color={color} />
           ),
         }}
       />
@@ -81,8 +87,9 @@ export default function TabLayout() {
         name="pickup-gemotest"
         options={{
           title: "Гемотест",
+          tabBarActiveTintColor: "#18C7B7",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("hemotest")} color={color} />
+            <IconSymbol size={25} name={icon("hemotest")} color={color} />
           ),
         }}
       />
@@ -90,8 +97,9 @@ export default function TabLayout() {
         name="pickup-sberbank"
         options={{
           title: "Сбербанк",
+          tabBarActiveTintColor: "#22C55E",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("sberbank")} color={color} />
+            <IconSymbol size={25} name={icon("sberbank")} color={color} />
           ),
         }}
       />
@@ -100,7 +108,7 @@ export default function TabLayout() {
         options={{
           title: "Письма",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name={icon("envelope")} color={color} />
+            <IconSymbol size={25} name={icon("envelope")} color={color} />
           ),
         }}
       />
