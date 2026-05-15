@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import {
   couriers,
   hemotestPickups,
@@ -8,6 +8,7 @@ import {
   requests,
   sberbankPickups,
   sberbankPickupPoints,
+  tasks,
   type InsertMail,
   type InsertRequest,
   type InsertTask,
@@ -23,11 +24,32 @@ function trpcJson(data: unknown) {
 }
 
 function inputFrom(req: Request): Record<string, unknown> {
-  const body = (req.body?.json ?? req.body ?? {}) as Record<string, unknown>;
+  const pick = (value: unknown): Record<string, unknown> => {
+    if (!value || typeof value !== "object") return {};
+    const obj = value as Record<string, unknown>;
+    const first = obj["0"];
+
+    if (first && typeof first === "object") {
+      const firstObj = first as Record<string, unknown>;
+      if (firstObj.json && typeof firstObj.json === "object") {
+        return firstObj.json as Record<string, unknown>;
+      }
+      return firstObj;
+    }
+
+    if (obj.json && typeof obj.json === "object") {
+      return obj.json as Record<string, unknown>;
+    }
+
+    return obj;
+  };
+
+  const body = pick(req.body);
   if (Object.keys(body).length > 0) return body;
+
   const raw = req.query.input;
   if (typeof raw !== "string" || !raw) return {};
-  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  try { return pick(JSON.parse(raw)); } catch { return {}; }
 }
 
 async function courierNameMap() {
@@ -401,6 +423,23 @@ export function registerCompatRoutes(app: Express) {
       const taskId = await syncTaskForRequest(request);
       res.json(trpcJson({ id: request.id, taskId, success: true }));
     } catch (error) { sendError(res, error, "Failed to create request"); }
+  });
+
+  app.post("/api/trpc/requests.delete", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+      const input = inputFrom(req);
+      const id = Number(input.id ?? input.requestId);
+      if (!id) throw new Error("id is required");
+
+      try { await conn.execute(sql`DELETE FROM "tasks" WHERE "sourceRequestId" = ${id}`); } catch {}
+      try { await conn.execute(sql`DELETE FROM "tasks" WHERE "requestId" = ${id}`); } catch {}
+      await conn.execute(sql`DELETE FROM "tasks" WHERE "comments" LIKE ${`%[request:${id}]%`}`);
+      await conn.delete(requests).where(eq(requests.id, id));
+
+      res.json(trpcJson({ success: true }));
+    } catch (error) { sendError(res, error, "Failed to delete request"); }
   });
 
   app.post("/api/trpc/requests.updateStatus", async (req, res) => {

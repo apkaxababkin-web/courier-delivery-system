@@ -7,27 +7,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_tasks_sourceRequestId" ON "tasks"("source
 
 CREATE OR REPLACE FUNCTION sync_request_to_task() RETURNS trigger AS $$
 DECLARE
-  mapped_task_status task_status;
-  mapped_task_type task_type;
-  mapped_package_type package_type;
+  mapped_task_status "taskStatus";
+  mapped_task_type "taskType";
+  mapped_package_type "packageType";
   mapped_recipient_name text;
   mapped_delivery_address text;
 BEGIN
   mapped_task_status := CASE NEW."status"
-    WHEN 'in_progress' THEN 'in_progress'::task_status
-    WHEN 'completed' THEN 'completed'::task_status
-    WHEN 'cancelled' THEN 'cancelled'::task_status
-    ELSE 'assigned'::task_status
+    WHEN 'in_progress' THEN 'in_progress'::"taskStatus"
+    WHEN 'completed' THEN 'completed'::"taskStatus"
+    WHEN 'cancelled' THEN 'cancelled'::"taskStatus"
+    ELSE 'assigned'::"taskStatus"
   END;
 
   mapped_task_type := CASE NEW."requestType"
-    WHEN 'courier_call' THEN 'courier_call'::task_type
-    WHEN 'nuts' THEN 'warehouse_pickup'::task_type
-    WHEN 'pickup_from_tc' THEN 'warehouse_pickup'::task_type
-    ELSE 'regular'::task_type
+    WHEN 'courier_call' THEN 'courier_call'::"taskType"
+    WHEN 'nuts' THEN 'warehouse_pickup'::"taskType"
+    WHEN 'pickup_from_tc' THEN 'warehouse_pickup'::"taskType"
+    ELSE 'regular'::"taskType"
   END;
 
-  mapped_package_type := COALESCE(NEW."packageType"::text, 'small')::package_type;
+  mapped_package_type := COALESCE(NEW."packageType"::text, 'small')::"packageType";
   mapped_recipient_name := COALESCE(NULLIF(NEW."recipientName", ''), NULLIF(NEW."recipientCompany", ''), NULLIF(NEW."description", ''), 'Получатель');
   mapped_delivery_address := COALESCE(NULLIF(NEW."deliveryAddress", ''), NULLIF(NEW."recipientAddress", ''), NULLIF(NEW."tcAddress", ''), NULLIF(NEW."senderAddress", ''), 'Адрес не указан');
 
@@ -175,23 +175,23 @@ SELECT
   r."createdByUserId",
   r."courierId",
   CASE r."status"
-    WHEN 'in_progress' THEN 'in_progress'::task_status
-    WHEN 'completed' THEN 'completed'::task_status
-    WHEN 'cancelled' THEN 'cancelled'::task_status
-    ELSE 'assigned'::task_status
+    WHEN 'in_progress' THEN 'in_progress'::"taskStatus"
+    WHEN 'completed' THEN 'completed'::"taskStatus"
+    WHEN 'cancelled' THEN 'cancelled'::"taskStatus"
+    ELSE 'assigned'::"taskStatus"
   END,
   CASE r."requestType"
-    WHEN 'courier_call' THEN 'courier_call'::task_type
-    WHEN 'nuts' THEN 'warehouse_pickup'::task_type
-    WHEN 'pickup_from_tc' THEN 'warehouse_pickup'::task_type
-    ELSE 'regular'::task_type
+    WHEN 'courier_call' THEN 'courier_call'::"taskType"
+    WHEN 'nuts' THEN 'warehouse_pickup'::"taskType"
+    WHEN 'pickup_from_tc' THEN 'warehouse_pickup'::"taskType"
+    ELSE 'regular'::"taskType"
   END,
   COALESCE(NULLIF(r."recipientName", ''), NULLIF(r."recipientCompany", ''), NULLIF(r."description", ''), 'Получатель'),
   r."recipientPhone",
   COALESCE(NULLIF(r."deliveryAddress", ''), NULLIF(r."recipientAddress", ''), NULLIF(r."tcAddress", ''), NULLIF(r."senderAddress", ''), 'Адрес не указан'),
   COALESCE(r."deliveryCity", r."recipientCity"),
   COALESCE(r."packageDescription", r."description", r."callReason"),
-  COALESCE(r."packageType"::text, 'small')::package_type,
+  COALESCE(r."packageType"::text, 'small')::"packageType",
   r."specialInstructions",
   COALESCE(r."placesCount", 1),
   r."estimatedMinutes",

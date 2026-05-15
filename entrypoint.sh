@@ -52,7 +52,8 @@ run_patch() {
 
 run_patch "scripts/db_compat_patch.sql" "compatibility patch"
 run_patch "scripts/mails_manifest_patch.sql" "mails manifest patch"
-run_patch "scripts/realtime_bridge.sql" "request-task bridge patch"
+# disabled: backend helper now handles request-task sync
+# run_patch "scripts/realtime_bridge.sql" "request-task bridge patch"
 
 echo "[Entrypoint] Starting API server..."
 exec node dist/index.js
