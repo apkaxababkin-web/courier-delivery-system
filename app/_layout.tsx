@@ -5,7 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import {
@@ -16,6 +16,7 @@ import {
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
+import * as NavigationBar from "expo-navigation-bar";
 import { useRouter } from "expo-router";
 
 import { ToastProvider } from "react-native-toast-notifications";
@@ -27,6 +28,19 @@ import { FilterProvider } from "@/lib/filter-context";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
+
+
+async function hideAndroidNavigationBar() {
+  if (Platform.OS !== "android") return;
+
+  try {
+    await NavigationBar.setBehaviorAsync("overlay-swipe");
+    await NavigationBar.setBackgroundColorAsync("transparent");
+    await NavigationBar.setVisibilityAsync("hidden");
+  } catch (error) {
+    console.warn("[App] Failed to hide Android navigation bar", error);
+  }
+}
 
 function AuthRedirect() {
   const { isAuthenticated, loading } = useCourierAuth();
@@ -86,6 +100,28 @@ export default function RootLayout() {
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
+
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    hideAndroidNavigationBar();
+
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        hideAndroidNavigationBar();
+      }
+    });
+
+    const intervalId = setInterval(() => {
+      hideAndroidNavigationBar();
+    }, 1500);
+
+    return () => {
+      appStateSubscription.remove();
+      clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     initManusRuntime();
