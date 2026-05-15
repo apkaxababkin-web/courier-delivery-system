@@ -50,10 +50,17 @@ function normalizePhoneForDial(phone?: string | null) {
   return phone.replace(/[^+\d]/g, "");
 }
 
+function isDarkBackground(background: string) {
+  return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
+}
+
 export default function LettersScreen() {
   const colors = useColors();
   const { token } = useCourierAuth();
   const { isOnline } = useNetworkStatus();
+  const dark = isDarkBackground(colors.background);
+  const cardBorder = dark ? "rgba(148,163,184,0.20)" : colors.border;
+  const softSurface = dark ? "rgba(148,163,184,0.08)" : "#F8FAFC";
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "delivered" | "not_delivered">("all");
@@ -120,33 +127,32 @@ export default function LettersScreen() {
   };
 
   return (
-    <ScreenContainer className="p-4">
+    <ScreenContainer className="p-0">
       <NetworkBanner visible={!isOnline} />
 
-      <View style={{ gap: 12 }}>
-        <Text
-          style={{
-            fontSize: 28,
-            fontWeight: "700",
-            color: colors.foreground,
-          }}
-        >
-          Письма
-        </Text>
+      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12, gap: 12, backgroundColor: colors.background }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 24, borderWidth: 1, borderColor: cardBorder, padding: 16 }}>
+          <Text style={{ fontSize: 28, fontWeight: "900", color: colors.foreground }}>Письма</Text>
+          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4, fontWeight: "700" }}>
+            Вручение и подтверждение получателя
+          </Text>
+        </View>
 
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Поиск по накладной"
+          placeholder="Поиск по накладной, получателю, телефону"
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.surface,
-            borderRadius: 16,
+            borderRadius: 18,
             paddingHorizontal: 16,
             paddingVertical: 14,
             borderWidth: 1,
-            borderColor: colors.border,
+            borderColor: cardBorder,
             color: colors.foreground,
+            fontSize: 15,
+            fontWeight: "700",
           }}
         />
 
@@ -155,39 +161,40 @@ export default function LettersScreen() {
             ["all", "Все"],
             ["not_delivered", "Не вручено"],
             ["delivered", "Вручено"],
-          ].map(([value, label]) => (
-            <Pressable
-              key={value}
-              onPress={() => setFilter(value as any)}
-              style={{
-                backgroundColor:
-                  filter === value ? colors.primary : colors.surface,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor:
-                  filter === value ? colors.primary : colors.border,
-              }}
-            >
-              <Text
+          ].map(([value, label]) => {
+            const active = filter === value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => setFilter(value as any)}
                 style={{
-                  color:
-                    filter === value ? "white" : colors.foreground,
-                  fontWeight: "600",
+                  backgroundColor: active ? colors.primary : colors.surface,
+                  paddingHorizontal: 14,
+                  paddingVertical: 11,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: active ? colors.primary : cardBorder,
                 }}
               >
-                {label}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  style={{
+                    color: active ? "white" : colors.foreground,
+                    fontWeight: "900",
+                    fontSize: 13,
+                  }}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
       <FlatList
         data={filteredMails}
         keyExtractor={(item: any) => item.id.toString()}
-        contentContainerStyle={{ paddingTop: 16, paddingBottom: 120 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 128, backgroundColor: colors.background }}
         renderItem={({ item }: any) => {
           const delivered = item.status === "delivered";
           const hasPhone = Boolean(normalizePhoneForDial(item.recipientPhone));
@@ -197,119 +204,76 @@ export default function LettersScreen() {
               style={{
                 backgroundColor: colors.surface,
                 borderRadius: 22,
-                padding: 18,
-                marginBottom: 14,
+                padding: 16,
+                marginBottom: 12,
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: cardBorder,
+                shadowColor: dark ? "#020617" : "#94A3B8",
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: dark ? 0.26 : 0.12,
+                shadowRadius: 18,
+                elevation: 5,
               }}
             >
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: colors.foreground,
-                  }}
-                >
-                  #{item.waybillNumber}
-                </Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <Text style={{ fontSize: 18, fontWeight: "900", color: colors.foreground }}>#{item.waybillNumber}</Text>
 
                 <View
                   style={{
                     backgroundColor: delivered
-                      ? "rgba(34,197,94,0.15)"
-                      : "rgba(249,115,22,0.15)",
+                      ? dark ? "rgba(34,197,94,0.16)" : "#DCFCE7"
+                      : dark ? "rgba(249,115,22,0.16)" : "#FFEDD5",
                     paddingHorizontal: 12,
                     paddingVertical: 6,
                     borderRadius: 999,
                   }}
                 >
-                  <Text
-                    style={{
-                      color: delivered ? "#16a34a" : "#f97316",
-                      fontWeight: "700",
-                    }}
-                  >
+                  <Text style={{ color: delivered ? "#16a34a" : "#f97316", fontWeight: "900", fontSize: 12 }}>
                     {delivered ? "Вручено" : "В пути"}
                   </Text>
                 </View>
               </View>
 
-              <Text style={{ color: colors.muted, marginBottom: 4 }}>
-                Получатель
-              </Text>
-              <Text
-                style={{
-                  color: colors.foreground,
-                  fontSize: 16,
-                  fontWeight: "600",
-                  marginBottom: 12,
-                }}
-              >
-                {item.recipientName || "—"}
-              </Text>
+              <View style={{ backgroundColor: softSurface, borderRadius: 18, padding: 12, gap: 10 }}>
+                <View>
+                  <Text style={{ color: colors.muted, marginBottom: 4, fontWeight: "800", fontSize: 12 }}>Получатель</Text>
+                  <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "900" }}>{item.recipientName || "—"}</Text>
+                </View>
 
-              <Text style={{ color: colors.muted, marginBottom: 4 }}>
-                Телефон
-              </Text>
-              {hasPhone ? (
-                <Pressable onPress={() => callRecipient(item.recipientPhone)} style={{ marginBottom: 12 }}>
-                  <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "700" }}>
-                    {item.recipientPhone}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Text style={{ color: colors.foreground, marginBottom: 12 }}>—</Text>
-              )}
+                <View>
+                  <Text style={{ color: colors.muted, marginBottom: 4, fontWeight: "800", fontSize: 12 }}>Телефон</Text>
+                  {hasPhone ? (
+                    <Pressable onPress={() => callRecipient(item.recipientPhone)}>
+                      <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "900" }}>{item.recipientPhone}</Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={{ color: colors.foreground, fontWeight: "700" }}>—</Text>
+                  )}
+                </View>
 
-              <Text style={{ color: colors.muted, marginBottom: 4 }}>
-                Адрес
-              </Text>
-              <Text
-                style={{
-                  color: colors.foreground,
-                  lineHeight: 22,
-                }}
-              >
-                {item.deliveryAddress}
-              </Text>
+                <View>
+                  <Text style={{ color: colors.muted, marginBottom: 4, fontWeight: "800", fontSize: 12 }}>Адрес</Text>
+                  <Text style={{ color: colors.foreground, lineHeight: 21, fontWeight: "700" }}>{item.deliveryAddress}</Text>
+                </View>
+              </View>
 
               {delivered ? (
-                <View style={{ marginTop: 16, gap: 4 }}>
-                  <Text style={{ color: colors.muted }}>
-                    Получил: {item.recipientSignature || "—"}
-                  </Text>
-                  <Text style={{ color: colors.muted }}>
-                    Время вручения: {formatDeliveredAt(item.deliveredAt)}
-                  </Text>
+                <View style={{ marginTop: 14, gap: 4, paddingHorizontal: 2 }}>
+                  <Text style={{ color: colors.muted, fontWeight: "700" }}>Получил: {item.recipientSignature || "—"}</Text>
+                  <Text style={{ color: colors.muted, fontWeight: "700" }}>Время вручения: {formatDeliveredAt(item.deliveredAt)}</Text>
                 </View>
               ) : (
                 <Pressable
                   onPress={() => openDeliveryModal(item.id)}
                   style={{
-                    marginTop: 18,
+                    marginTop: 16,
                     backgroundColor: colors.primary,
                     borderRadius: 16,
                     paddingVertical: 14,
                     alignItems: "center",
                   }}
                 >
-                  <Text
-                    style={{
-                      color: "white",
-                      fontWeight: "700",
-                      fontSize: 16,
-                    }}
-                  >
-                    Вручено
-                  </Text>
+                  <Text style={{ color: "white", fontWeight: "900", fontSize: 16 }}>Вручено</Text>
                 </Pressable>
               )}
             </View>
@@ -318,31 +282,9 @@ export default function LettersScreen() {
       />
 
       <Modal visible={selectedMailId !== null} transparent animationType="fade">
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.45)",
-            justifyContent: "center",
-            padding: 24,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: colors.background,
-              borderRadius: 24,
-              padding: 20,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 22,
-                fontWeight: "700",
-                color: colors.foreground,
-                marginBottom: 16,
-              }}
-            >
-              Кто получил?
-            </Text>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }}>
+          <View style={{ backgroundColor: colors.background, borderRadius: 26, padding: 20, borderWidth: 1, borderColor: cardBorder }}>
+            <Text style={{ fontSize: 22, fontWeight: "900", color: colors.foreground, marginBottom: 16 }}>Кто получил?</Text>
 
             <TextInput
               value={recipientName}
@@ -355,14 +297,13 @@ export default function LettersScreen() {
                 paddingHorizontal: 16,
                 paddingVertical: 14,
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: cardBorder,
                 color: colors.foreground,
+                fontWeight: "700",
               }}
             />
 
-            <Text style={{ color: colors.muted, marginTop: 14, marginBottom: 6 }}>
-              Дата и время вручения
-            </Text>
+            <Text style={{ color: colors.muted, marginTop: 14, marginBottom: 6, fontWeight: "800" }}>Дата и время вручения</Text>
             <TextInput
               value={deliveredAtInput}
               onChangeText={(value) => {
@@ -378,16 +319,13 @@ export default function LettersScreen() {
                 paddingHorizontal: 16,
                 paddingVertical: 14,
                 borderWidth: 1,
-                borderColor: deliveryTimeError ? colors.error : colors.border,
+                borderColor: deliveryTimeError ? colors.error : cardBorder,
                 color: colors.foreground,
+                fontWeight: "700",
               }}
             />
 
-            {deliveryTimeError ? (
-              <Text style={{ color: colors.error, marginTop: 8 }}>
-                {deliveryTimeError}
-              </Text>
-            ) : null}
+            {deliveryTimeError ? <Text style={{ color: colors.error, marginTop: 8, fontWeight: "800" }}>{deliveryTimeError}</Text> : null}
 
             <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
               <Pressable
@@ -395,17 +333,9 @@ export default function LettersScreen() {
                   setSelectedMailId(null);
                   setDeliveryTimeError("");
                 }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                  backgroundColor: colors.surface,
-                  alignItems: "center",
-                }}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 16, backgroundColor: colors.surface, alignItems: "center", borderWidth: 1, borderColor: cardBorder }}
               >
-                <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                  Отмена
-                </Text>
+                <Text style={{ color: colors.foreground, fontWeight: "900" }}>Отмена</Text>
               </Pressable>
 
               <Pressable
@@ -425,18 +355,9 @@ export default function LettersScreen() {
                     deliveredAt,
                   } as any);
                 }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                  backgroundColor: colors.primary,
-                  alignItems: "center",
-                  opacity: deliverMutation.isPending ? 0.7 : 1,
-                }}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", opacity: deliverMutation.isPending ? 0.7 : 1 }}
               >
-                <Text style={{ color: "white", fontWeight: "700" }}>
-                  {deliverMutation.isPending ? "Сохраняю..." : "Подтвердить"}
-                </Text>
+                <Text style={{ color: "white", fontWeight: "900" }}>{deliverMutation.isPending ? "Сохраняю..." : "Подтвердить"}</Text>
               </Pressable>
             </View>
           </View>
