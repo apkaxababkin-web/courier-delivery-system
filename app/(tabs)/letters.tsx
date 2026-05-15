@@ -79,7 +79,7 @@ export default function LettersScreen() {
     onSync: useCallback(() => refetch(), [refetch]),
   });
 
-  const deliverMutation = trpc.mails.deliver.useMutation({
+  const deliverMutation = (trpc.mails as any).deliver.useMutation({
     onSuccess: () => {
       setSelectedMailId(null);
       setRecipientName("");
