@@ -2,6 +2,7 @@ import { Tabs } from "expo-router";
 import { Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import type { ComponentProps } from "react";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { useColors } from "@/hooks/use-colors";
@@ -16,7 +17,7 @@ function TabIcon({
   color,
   badge,
 }: {
-  name: React.ComponentProps<typeof MaterialIcons>["name"];
+  name: ComponentProps<typeof MaterialIcons>["name"];
   focused: boolean;
   color: string;
   badge?: number;
