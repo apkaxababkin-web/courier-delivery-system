@@ -59,7 +59,13 @@ export default function TaskListScreen() {
   const filteredTasks = useMemo(() => {
     if (!tasksData) return [];
     if (filterMode === "mine") {
-      return tasksData.filter((task) => task.courierName === courier?.name);
+      return tasksData.filter((task) => {
+        const isUnassigned = task.courierId == null;
+        const isMineById = courier?.id != null && task.courierId === courier.id;
+        const isMineByName = !!courier?.name && task.courierName === courier.name;
+
+        return isUnassigned || isMineById || isMineByName;
+      });
     }
     return tasksData;
   }, [tasksData, filterMode, courier?.name]);
