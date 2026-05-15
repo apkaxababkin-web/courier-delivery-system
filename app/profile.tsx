@@ -20,10 +20,15 @@ import { useCourierAuth } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
 import { trpc } from "@/lib/trpc";
 
+function isDarkBackground(background: string) {
+  return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
+}
+
 export default function ProfileModal() {
   const router = useRouter();
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const dark = isDarkBackground(colors.background);
   const { token, courier, setSession, logout, isAuthenticated } = useCourierAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
 
@@ -41,14 +46,19 @@ export default function ProfileModal() {
   const registerPushTokenMutation = trpc.couriers.registerPushToken.useMutation();
   const isDarkMode = colorScheme === "dark";
 
+  const cardBorder = dark ? "rgba(148,163,184,0.20)" : colors.border;
+  const softSurface = dark ? "rgba(148,163,184,0.08)" : "#F8FAFC";
+
   const inputStyle = {
-    height: 48,
+    height: 52,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    borderColor: cardBorder,
+    borderRadius: 16,
+    paddingHorizontal: 16,
     color: colors.foreground,
     backgroundColor: colors.surface,
+    fontSize: 16,
+    fontWeight: "600" as const,
   };
 
   useEffect(() => {
@@ -138,21 +148,29 @@ export default function ProfileModal() {
     ]);
   };
 
+  const InfoCard = ({ label, value }: { label: string; value: string | number }) => (
+    <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
+      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</Text>
+      <Text style={{ fontSize: 18, fontWeight: "900", color: colors.foreground }}>{value}</Text>
+    </View>
+  );
+
   const Header = () => (
     <View
       style={{
-        paddingTop: insets.top + 12,
+        paddingTop: insets.top + 10,
         paddingHorizontal: 16,
-        paddingBottom: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        backgroundColor: colors.surface,
+        paddingBottom: 12,
+        backgroundColor: colors.background,
       }}
     >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ fontSize: 24, fontWeight: "700", color: colors.foreground }}>Профиль</Text>
-        <Pressable onPress={() => router.back()} style={{ padding: 8 }}>
-          <Text style={{ fontSize: 24, color: colors.foreground }}>×</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: colors.surface, borderRadius: 24, borderWidth: 1, borderColor: cardBorder, paddingHorizontal: 14, paddingVertical: 12 }}>
+        <View>
+          <Text style={{ fontSize: 24, fontWeight: "900", color: colors.foreground }}>Профиль</Text>
+          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2, fontWeight: "700" }}>{isAuthenticated ? "Настройки курьера" : "Вход в приложение"}</Text>
+        </View>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, width: 42, height: 42, borderRadius: 15, backgroundColor: softSurface, alignItems: "center", justifyContent: "center" })}>
+          <Text style={{ fontSize: 26, color: colors.foreground, lineHeight: 28 }}>×</Text>
         </Pressable>
       </View>
     </View>
@@ -162,46 +180,52 @@ export default function ProfileModal() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Header />
-        <View style={{ flex: 1, padding: 16, justifyContent: "center", gap: 14 }}>
-          <Text style={{ fontSize: 26, fontWeight: "700", color: colors.foreground, textAlign: "center" }}>
-            Вход курьера
-          </Text>
+        <View style={{ flex: 1, padding: 18, justifyContent: "center", gap: 14 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 28, padding: 18, gap: 14, borderWidth: 1, borderColor: cardBorder, shadowColor: dark ? "#020617" : "#94A3B8", shadowOpacity: dark ? 0.28 : 0.14, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 8 }}>
+            <Text style={{ fontSize: 26, fontWeight: "900", color: colors.foreground, textAlign: "center" }}>
+              Вход курьера
+            </Text>
+            <Text style={{ fontSize: 14, color: colors.muted, textAlign: "center", lineHeight: 20, marginBottom: 4 }}>
+              Введите логин и пароль, чтобы открыть заявки
+            </Text>
 
-          <TextInput
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="Логин"
-            placeholderTextColor={colors.muted}
-            style={inputStyle}
-          />
+            <TextInput
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="Логин"
+              placeholderTextColor={colors.muted}
+              style={inputStyle}
+            />
 
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="Пароль"
-            placeholderTextColor={colors.muted}
-            style={inputStyle}
-          />
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="Пароль"
+              placeholderTextColor={colors.muted}
+              style={inputStyle}
+            />
 
-          {loginError ? <Text style={{ color: colors.error, textAlign: "center" }}>{loginError}</Text> : null}
+            {loginError ? <Text style={{ color: colors.error, textAlign: "center", fontWeight: "800" }}>{loginError}</Text> : null}
 
-          <Pressable
-            onPress={handleLogin}
-            disabled={loginMutation.isPending}
-            style={{
-              height: 50,
-              borderRadius: 12,
-              backgroundColor: colors.primary,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: loginMutation.isPending ? 0.7 : 1,
-            }}
-          >
-            {loginMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>Войти</Text>}
-          </Pressable>
+            <Pressable
+              onPress={handleLogin}
+              disabled={loginMutation.isPending}
+              style={{
+                height: 54,
+                borderRadius: 16,
+                backgroundColor: colors.primary,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: loginMutation.isPending ? 0.7 : 1,
+                marginTop: 2,
+              }}
+            >
+              {loginMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "white", fontSize: 17, fontWeight: "900" }}>Войти</Text>}
+            </Pressable>
+          </View>
         </View>
       </View>
     );
@@ -209,36 +233,30 @@ export default function ProfileModal() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 18 }} style={{ flex: 1 }}>
         <Header />
 
-        <View style={{ paddingHorizontal: 16, paddingVertical: 24, gap: 16 }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Имя</Text>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: colors.foreground }}>{courier?.name || "—"}</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 14 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 26, padding: 18, borderWidth: 1, borderColor: cardBorder }}>
+            <Text style={{ fontSize: 13, color: colors.muted, fontWeight: "800", marginBottom: 6 }}>Курьер</Text>
+            <Text style={{ fontSize: 24, fontWeight: "900", color: colors.foreground }}>{courier?.name || "—"}</Text>
+            <Text style={{ fontSize: 14, color: colors.primary, fontWeight: "800", marginTop: 4 }}>@{courier?.username || "—"}</Text>
           </View>
 
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Логин</Text>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: colors.foreground }}>@{courier?.username || "—"}</Text>
-          </View>
-
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Телефон</Text>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: colors.foreground }}>{courier?.phone || "—"}</Text>
-          </View>
-
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Доставки</Text>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: colors.foreground }}>{courier?.totalDeliveries || 0}</Text>
+          <View style={{ gap: 12 }}>
+            <InfoCard label="Телефон" value={courier?.phone || "—"} />
+            <InfoCard label="Доставки" value={courier?.totalDeliveries || 0} />
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: 16, paddingVertical: 16, gap: 12 }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>ПАРАМЕТРЫ</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 12 }}>
+          <Text style={{ fontSize: 12, fontWeight: "900", color: colors.muted, letterSpacing: 0.6 }}>ПАРАМЕТРЫ</Text>
 
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>Тёмный режим</Text>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View>
+              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.foreground }}>Тёмный режим</Text>
+              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Переключение темы приложения</Text>
+            </View>
             <Switch
               value={isDarkMode}
               onValueChange={() => setColorScheme(isDarkMode ? "light" : "dark")}
@@ -247,11 +265,14 @@ export default function ProfileModal() {
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: 16, paddingVertical: 16, gap: 12 }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>УВЕДОМЛЕНИЯ</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 12 }}>
+          <Text style={{ fontSize: 12, fontWeight: "900", color: colors.muted, letterSpacing: 0.6 }}>УВЕДОМЛЕНИЯ</Text>
 
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>Новые заявки</Text>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View>
+              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.foreground }}>Новые заявки</Text>
+              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Push-уведомления курьеру</Text>
+            </View>
             <Switch
               value={notificationsEnabled && notificationTypes.newTasks}
               onValueChange={(value) => {
@@ -265,9 +286,9 @@ export default function ProfileModal() {
 
         <View style={{ flex: 1 }} />
 
-        <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
-          <Pressable onPress={handleLogout} style={{ backgroundColor: colors.error, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8 }}>
-            <Text style={{ textAlign: "center", color: "white", fontWeight: "600", fontSize: 16 }}>Выход</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
+          <Pressable onPress={handleLogout} style={{ backgroundColor: colors.error, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16 }}>
+            <Text style={{ textAlign: "center", color: "white", fontWeight: "900", fontSize: 16 }}>Выйти</Text>
           </Pressable>
         </View>
       </ScrollView>
