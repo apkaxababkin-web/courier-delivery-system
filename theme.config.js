@@ -1,4 +1,3 @@
-/** @type {const} */
 const themeColors = {
   primary: { light: '#1D6FF2', dark: '#3B82F6' },
   background: { light: '#F5F3EF', dark: '#111820' },
