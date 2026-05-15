@@ -17,172 +17,78 @@ function isDarkBackground(background: string) {
 }
 
 export function HeaderBarV2({
-  onProfilePress,
   onFilterToggle,
   filterMode = "all",
   selectedDate = new Date(),
   onDatePress,
-  myTasksCount = 0,
 }: HeaderBarV2Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const dark = isDarkBackground(colors.background);
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("ru-RU", {
-      day: "numeric",
-      month: "long",
-    });
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }).replace(".", "");
+
+  const border = dark ? "rgba(148,163,184,0.20)" : "rgba(226,232,240,0.95)";
+  const glass = dark ? "rgba(12,20,30,0.94)" : "rgba(255,253,248,0.96)";
+  const active = dark ? "rgba(59,130,246,0.18)" : "#EAF2FF";
+  const activeText = dark ? "#BFD5FF" : colors.primary;
+  const inactiveText = dark ? "#8B95A7" : colors.muted;
+
+  const Segment = ({ value, label }: { value: "mine" | "all"; label: string }) => {
+    const isActive = filterMode === value;
+    return (
+      <Pressable
+        onPress={() => onFilterToggle?.(value)}
+        style={({ pressed }) => ({
+          flex: 1,
+          opacity: pressed ? 0.72 : 1,
+          borderRadius: 15,
+          paddingVertical: 9,
+          alignItems: "center",
+          backgroundColor: isActive ? active : "transparent",
+          borderWidth: isActive ? 1 : 0,
+          borderColor: isActive ? "rgba(125,178,255,0.32)" : "transparent",
+        })}
+      >
+        <Text style={{ color: isActive ? activeText : inactiveText, fontSize: 14, fontWeight: "900" }}>{label}</Text>
+      </Pressable>
+    );
   };
 
   return (
-    <View
-      style={{
-        marginTop: -insets.top,
-        paddingTop: insets.top + 4,
-        paddingHorizontal: 12,
-        paddingBottom: 8,
-        backgroundColor: colors.background,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          backgroundColor: colors.surface,
-          borderRadius: 24,
-          borderWidth: 1,
-          borderColor: dark ? "rgba(148,163,184,0.20)" : "#E2E8F0",
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          shadowColor: dark ? "#020617" : "#94A3B8",
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: dark ? 0.34 : 0.12,
-          shadowRadius: 18,
-          elevation: 8,
-        }}
-      >
-        <Pressable
-          onPress={onProfilePress}
-          style={({ pressed }) => ({
-            opacity: pressed ? 0.7 : 1,
-            width: 44,
-            height: 44,
-            borderRadius: 16,
-            backgroundColor: dark ? "rgba(59,130,246,0.14)" : "#F0F6FF",
-            justifyContent: "center",
-            alignItems: "center",
-          })}
-        >
-          <MaterialIcons name="account-circle" size={28} color={colors.primary} />
-        </Pressable>
+    <View style={{ marginTop: -insets.top, paddingTop: insets.top + 8, paddingHorizontal: 12, paddingBottom: 10, backgroundColor: colors.background }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+        <View style={{ flex: 1.1, flexDirection: "row", backgroundColor: glass, borderRadius: 20, borderWidth: 1, borderColor: border, padding: 4 }}>
+          <Segment value="mine" label="Мои" />
+          <Segment value="all" label="Все" />
+        </View>
+
+        <View style={{ flex: 0.75, alignItems: "center" }}>
+          <Text style={{ color: colors.foreground, fontSize: 22, fontWeight: "900", letterSpacing: 0.2 }}>Заявки</Text>
+        </View>
 
         <Pressable
           onPress={onDatePress}
           style={({ pressed }) => ({
-            opacity: pressed ? 0.7 : 1,
-            flex: 1,
-            marginHorizontal: 10,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderRadius: 16,
-            backgroundColor: dark ? "rgba(148,163,184,0.08)" : "#F8FAFC",
-          })}
-        >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "800",
-              color: colors.foreground,
-              textAlign: "center",
-            }}
-          >
-            {formatDate(selectedDate)}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => {
-            const newMode = filterMode === "all" ? "mine" : "all";
-            onFilterToggle?.(newMode);
-          }}
-          style={({ pressed }) => ({
-            opacity: pressed ? 0.7 : 1,
-            width: 44,
-            height: 44,
-            borderRadius: 16,
-            backgroundColor: filterMode === "mine"
-              ? dark
-                ? "rgba(59,130,246,0.18)"
-                : "#EAF2FF"
-              : dark
-                ? "rgba(148,163,184,0.08)"
-                : "#F8FAFC",
-            justifyContent: "center",
+            flex: 0.88,
+            opacity: pressed ? 0.72 : 1,
+            flexDirection: "row",
             alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            backgroundColor: glass,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: border,
+            paddingVertical: 13,
+            paddingHorizontal: 8,
           })}
         >
-          <View style={{ position: "relative" }}>
-            <MaterialIcons
-              name={filterMode === "all" ? "filter-list" : "filter-list-alt"}
-              size={24}
-              color={filterMode === "mine" ? colors.primary : colors.muted}
-            />
-
-            {myTasksCount > 0 && (
-              <View
-                style={{
-                  position: "absolute",
-                  top: -7,
-                  right: -8,
-                  minWidth: 18,
-                  height: 18,
-                  borderRadius: 9,
-                  backgroundColor: "#EF4444",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  paddingHorizontal: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#fff",
-                    fontSize: 10,
-                    fontWeight: "900",
-                    lineHeight: 12,
-                  }}
-                >
-                  {myTasksCount > 99 ? "99+" : myTasksCount}
-                </Text>
-              </View>
-            )}
-          </View>
+          <MaterialIcons name="calendar-today" size={18} color={activeText} />
+          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "900" }}>{formatDate(selectedDate)}</Text>
         </Pressable>
       </View>
-
-      {filterMode === "mine" && (
-        <View
-          style={{
-            marginTop: 8,
-            alignSelf: "center",
-            paddingHorizontal: 14,
-            paddingVertical: 7,
-            backgroundColor: dark ? "rgba(59,130,246,0.14)" : "#EAF2FF",
-            borderRadius: 999,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 12,
-              color: colors.primary,
-              fontWeight: "800",
-            }}
-          >
-            Мои заявки
-          </Text>
-        </View>
-      )}
     </View>
   );
 }
