@@ -1,33 +1,81 @@
 import { Tabs } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const icon = (name: string) => name as any;
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
+}
+
+function TabIcon({
+  name,
+  focused,
+  color,
+  badge,
+}: {
+  name: React.ComponentProps<typeof MaterialIcons>["name"];
+  focused: boolean;
+  color: string;
+  badge?: number;
+}) {
+  return (
+    <View
+      style={{
+        width: 54,
+        height: 38,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 18,
+        backgroundColor: focused ? "rgba(59,130,246,0.14)" : "transparent",
+        borderWidth: focused ? 1 : 0,
+        borderColor: focused ? "rgba(125,178,255,0.32)" : "transparent",
+        shadowColor: focused ? "#3B82F6" : "transparent",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: focused ? 0.30 : 0,
+        shadowRadius: focused ? 12 : 0,
+      }}
+    >
+      <MaterialIcons name={name} size={28} color={color} />
+      {!!badge && (
+        <View
+          style={{
+            position: "absolute",
+            right: 5,
+            top: 0,
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            backgroundColor: "#3B82F6",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 4,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900", lineHeight: 12 }}>{badge}</Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
 export default function TabLayout() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const dark = isDarkBackground(colors.background);
-  const bottomSafeArea = Platform.OS === "web" ? 12 : Math.max(insets.bottom, Platform.OS === "android" ? 20 : 12);
-  const tabBarHeight = 64 + bottomSafeArea;
-  const tabBarBackground = dark ? "rgba(17,24,32,0.96)" : "rgba(255,253,248,0.97)";
-  const activeBg = dark ? "rgba(59,130,246,0.18)" : "#EAF2FF";
+  const bottomSafeArea = Platform.OS === "web" ? 12 : Math.max(insets.bottom, Platform.OS === "android" ? 18 : 12);
+  const tabBarHeight = 68 + bottomSafeArea;
+  const tabBarBackground = dark ? "rgba(12,20,30,0.94)" : "rgba(255,253,248,0.96)";
+  const activeColor = dark ? "#BFD5FF" : "#1D6FF2";
+  const inactiveColor = dark ? "#8B95A7" : "#64748B";
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarActiveBackgroundColor: activeBg,
+        tabBarActiveTintColor: activeColor,
+        tabBarInactiveTintColor: inactiveColor,
         tabBarAllowFontScaling: false,
         headerShown: false,
         tabBarHideOnKeyboard: true,
@@ -39,35 +87,35 @@ export default function TabLayout() {
         },
         tabBarStyle: {
           position: "absolute",
-          bottom: 10,
-          left: 12,
-          right: 12,
+          bottom: 12,
+          left: 14,
+          right: 14,
           paddingTop: 9,
           paddingBottom: bottomSafeArea,
           paddingHorizontal: 8,
           height: tabBarHeight,
           backgroundColor: tabBarBackground,
-          borderColor: dark ? "rgba(148,163,184,0.22)" : "rgba(226,232,240,0.95)",
+          borderColor: dark ? "rgba(148,163,184,0.20)" : "rgba(226,232,240,0.95)",
           borderWidth: 1,
-          borderRadius: 28,
+          borderRadius: 30,
           shadowColor: dark ? "#020617" : "#94A3B8",
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: dark ? 0.34 : 0.18,
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: dark ? 0.42 : 0.18,
           shadowRadius: 24,
-          elevation: 14,
+          elevation: 16,
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 9,
-          fontWeight: "800",
-          marginTop: 2,
-          maxWidth: 64,
+          fontSize: 10,
+          fontWeight: "900",
+          marginTop: 1,
+          maxWidth: 70,
         },
         tabBarItemStyle: {
-          borderRadius: 18,
-          marginHorizontal: 2,
-          paddingVertical: 4,
-          paddingHorizontal: 6,
+          borderRadius: 20,
+          marginHorizontal: 1,
+          paddingVertical: 3,
+          paddingHorizontal: 2,
         },
         tabBarIconStyle: {
           marginBottom: 1,
@@ -78,43 +126,37 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Заявки",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={25} name={icon("list.bullet")} color={color} />
-          ),
+          tabBarIcon: ({ color, focused }) => <TabIcon name="assignment" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="pickup-gemotest"
         options={{
           title: "Гемотест",
-          tabBarActiveTintColor: "#18C7B7",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={25} name={icon("hemotest")} color={color} />
-          ),
+          tabBarIcon: ({ color, focused }) => <TabIcon name="bloodtype" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="pickup-sberbank"
         options={{
           title: "Сбербанк",
-          tabBarActiveTintColor: "#22C55E",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={25} name={icon("sberbank")} color={color} />
-          ),
+          tabBarIcon: ({ color, focused }) => <TabIcon name="account-balance" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="letters"
         options={{
           title: "Письма",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={25} name={icon("envelope")} color={color} />
-          ),
+          tabBarIcon: ({ color, focused }) => <TabIcon name="mail-outline" color={color} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Профиль",
+          tabBarIcon: ({ color, focused }) => <TabIcon name="person-outline" color={color} focused={focused} />,
         }}
       />
     </Tabs>
   );
 }
-
-// Note: Profile screen is accessed via header button (👤), not tab bar
-// Note: Tab bar uses safe-area bottom padding to avoid Android system navigation overlap
