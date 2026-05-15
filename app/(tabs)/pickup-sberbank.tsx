@@ -19,11 +19,28 @@ interface PickupPoint {
   courierName?: string;
 }
 
+function isDarkBackground(background: string) {
+  return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
+}
+
+function formatTime(date: Date | null) {
+  if (!date) return "";
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function SberbankScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { token } = useCourierAuth();
   const { isOnline } = useNetworkStatus();
+  const dark = isDarkBackground(colors.background);
+  const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
+  const soft = dark ? "rgba(148,163,184,0.07)" : "#F8FAFC";
+  const pickedBg = dark ? "rgba(34,197,94,0.10)" : "#F0FDF4";
+  const selectedBg = dark ? "rgba(59,130,246,0.12)" : "#EFF6FF";
+
   const [selectedDate] = useState(new Date());
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
   const [lastTapTime, setLastTapTime] = useState<number>(0);
@@ -47,7 +64,7 @@ export default function SberbankScreen() {
     onSuccess: () => {
       refetch();
       refetchCount();
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
 
@@ -55,7 +72,7 @@ export default function SberbankScreen() {
     const now = Date.now();
     const timeSinceLastTap = now - lastTapTime;
 
-    if (selectedPointId !== pointId || timeSinceLastTap > 500) {
+    if (selectedPointId !== pointId || timeSinceLastTap > 520) {
       setSelectedPointId(pointId);
       setLastTapTime(now);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -67,73 +84,65 @@ export default function SberbankScreen() {
     setSelectedPointId(null);
   };
 
-  const formatTime = (date: Date | null) => {
-    if (!date) return "";
-    const d = new Date(date);
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  };
+  const renderPickupPoint = ({ item, index }: { item: PickupPoint; index: number }) => {
+    const selected = selectedPointId === item.id;
+    const picked = item.isPicked;
 
-  const renderPickupPoint = ({ item }: { item: PickupPoint }) => (
-    <Pressable
-      onPress={() => handleTogglePickup(item.id)}
-      style={({ pressed }) => [
-        {
-          paddingVertical: 10,
-          paddingHorizontal: 12,
-          marginVertical: 2,
-          marginHorizontal: 4,
-          borderRadius: 16,
-          backgroundColor: item.isPicked ? "rgba(76, 175, 80, 0.15)" : selectedPointId === item.id ? "rgba(59, 130, 246, 0.1)" : colors.background,
-          borderLeftWidth: 4,
-          borderLeftColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : selectedPointId === item.id ? "rgba(59, 130, 246, 0.6)" : colors.border,
-          opacity: pressed ? 0.7 : 1,
-        },
-      ]}
-    >
-      <View className="flex-row items-center justify-between gap-3">
-        <View className="flex-row items-start gap-3 flex-1">
-          <View
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: 4,
-              borderWidth: 2,
-              borderColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : colors.border,
-              backgroundColor: item.isPicked ? "rgba(76, 175, 80, 0.6)" : "transparent",
-              alignItems: "center",
-              justifyContent: "center",
-              marginTop: 2,
-              flexShrink: 0,
-            }}
-          >
-            {item.isPicked && <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>✓</Text>}
+    return (
+      <Pressable
+        onPress={() => handleTogglePickup(item.id)}
+        style={({ pressed }) => ({
+          backgroundColor: picked ? pickedBg : selected ? selectedBg : colors.surface,
+          borderRadius: 18,
+          paddingHorizontal: 14,
+          paddingVertical: 13,
+          marginBottom: 10,
+          borderWidth: 1,
+          borderColor: picked ? "rgba(34,197,94,0.28)" : selected ? "rgba(59,130,246,0.34)" : border,
+          opacity: pressed ? 0.78 : 1,
+        })}
+      >
+        <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+          <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: picked ? "rgba(34,197,94,0.18)" : soft, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: picked ? "rgba(34,197,94,0.38)" : border }}>
+            <Text style={{ color: picked ? "#22C55E" : colors.muted, fontSize: 12, fontWeight: "900" }}>{picked ? "✓" : index + 1}</Text>
           </View>
 
-          <View className="flex-1">
-            <Text style={{ fontSize: 14, fontWeight: "600", color: item.isPicked ? "rgba(76, 175, 80, 0.8)" : colors.foreground }}>
-              {item.name}
-            </Text>
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{item.address}</Text>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+              <Text style={{ flex: 1, color: colors.foreground, fontSize: 15, lineHeight: 20, fontWeight: "900" }}>{item.name}</Text>
+              {picked ? (
+                <Text style={{ color: "#22C55E", fontSize: 12, fontWeight: "900" }}>Забрано</Text>
+              ) : selected ? (
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "900" }}>ещё тап</Text>
+              ) : null}
+            </View>
+            <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 5, fontWeight: "700" }}>{item.address}</Text>
+            {picked && (
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 7, fontWeight: "800" }}>
+                {formatTime(item.pickedAt)}{item.courierName ? ` • ${item.courierName}` : ""}
+              </Text>
+            )}
           </View>
         </View>
-
-        {item.isPicked && item.courierName && (
-          <View style={{ alignItems: "flex-end", justifyContent: "flex-start" }}>
-            <Text style={{ fontSize: 11, color: "rgba(76, 175, 80, 0.7)", fontWeight: "500" }}>{formatTime(item.pickedAt)}</Text>
-            <Text style={{ fontSize: 11, color: "rgba(76, 175, 80, 0.7)", marginTop: 2 }}>{item.courierName}</Text>
-          </View>
-        )}
-      </View>
-    </Pressable>
-  );
+      </Pressable>
+    );
+  };
 
   return (
     <ScreenContainer className="p-0">
       <NetworkBanner visible={!isOnline} />
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Сбербанк</Text>
-        <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>Забрано: {pickedCount} из {pickupPoints.length}</Text>
+      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, backgroundColor: colors.background }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 12 }}>
+          <View>
+            <Text style={{ fontSize: 26, fontWeight: "900", color: colors.foreground }}>Сбербанк</Text>
+            <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4, fontWeight: "700" }}>Двойной тап по строке — отметить забор</Text>
+          </View>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: border, alignItems: "flex-end" }}>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>Забрано</Text>
+            <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "900" }}>{pickedCount} из {pickupPoints.length}</Text>
+          </View>
+        </View>
       </View>
 
       {pickupPoints.length > 0 ? (
@@ -141,8 +150,8 @@ export default function SberbankScreen() {
           data={pickupPoints}
           renderItem={renderPickupPoint}
           keyExtractor={(item) => item.id.toString()}
-          scrollEnabled={true}
-          contentContainerStyle={{ paddingVertical: 4, paddingBottom: Math.max(insets.bottom, 16) }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: Math.max(insets.bottom + 110, 128), backgroundColor: colors.background }}
+          showsVerticalScrollIndicator={false}
         />
       ) : isLoading ? (
         <View className="flex-1 items-center justify-center">
