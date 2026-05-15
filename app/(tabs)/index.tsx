@@ -42,7 +42,7 @@ export default function TaskListScreen() {
     isLoading,
     refetch,
     isRefetching: isRefetchingQuery,
-  } = trpc.tasks.all.useQuery(token ? { token, date: selectedDate } : skipToken, {
+  } = trpc.tasks.all.useQuery(token ? { token } : skipToken, {
     enabled: !!token,
   });
 
