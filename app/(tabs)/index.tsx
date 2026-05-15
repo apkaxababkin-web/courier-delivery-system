@@ -122,13 +122,13 @@ export default function TaskListScreen() {
             justifyContent: "center",
             alignItems: "center",
             backgroundColor: isSelected ? colors.primary : "transparent",
-            borderRadius: 8,
+            borderRadius: 10,
           }}
         >
           <Text
             style={{
               color: isSelected ? "#fff" : colors.foreground,
-              fontWeight: isSelected ? "700" : "500",
+              fontWeight: isSelected ? "800" : "600",
               fontSize: 14,
             }}
           >
@@ -189,52 +189,52 @@ export default function TaskListScreen() {
 
       <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setShowDatePicker(false)}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16 }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>Выбор даты</Text>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: colors.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: colors.foreground, marginBottom: 4 }}>Выбор даты</Text>
             <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите дату для просмотра заявок</Text>
 
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1))}>
-                <Text style={{ fontSize: 20, color: colors.primary }}>‹</Text>
+                <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "800" }}>‹</Text>
               </TouchableOpacity>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.foreground }}>
                 {selectedDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
               </Text>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}>
-                <Text style={{ fontSize: 20, color: colors.primary }}>›</Text>
+                <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "800" }}>›</Text>
               </TouchableOpacity>
             </View>
 
             <View style={{ flexDirection: "row", marginBottom: 8, gap: 8 }}>
               {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
                 <View key={day} style={{ flex: 1, alignItems: "center" }}>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>{day}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: colors.muted }}>{day}</Text>
                 </View>
               ))}
             </View>
 
             <View style={{ marginBottom: 16 }}>{renderCalendar()}</View>
 
-            <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Выбранная дата:</Text>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.foreground }}>
+            <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4, fontWeight: "700" }}>Выбранная дата:</Text>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.foreground }}>
                 {selectedDate.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               </Text>
             </View>
 
             <View style={{ flexDirection: "row", gap: 12 }}>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 10, alignItems: "center" }}>
-                <Text style={{ color: colors.foreground, fontWeight: "600" }}>Отмена</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={{ flex: 1, paddingVertical: 13, backgroundColor: colors.border, borderRadius: 14, alignItems: "center" }}>
+                <Text style={{ color: colors.foreground, fontWeight: "800" }}>Отмена</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={{ flex: 1, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10, alignItems: "center" }}>
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Применить</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={{ flex: 1, paddingVertical: 13, backgroundColor: colors.primary, borderRadius: 14, alignItems: "center" }}>
+                <Text style={{ color: "#fff", fontWeight: "800" }}>Применить</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      <View style={{ flex: 1, paddingHorizontal: 0, paddingVertical: 0 }}>
+      <View style={{ flex: 1, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: colors.background }}>
         {isLoading && sortedTasks.length === 0 ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -276,6 +276,13 @@ export default function TaskListScreen() {
                 deliveryTimeTo: item.deliveryTimeTo,
                 courierName: (item as any).courierName || "",
                 taskType: item.taskType as "regular" | "warehouse_pickup" | "courier_call" | undefined,
+                requestType: (item as any).requestType,
+                comments: (item as any).comments,
+                specialInstructions: (item as any).specialInstructions,
+                packageDescription: (item as any).packageDescription,
+                items: (item as any).items,
+                createdAt: (item as any).createdAt,
+                scheduledAt: (item as any).scheduledAt,
               };
               return <TaskCard task={cardData} onPress={() => router.push(`/task/${item.id}` as never)} />;
             }}
@@ -288,19 +295,7 @@ export default function TaskListScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-  },
-  headerIcon: { fontSize: 24 },
-  dateButton: { paddingHorizontal: 12, paddingVertical: 6 },
-  dateText: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
-  logo: { fontSize: 20 },
-  list: { padding: 0, flexGrow: 1, paddingBottom: 100 },
-  emptyTitle: { fontSize: 18, fontWeight: "600", textAlign: "center", lineHeight: 24 },
+  list: { paddingTop: 4, flexGrow: 1, paddingBottom: 122 },
+  emptyTitle: { fontSize: 18, fontWeight: "800", textAlign: "center", lineHeight: 24 },
   emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
 });
