@@ -190,10 +190,10 @@ function formatNutLabel(name: string) {
   return name;
 }
 
-function splitItems(items: ItemLine[]) {
-  if (items.length <= 4) return [items, []] as const;
+function splitItems(items: ItemLine[]): [ItemLine[], ItemLine[]] {
+  if (items.length <= 4) return [items, []];
   const firstColumnCount = Math.ceil(items.length / 2);
-  return [items.slice(0, firstColumnCount), items.slice(firstColumnCount)] as const;
+  return [items.slice(0, firstColumnCount), items.slice(firstColumnCount)];
 }
 
 function getPalette(colors: ReturnType<typeof useColors>, status: TaskStatus): CardPalette {
