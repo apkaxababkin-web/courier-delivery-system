@@ -101,7 +101,7 @@ async function pickupFeedbackSummary() {
   const sberbankPointMap = new Map(sberbankPoints.map((point: { id: number; name: string; address: string }) => [point.id, point]));
 
   const hemotestItems = hemotestRows.map((row: any) => {
-    const point = hemotestPointMap.get(row.pointId);
+    const point = hemotestPointMap.get(row.pointId) as any;
     return {
       id: row.id,
       pointId: row.pointId,
@@ -116,7 +116,7 @@ async function pickupFeedbackSummary() {
   });
 
   const sberbankItems = sberbankRows.map((row: any) => {
-    const point = sberbankPointMap.get(row.pointId);
+    const point = sberbankPointMap.get(row.pointId) as any;
     return {
       id: row.id,
       pointId: row.pointId,
@@ -134,12 +134,12 @@ async function pickupFeedbackSummary() {
     date,
     hemotest: {
       total: hemotestItems.length,
-      picked: hemotestItems.filter((item) => item.isPicked).length,
+      picked: hemotestItems.filter((item: any) => item.isPicked).length,
       items: hemotestItems,
     },
     sberbank: {
       total: sberbankItems.length,
-      picked: sberbankItems.filter((item) => item.isPicked).length,
+      picked: sberbankItems.filter((item: any) => item.isPicked).length,
       items: sberbankItems,
     },
   };
