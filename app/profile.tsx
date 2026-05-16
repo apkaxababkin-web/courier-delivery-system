@@ -233,7 +233,7 @@ export default function ProfileModal() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 18 }} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 122 }} style={{ flex: 1 }}>
         <Header />
 
         <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 14 }}>
@@ -286,7 +286,7 @@ export default function ProfileModal() {
 
         <View style={{ flex: 1 }} />
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 12 }}>
           <Pressable onPress={handleLogout} style={{ backgroundColor: colors.error, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16 }}>
             <Text style={{ textAlign: "center", color: "white", fontWeight: "900", fontSize: 16 }}>Выйти</Text>
           </Pressable>
