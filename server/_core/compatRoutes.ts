@@ -280,7 +280,8 @@ async function courierSnapshot(courierId: number) {
 function sendError(res: Response, error: unknown, fallback: string) {
   console.error(fallback, error);
   const message = error instanceof Error ? error.message : fallback;
-  res.status(500).json({ error: { message } });
+  // Return tRPC batch-compatible error format so the client can parse it
+  res.status(500).json([{ error: { message, code: -32603, data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 500 } } }]);
 }
 
 async function courierIdFromReq(req: Request): Promise<number | null> {

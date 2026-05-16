@@ -87,8 +87,10 @@ export function sortTasks(
   urgencyThresholdRed: number = 30
 ): Task[] {
   return [...tasks].sort((a, b) => {
-    // First, sort by status priority
-    const statusDiff = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
+    // First, sort by status priority (default to 5 for unknown statuses)
+    const priorityA = STATUS_PRIORITY[a.status] ?? 5;
+    const priorityB = STATUS_PRIORITY[b.status] ?? 5;
+    const statusDiff = priorityA - priorityB;
     if (statusDiff !== 0) return statusDiff;
 
     // Within same status, sort by urgency (more urgent first)

@@ -89,6 +89,7 @@ export default function TaskListScreen() {
   const {
     data: tasksData,
     isLoading,
+    isError: isTasksError,
     refetch,
     isRefetching: isRefetchingQuery,
   } = trpc.tasks.all.useQuery(token ? { token, date: selectedDate } : skipToken, {
@@ -313,9 +314,19 @@ export default function TaskListScreen() {
             }
             ListEmptyComponent={
               <View style={styles.center}>
-                <Text style={{ fontSize: 48 }}>📋</Text>
-                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{isToday ? "Нет заявок" : "Нет заявок на эту дату"}</Text>
-                <Text style={[styles.emptySubtitle, { color: colors.muted }]}>{isToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}</Text>
+                {isTasksError ? (
+                  <>
+                    <Text style={{ fontSize: 48 }}>⚠️</Text>
+                    <Text style={[styles.emptyTitle, { color: colors.error }]}>Ошибка загрузки</Text>
+                    <Text style={[styles.emptySubtitle, { color: colors.muted }]}>Не удалось загрузить заявки. Потяните вниз для повтора.</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 48 }}>📋</Text>
+                    <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{isToday ? "Нет заявок" : "Нет заявок на эту дату"}</Text>
+                    <Text style={[styles.emptySubtitle, { color: colors.muted }]}>{isToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}</Text>
+                  </>
+                )}
               </View>
             }
             renderItem={({ item }) => {
