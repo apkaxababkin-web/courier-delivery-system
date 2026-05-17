@@ -692,10 +692,28 @@ export async function getHemotestPickupPointsForDate(
   if (!db) return [];
 
   const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  // Get all pickup points
-  const points = await db.select().from(hemotestPickupPoints).orderBy(hemotestPickupPoints.name);
-  
+
+  // APK must see the same Hemotest lists that manager creates for this date.
+  const lists = await db
+    .select({ id: hemotestPickupLists.id })
+    .from(hemotestPickupLists)
+    .where(eq(hemotestPickupLists.date, dateStr));
+
+  const listIds = lists.map((list: { id: number }) => list.id);
+  if (listIds.length === 0) return [];
+
+  const listItems = await db
+    .select()
+    .from(hemotestListItems)
+    .innerJoin(hemotestPickupPoints, eq(hemotestListItems.pointId, hemotestPickupPoints.id))
+    .where(inArray(hemotestListItems.listId, listIds));
+
+  const pointsById = new Map<number, HemotestPickupPoint>();
+  for (const row of listItems as Array<{ hemotestPickupPoints: HemotestPickupPoint }>) {
+    pointsById.set(row.hemotestPickupPoints.id, row.hemotestPickupPoints);
+  }
+  const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
+
   // Get pickups for this courier and date
   const pickups = await db
     .select()
@@ -771,26 +789,18 @@ export async function toggleHemotestPickup(
 }
 
 export async function getHemotestPickedCount(courierId: number, targetDate: Date): Promise<number> {
-  const db = await getDb();
-  if (!db) return 0;
-
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const result = await db
-    .select({ count: sql`COUNT(*)` })
-    .from(hemotestPickups)
-    .where(and(
-      eq(hemotestPickups.courierId, courierId),
-      eq(hemotestPickups.date, dateStr),
-      eq(hemotestPickups.isPicked, true)
-    ));
-  
-  return result[0]?.count as number ?? 0;
+  const points = await getHemotestPickupPointsForDate(courierId, targetDate);
+  return points.filter((point) => point.isPicked).length;
 }
 
 // ─── Sberbank Pickup Points ────────────────────────────────────────────────────
 
 export type SberbankPickupWithStatus = SberbankPickupPoint & { isPicked: boolean; pickedAt: Date | null };
+
+function getBusinessDayOfWeek(targetDate: Date): number {
+  const day = targetDate.getDay();
+  return day === 0 ? 7 : day;
+}
 
 export async function getSberbankPickupPointsForDate(
   courierId: number,
@@ -800,10 +810,30 @@ export async function getSberbankPickupPointsForDate(
   if (!db) return [];
 
   const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  // Get all pickup points
-  const points = await db.select().from(sberbankPickupPoints).orderBy(sberbankPickupPoints.name);
-  
+  const dayOfWeek = getBusinessDayOfWeek(targetDate);
+  if (dayOfWeek < 1 || dayOfWeek > 5) return [];
+
+  // APK must see the same Sberbank lists that manager creates for this weekday.
+  const lists = await db
+    .select({ id: sberbankPickupLists.id })
+    .from(sberbankPickupLists)
+    .where(eq(sberbankPickupLists.dayOfWeek, dayOfWeek));
+
+  const listIds = lists.map((list: { id: number }) => list.id);
+  if (listIds.length === 0) return [];
+
+  const listItems = await db
+    .select()
+    .from(sberbankListItems)
+    .innerJoin(sberbankPickupPoints, eq(sberbankListItems.pointId, sberbankPickupPoints.id))
+    .where(inArray(sberbankListItems.listId, listIds));
+
+  const pointsById = new Map<number, SberbankPickupPoint>();
+  for (const row of listItems as Array<{ sberbankPickupPoints: SberbankPickupPoint }>) {
+    pointsById.set(row.sberbankPickupPoints.id, row.sberbankPickupPoints);
+  }
+  const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
+
   // Get pickups for this courier and date
   const pickups = await db
     .select()
@@ -879,21 +909,8 @@ export async function toggleSberbankPickup(
 }
 
 export async function getSberbankPickedCount(courierId: number, targetDate: Date): Promise<number> {
-  const db = await getDb();
-  if (!db) return 0;
-
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const result = await db
-    .select({ count: sql`COUNT(*)` })
-    .from(sberbankPickups)
-    .where(and(
-      eq(sberbankPickups.courierId, courierId),
-      eq(sberbankPickups.date, dateStr),
-      eq(sberbankPickups.isPicked, true)
-    ));
-  
-  return result[0]?.count as number ?? 0;
+  const points = await getSberbankPickupPointsForDate(courierId, targetDate);
+  return points.filter((point) => point.isPicked).length;
 }
 
 // ─── Pickup Points Demo Data ───────────────────────────────────────────────────
