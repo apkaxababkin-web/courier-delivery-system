@@ -10,8 +10,9 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 
+import { trpc } from "@/lib/trpc";
 import { NetworkBanner } from "@/components/network-banner";
 import { ScreenContainer } from "@/components/screen-container";
 import { TaskCard, type TaskCardData } from "@/components/task-card";
@@ -19,7 +20,6 @@ import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
-import { getApiBaseUrl } from "@/constants/oauth";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useFilter } from "@/lib/filter-context";
 import { sortTasks } from "@/lib/task-sorting";
@@ -38,30 +38,22 @@ export default function TaskListScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const mobileClient = useMemo(() => createCourierMobileClient(getApiBaseUrl()), []);
-
   const {
-    data: realtimeSnapshot,
+    data: tasksDataRaw,
     isLoading,
     refetch,
     isRefetching: isRefetchingQuery,
-  } = useQuery({
-    queryKey: ["courierRealtimeTasks", token],
-    enabled: !!token,
-    queryFn: async () => {
-      if (!token) {
-        return { tasks: [] };
-      }
-      return mobileClient.realtime(token);
+  } = trpc.tasks.all.useQuery(
+    token ? { token, date: selectedDate.toISOString().slice(0, 10) } : skipToken,
+    {
+      staleTime: 5_000,
+      refetchInterval: 15_000,
     },
-    staleTime: 5_000,
-    refetchInterval: 15_000,
-  });
+  );
 
   const tasksData = useMemo(() => {
-    const tasks = realtimeSnapshot?.tasks;
-    return Array.isArray(tasks) ? tasks : [];
-  }, [realtimeSnapshot?.tasks]);
+    return Array.isArray(tasksDataRaw) ? (tasksDataRaw as any[]) : [];
+  }, [tasksDataRaw]);
 
   useMobileLiveSync({
     enabled: !!token,
@@ -74,17 +66,32 @@ export default function TaskListScreen() {
   }, [selectedDate]);
 
   const filteredTasks = useMemo(() => {
-    if (!tasksData.length) return [];
-    if (filterMode === "mine") {
-      return tasksData.filter((task: any) => {
+    if (!tasksData.length) {
+      console.log("[TaskList] No tasks data to filter");
+      return [];
+    }
+
+    const tasks = tasksData.filter((task: any) => {
+      // Filter Mode ("mine" vs "all")
+      if (filterMode === "mine") {
         const isUnassigned = task.courierId == null;
         const isMineById = courier?.id != null && task.courierId === courier.id;
-        const isMineByName = !!courier?.name && task.courierName === courier.name;
+
+        // Use case-insensitive name matching as a fallback
+        const courierNameNormalized = courier?.name?.trim().toLowerCase();
+        const taskCourierNameNormalized = task.courierName?.trim().toLowerCase();
+        const isMineByName = !!courierNameNormalized && taskCourierNameNormalized === courierNameNormalized;
 
         return isUnassigned || isMineById || isMineByName;
-      });
-    }
-    return tasksData;
+      }
+
+      return true;
+    });
+
+    console.log(
+      `[TaskList] Filtered tasks: ${tasks.length} (total: ${tasksData.length}, mode: ${filterMode})`,
+    );
+    return tasks;
   }, [tasksData, filterMode, courier?.id, courier?.name]);
 
   const sortedTasks = useMemo(
@@ -102,7 +109,11 @@ export default function TaskListScreen() {
     return tasksData.filter((task: any) => {
       const isUnassigned = task.courierId == null;
       const isMineById = courier?.id != null && task.courierId === courier.id;
-      const isMineByName = !!courier?.name && task.courierName === courier.name;
+
+      const courierNameNormalized = courier?.name?.trim().toLowerCase();
+      const taskCourierNameNormalized = task.courierName?.trim().toLowerCase();
+      const isMineByName = !!courierNameNormalized && taskCourierNameNormalized === courierNameNormalized;
+
       return isUnassigned || isMineById || isMineByName;
     }).length;
   }, [tasksData, courier?.id, courier?.name]);

@@ -1,7 +1,7 @@
 // Removed mysql2 - now using postgres driver
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, or, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   couriers,
@@ -300,25 +300,32 @@ export async function getCompletedTasksWithCourier(): Promise<TaskWithCourier[]>
   }));
 }
 
-export async function getTasksByDateWithCourier(targetDate: Date): Promise<TaskWithCourier[]> {
+export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWithCourier[]> {
   const db = await getDb();
   if (!db) return [];
-  
-  // Get start and end of the day (in UTC)
-  const startOfDay = new Date(targetDate);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(targetDate);
-  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  // Create Date objects for the start and end of the given date string in UTC
+  const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
+  const endOfDay = new Date(`${dateStr}T23:59:59.999Z`);
   
   const allTasks = await db
     .select()
     .from(tasks)
-    .where(and(
-      gte(tasks.createdAt, startOfDay),
-      lte(tasks.createdAt, endOfDay)
-    ))
-    .orderBy(desc(tasks.createdAt));
+    .where(
+      or(
+        and(
+          gte(tasks.scheduledAt, startOfDay),
+          lte(tasks.scheduledAt, endOfDay)
+        ),
+        and(
+          sql`${tasks.scheduledAt} IS NULL`,
+          gte(tasks.createdAt, startOfDay),
+          lte(tasks.createdAt, endOfDay)
+        )
+      )
+    )
+    .orderBy(desc(tasks.createdAt))
+    .limit(500);
   
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
   const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
@@ -385,7 +392,7 @@ export async function updateTaskTimeInterval(
 export async function updateTaskDate(taskId: number, newDate: Date): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(tasks).set({ createdAt: newDate }).where(eq(tasks.id, taskId));
+  await db.update(tasks).set({ scheduledAt: newDate }).where(eq(tasks.id, taskId));
 }
 
 export async function updateTaskCourierComments(taskId: number, courierComments: string): Promise<void> {

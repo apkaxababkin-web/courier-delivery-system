@@ -212,13 +212,13 @@ export const appRouter = router({
     all: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date().optional(),
+        date: z.string().optional(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
 
-        const date = input.date ?? new Date();
+        const date = input.date ?? new Date().toISOString().slice(0, 10);
         return db.getTasksByDateWithCourier(date);
       }),
 
@@ -228,7 +228,7 @@ export const appRouter = router({
     history: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date().optional(),
+        date: z.string().optional(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
