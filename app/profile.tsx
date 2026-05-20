@@ -57,7 +57,7 @@ export default function ProfileModal() {
     paddingHorizontal: 16,
     color: colors.foreground,
     backgroundColor: colors.surface,
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "600" as const,
   };
 
@@ -151,7 +151,7 @@ export default function ProfileModal() {
   const InfoCard = ({ label, value }: { label: string; value: string | number }) => (
     <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
       <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</Text>
-      <Text style={{ fontSize: 18, fontWeight: "900", color: colors.foreground }}>{value}</Text>
+      <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>{value}</Text>
     </View>
   );
 
@@ -170,7 +170,7 @@ export default function ProfileModal() {
           <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2, fontWeight: "700" }}>{isAuthenticated ? "Настройки курьера" : "Вход в приложение"}</Text>
         </View>
         <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, width: 42, height: 42, borderRadius: 15, backgroundColor: softSurface, alignItems: "center", justifyContent: "center" })}>
-          <Text style={{ fontSize: 26, color: colors.foreground, lineHeight: 28 }}>×</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground, lineHeight: 28 }}>×</Text>
         </Pressable>
       </View>
     </View>
@@ -182,10 +182,10 @@ export default function ProfileModal() {
         <Header />
         <View style={{ flex: 1, padding: 18, justifyContent: "center", gap: 14 }}>
           <View style={{ backgroundColor: colors.surface, borderRadius: 28, padding: 18, gap: 14, borderWidth: 1, borderColor: cardBorder, shadowColor: dark ? "#020617" : "#94A3B8", shadowOpacity: dark ? 0.28 : 0.14, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 8 }}>
-            <Text style={{ fontSize: 26, fontWeight: "900", color: colors.foreground, textAlign: "center" }}>
+            <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground, textAlign: "center" }}>
               Вход курьера
             </Text>
-            <Text style={{ fontSize: 14, color: colors.muted, textAlign: "center", lineHeight: 20, marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", lineHeight: 20, marginBottom: 4 }}>
               Введите логин и пароль, чтобы открыть заявки
             </Text>
 
@@ -240,7 +240,7 @@ export default function ProfileModal() {
           <View style={{ backgroundColor: colors.surface, borderRadius: 26, padding: 18, borderWidth: 1, borderColor: cardBorder }}>
             <Text style={{ fontSize: 13, color: colors.muted, fontWeight: "800", marginBottom: 6 }}>Курьер</Text>
             <Text style={{ fontSize: 24, fontWeight: "900", color: colors.foreground }}>{courier?.name || "—"}</Text>
-            <Text style={{ fontSize: 14, color: colors.primary, fontWeight: "800", marginTop: 4 }}>@{courier?.username || "—"}</Text>
+            <Text style={{ fontSize: 12, color: colors.primary, fontWeight: "800", marginTop: 4 }}>@{courier?.username || "—"}</Text>
           </View>
 
           <View style={{ gap: 12 }}>
@@ -254,7 +254,7 @@ export default function ProfileModal() {
 
           <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.foreground }}>Тёмный режим</Text>
+              <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Тёмный режим</Text>
               <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Переключение темы приложения</Text>
             </View>
             <Switch
@@ -270,7 +270,7 @@ export default function ProfileModal() {
 
           <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.foreground }}>Новые заявки</Text>
+              <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Новые заявки</Text>
               <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Push-уведомления курьеру</Text>
             </View>
             <Switch
@@ -288,7 +288,7 @@ export default function ProfileModal() {
 
         <View style={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 12 }}>
           <Pressable onPress={handleLogout} style={{ backgroundColor: colors.error, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16 }}>
-            <Text style={{ textAlign: "center", color: "white", fontWeight: "900", fontSize: 16 }}>Выйти</Text>
+            <Text style={{ textAlign: "center", color: "white", fontWeight: "900", fontSize: 12 }}>Выйти</Text>
           </Pressable>
         </View>
       </ScrollView>

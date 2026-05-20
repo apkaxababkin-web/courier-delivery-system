@@ -51,7 +51,7 @@ export function HeaderBarV2({
           borderColor: isActive ? "rgba(125,178,255,0.32)" : "transparent",
         })}
       >
-        <Text style={{ color: isActive ? activeText : inactiveText, fontSize: 14, fontWeight: "900" }}>{label}</Text>
+        <Text style={{ color: isActive ? activeText : inactiveText, fontSize: 12, fontWeight: "900" }}>{label}</Text>
       </Pressable>
     );
   };
@@ -65,7 +65,7 @@ export function HeaderBarV2({
         </View>
 
         <View style={{ flex: 0.75, alignItems: "center" }}>
-          <Text style={{ color: colors.foreground, fontSize: 22, fontWeight: "900", letterSpacing: 0.2 }}>Заявки</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", letterSpacing: 0.2 }}>Заявки</Text>
         </View>
 
         <Pressable
@@ -86,7 +86,7 @@ export function HeaderBarV2({
           })}
         >
           <MaterialIcons name="calendar-today" size={18} color={activeText} />
-          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "900" }}>{formatDate(selectedDate)}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900" }}>{formatDate(selectedDate)}</Text>
         </Pressable>
       </View>
     </View>

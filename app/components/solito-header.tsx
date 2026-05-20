@@ -56,7 +56,7 @@ export function SolitoHeader({
         {/* Title */}
         <Text
           style={{
-            fontSize: 16,
+            fontSize: 12,
             fontWeight: '600',
             color: colors.foreground,
             flex: 1,

@@ -279,12 +279,12 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   senderName: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "700",
     lineHeight: 20,
   },
   recipientName: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "700",
     lineHeight: 20,
     marginBottom: 2,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   addressIcon: {
-    fontSize: 14,
+    fontSize: 12,
     lineHeight: 16,
     marginTop: 1,
   },

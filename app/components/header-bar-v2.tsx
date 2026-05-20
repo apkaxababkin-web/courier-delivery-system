@@ -87,7 +87,7 @@ export function HeaderBarV2({
         >
           <Text
             style={{
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: "600",
               color: colors.foreground,
               textAlign: "center",

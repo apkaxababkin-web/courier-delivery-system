@@ -1,6 +1,5 @@
 import {
   ActivityIndicator,
-  FlatList,
   Modal,
   Pressable,
   StyleSheet,
@@ -175,7 +174,7 @@ export default function TaskListScreen() {
             style={{
               color: isSelected ? "#fff" : colors.foreground,
               fontWeight: isSelected ? "800" : "600",
-              fontSize: 12,
+              fontSize: 14,
             }}
           >
             {day}
@@ -236,14 +235,14 @@ export default function TaskListScreen() {
       <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setShowDatePicker(false)}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: colors.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 16 }}>
-            <Text style={{ fontSize: 12, fontWeight: "800", color: colors.foreground, marginBottom: 4 }}>Выбор даты</Text>
-            <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>Выберите дату для просмотра заявок</Text>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: colors.foreground, marginBottom: 4 }}>Выбор даты</Text>
+            <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>Выберите дату для просмотра заявок</Text>
 
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1))}>
                 <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "800" }}>‹</Text>
               </TouchableOpacity>
-              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.foreground }}>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.foreground }}>
                 {selectedDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
               </Text>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}>
@@ -263,7 +262,7 @@ export default function TaskListScreen() {
 
             <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4, fontWeight: "700" }}>Выбранная дата:</Text>
-              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.foreground }}>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.foreground }}>
                 {selectedDate.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               </Text>
             </View>
@@ -280,72 +279,106 @@ export default function TaskListScreen() {
         </Pressable>
       </Modal>
 
-      {isLoading && sortedTasks.length === 0 ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : (
-        <FlatList
-          data={sortedTasks as any}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ paddingTop: 20, paddingHorizontal: 12, paddingBottom: 160, backgroundColor: colors.background }}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={{ fontSize: 48 }}>📋</Text>
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {isToday ? "Нет заявок" : "Нет заявок на эту дату"}
-              </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                {isToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
-              </Text>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={() => router.push(`/task/${item.id}` as never)}
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: 18,
-                padding: 16,
-                marginBottom: 14,
-                borderWidth: 1,
-                borderColor: "#E5E7EB",
-                minHeight: 140,
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={{ color: "#007AFF", fontSize: 12, fontWeight: "900" }}>Заявка</Text>
-                  <Text style={{ color: "#64748B", fontSize: 13, fontWeight: "800", marginTop: 4 }}>#{item.id}</Text>
-                </View>
-
-                <View style={{ backgroundColor: "#EAF2FF", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7 }}>
-                  <Text style={{ color: "#0B7CFF", fontSize: 12, fontWeight: "900" }}>
-                    {item.status === "assigned" ? "Ожидает" : item.status || "Статус"}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ marginTop: 14 }}>
-                <Text style={{ color: "#64748B", fontSize: 13, fontWeight: "800" }}>Получатель</Text>
-                <Text style={{ color: "#0F172A", fontSize: 12, fontWeight: "900", marginTop: 4 }}>
-                  {item.recipientName || "—"}
+      <View style={{ flex: 1, minHeight: 600, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: colors.background, zIndex: 10 }}>
+        {isLoading && sortedTasks.length === 0 ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
+          <View style={{ paddingTop: 20, paddingHorizontal: 12, paddingBottom: 140 }}>
+            {sortedTasks.length === 0 ? (
+              <View style={styles.center}>
+                <Text style={{ fontSize: 48 }}>📋</Text>
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                  {isToday ? "Нет заявок" : "Нет заявок на эту дату"}
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
+                  {isToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
                 </Text>
               </View>
+            ) : (
+              sortedTasks.map((item: any) => {
+                console.log("[TasksScreen] renderItem", item.id);
 
-              <View style={{ marginTop: 10 }}>
-                <Text style={{ color: "#64748B", fontSize: 13, fontWeight: "800" }}>Адрес</Text>
-                <Text style={{ color: "#0F172A", fontSize: 12, fontWeight: "700", marginTop: 4 }}>
-                  {item.deliveryAddress || item.recipientAddress || "—"}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        />
-      )}
+                const cardData: TaskCardData = {
+                  id: item.id,
+                  recipientName: item.recipientName,
+                  deliveryAddress: item.deliveryAddress,
+                  deliveryCity: item.deliveryCity,
+                  recipientAddress: item.recipientAddress,
+                  senderName: item.senderName,
+                  senderAddress: item.senderAddress,
+                  status: item.status as TaskStatus,
+                  placesCount: item.placesCount,
+                  deliveryTimeFrom: item.deliveryTimeFrom,
+                  deliveryTimeTo: item.deliveryTimeTo,
+                  courierName: item.courierName || "",
+                  taskType: item.taskType as "regular" | "warehouse_pickup" | "courier_call" | undefined,
+                  requestType: item.requestType,
+                  comments: item.comments,
+                  specialInstructions: item.specialInstructions,
+                  packageDescription: item.packageDescription,
+                  items: item.items,
+                  createdAt: item.createdAt,
+                  scheduledAt: item.scheduledAt,
+                };
 
+                return (
+                  <TouchableOpacity
+                    key={String(item.id)}
+                    activeOpacity={0.75}
+                    onPress={() => router.push(`/task/${item.id}` as never)}
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: 18,
+                      padding: 16,
+                      marginBottom: 14,
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                      minHeight: 140,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={{ color: "#007AFF", fontSize: 22, fontWeight: "900" }}>
+                          Заявка
+                        </Text>
+                        <Text style={{ color: "#64748B", fontSize: 15, fontWeight: "800", marginTop: 4 }}>
+                          #{item.id}
+                        </Text>
+                      </View>
+
+                      <View style={{ backgroundColor: "#EAF2FF", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7 }}>
+                        <Text style={{ color: "#0B7CFF", fontSize: 14, fontWeight: "900" }}>
+                          {item.status === "assigned" ? "Ожидает" : item.status || "Статус"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={{ color: "#64748B", fontSize: 13, fontWeight: "800" }}>
+                        Получатель
+                      </Text>
+                      <Text style={{ color: "#0F172A", fontSize: 18, fontWeight: "900", marginTop: 4 }}>
+                        {item.recipientName || "—"}
+                      </Text>
+                    </View>
+
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={{ color: "#64748B", fontSize: 13, fontWeight: "800" }}>
+                        Адрес
+                      </Text>
+                      <Text style={{ color: "#0F172A", fontSize: 16, fontWeight: "700", marginTop: 4 }}>
+                        {item.deliveryAddress || item.recipientAddress || "—"}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+        )}
+      </View>
     </ScreenContainer>
   );
 }
@@ -353,6 +386,6 @@ export default function TaskListScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 },
   list: { paddingTop: 20, paddingHorizontal: 12, flexGrow: 1, paddingBottom: 140 },
-  emptyTitle: { fontSize: 12, fontWeight: "800", textAlign: "center", lineHeight: 24 },
-  emptySubtitle: { fontSize: 12, textAlign: "center", lineHeight: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: "800", textAlign: "center", lineHeight: 24 },
+  emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
 });

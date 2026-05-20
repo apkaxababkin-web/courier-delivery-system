@@ -125,7 +125,7 @@ export default function LettersScreen() {
       <NetworkBanner visible={!isOnline} />
 
       <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, backgroundColor: colors.background }}>
-        <Text style={{ fontSize: 26, fontWeight: "900", color: colors.foreground, marginBottom: 12 }}>Письма</Text>
+        <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground, marginBottom: 12 }}>Письма</Text>
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -139,7 +139,7 @@ export default function LettersScreen() {
             borderWidth: 1,
             borderColor: border,
             color: colors.foreground,
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: "700",
           }}
         />
@@ -173,7 +173,7 @@ export default function LettersScreen() {
             >
               <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "900" }}>Письмо №-{mail.waybillNumber}</Text>
+                  <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900" }}>Письмо №-{mail.waybillNumber}</Text>
                   <Text style={{ color: colors.muted, marginTop: 4, fontSize: 12, fontWeight: "700" }}>{mail.recipientName || "—"}</Text>
                   <Text style={{ color: colors.muted, marginTop: 3, fontSize: 12, fontWeight: "700" }} numberOfLines={1}>{mail.deliveryAddress || "—"}</Text>
                   {hasPhone && (

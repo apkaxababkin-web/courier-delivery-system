@@ -44,7 +44,8 @@ export interface RealtimeSnapshot {
 type JsonRecord = Record<string, unknown>;
 
 function unwrapTrpc<T>(payload: any, fallback: T): T {
-  return payload?.result?.data?.json ?? payload?.result?.data ?? payload?.result ?? fallback;
+  const data = Array.isArray(payload) ? payload[0] : payload;
+  return data?.result?.data?.json ?? data?.result?.data ?? data?.result ?? fallback;
 }
 
 async function readJson(response: Response): Promise<any> {

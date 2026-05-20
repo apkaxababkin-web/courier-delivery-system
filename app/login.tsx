@@ -33,7 +33,9 @@ export default function LoginScreen() {
     try {
       const result = await loginMutation.mutateAsync({ username: clean, password });
       if (result?.token && result?.courier) {
+        console.log("[CourierLogin] success", !!result.token, result.courier?.id);
         await setSession(result.token, result.courier);
+        console.log("[CourierLogin] session saved");
         router.replace("/(tabs)" as never);
       } else {
         setError("Неверный логин или пароль");
@@ -77,7 +79,7 @@ export default function LoginScreen() {
             paddingHorizontal: 16,
             color: colors.foreground,
             backgroundColor: colors.surface,
-            fontSize: 16,
+            fontSize: 12,
           }}
         />
 
@@ -97,12 +99,12 @@ export default function LoginScreen() {
             paddingHorizontal: 16,
             color: colors.foreground,
             backgroundColor: colors.surface,
-            fontSize: 16,
+            fontSize: 12,
           }}
         />
 
         {error ? (
-          <Text style={{ color: colors.error, textAlign: "center", fontSize: 14 }}>{error}</Text>
+          <Text style={{ color: colors.error, textAlign: "center", fontSize: 12 }}>{error}</Text>
         ) : null}
 
         <Pressable

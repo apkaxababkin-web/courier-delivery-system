@@ -35,6 +35,7 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
   const fallbackName = request.recipientName || request.recipientCompany || request.senderName || request.senderCompany || "Получатель не указан";
   const comments = [
     requestMarker(request.id),
+    request.requestType ? `Тип заявки: ${request.requestType}` : null,
     request.description,
     request.callReason,
     request.comments,

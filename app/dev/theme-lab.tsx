@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   schemeToggleTitle: {
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "600",
   },
   schemeToggleSubtitle: {

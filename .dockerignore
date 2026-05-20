@@ -28,3 +28,9 @@ vitest.config.ts
 vite.config.ts
 tailwind.config.js
 postcss.config.js
+
+**/node_modules
+android
+android/**
+**/.gradle
+**/build

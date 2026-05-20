@@ -72,10 +72,10 @@ function SectionTitle({ children, colors }: { children: ReactNode; colors: Retur
 
 function ClickableLine({ value, onPress, muted = false }: { value?: string | null; onPress?: () => void; muted?: boolean }) {
   const colors = useColors();
-  if (!value) return <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 19 }}>—</Text>;
+  if (!value) return <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 19 }}>—</Text>;
   return (
     <TouchableOpacity activeOpacity={0.72} onPress={onPress} disabled={!onPress}>
-      <Text style={{ color: muted ? colors.muted : colors.foreground, fontSize: 14, lineHeight: 19, fontWeight: "700" }}>{value}</Text>
+      <Text style={{ color: muted ? colors.muted : colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700" }}>{value}</Text>
     </TouchableOpacity>
   );
 }
@@ -222,7 +222,7 @@ export default function TaskDetailScreen() {
       const isSelected = selectedDate.getDate() === day;
       week.push(
         <TouchableOpacity key={day} onPress={() => handleDateChange(day)} style={{ flex: 1, aspectRatio: 1, justifyContent: "center", alignItems: "center", backgroundColor: isSelected ? colors.primary : "transparent", borderRadius: 10 }}>
-          <Text style={{ color: isSelected ? "#fff" : colors.foreground, fontWeight: isSelected ? "900" : "700", fontSize: 14 }}>{day}</Text>
+          <Text style={{ color: isSelected ? "#fff" : colors.foreground, fontWeight: isSelected ? "900" : "700", fontSize: 12 }}>{day}</Text>
         </TouchableOpacity>
       );
 
@@ -267,7 +267,7 @@ export default function TaskDetailScreen() {
       <View style={{ backgroundColor: colors.background, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <TouchableOpacity onPress={() => router.back()} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ color: colors.foreground, fontSize: 26, fontWeight: "800" }}>←</Text>
+            <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "800" }}>←</Text>
           </TouchableOpacity>
           <View style={{ alignItems: "center" }}>
             <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>#{task.id}</Text>
@@ -280,7 +280,7 @@ export default function TaskDetailScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: 24, gap: 10, backgroundColor: colors.background }} showsVerticalScrollIndicator={false}>
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
           <SectionTitle colors={colors}>Отправитель</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "900", marginBottom: 6 }}>{task.senderName || "—"}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.senderName || "—"}</Text>
           <ClickableLine value={task.senderAddress} onPress={() => handleOpenMap(task.senderAddress)} />
           <View style={{ height: 5 }} />
           <ClickableLine value={task.senderPhone} onPress={() => handleCallPhone(task.senderPhone)} muted />
@@ -288,7 +288,7 @@ export default function TaskDetailScreen() {
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
           <SectionTitle colors={colors}>Получатель</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "900", marginBottom: 6 }}>{task.recipientName || "—"}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.recipientName || "—"}</Text>
           <ClickableLine value={task.deliveryAddress} onPress={() => handleOpenMap(task.deliveryAddress)} />
           <View style={{ height: 5 }} />
           <ClickableLine value={task.recipientPhone} onPress={() => handleCallPhone(task.recipientPhone)} muted />
@@ -301,7 +301,7 @@ export default function TaskDetailScreen() {
             style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: palette.border }}
           >
             <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "800" }}>Количество мест</Text>
-            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "900" }}>{task.placesCount || 0}  ›</Text>
+            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900" }}>{task.placesCount || 0}  ›</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -311,15 +311,15 @@ export default function TaskDetailScreen() {
           >
             <View>
               <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "800", marginBottom: 4 }}>Курьер</Text>
-              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "900" }}>{task.courierName || "Не назначен"}</Text>
+              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900" }}>{task.courierName || "Не назначен"}</Text>
             </View>
-            <Text style={{ color: colors.muted, fontSize: 22 }}>›</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>›</Text>
           </TouchableOpacity>
         </GlassCard>
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
           <SectionTitle colors={colors}>Комментарий заявки</SectionTitle>
-          <Text style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 14, lineHeight: 20, fontWeight: "700" }}>{taskComment}</Text>
+          <Text style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "700" }}>{taskComment}</Text>
         </GlassCard>
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
@@ -329,7 +329,7 @@ export default function TaskDetailScreen() {
               {courierComment.split("\n").filter(Boolean).map((line, index) => (
                 <View key={`${line}-${index}`} style={{ borderLeftWidth: 2, borderLeftColor: colors.primary, paddingLeft: 10 }}>
                   <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginBottom: 3 }}>Курьер</Text>
-                  <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 20, fontWeight: "700" }}>{line}</Text>
+                  <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "700" }}>{line}</Text>
                 </View>
               ))}
             </View>
@@ -339,7 +339,7 @@ export default function TaskDetailScreen() {
             onPress={() => { setCommentsInput(courierComment); setCommentsModalVisible(true); }}
             style={{ backgroundColor: palette.soft, borderRadius: 14, borderWidth: 1, borderColor: palette.border, paddingVertical: 12, paddingHorizontal: 12 }}
           >
-            <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "800" }}>Добавить свой комментарий курьеру</Text>
+            <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>Добавить свой комментарий курьеру</Text>
           </TouchableOpacity>
         </GlassCard>
 
@@ -375,23 +375,23 @@ export default function TaskDetailScreen() {
       </Modal>
 
       <InputModal visible={placesModalVisible} title="Количество мест" colors={colors} palette={palette} onClose={() => { setPlacesModalVisible(false); setPlacesInput(""); }} onSave={handleSavePlaces}>
-        <TextInput autoFocus editable selectTextOnFocus value={placesInput} onChangeText={setPlacesInput} placeholder="мест" placeholderTextColor={colors.muted} keyboardType="number-pad" maxLength={3} style={{ borderWidth: 1, borderColor: palette.border, backgroundColor: colors.surface, borderRadius: 16, padding: 13, color: colors.foreground, fontSize: 18, fontWeight: "900" }} />
+        <TextInput autoFocus editable selectTextOnFocus value={placesInput} onChangeText={setPlacesInput} placeholder="мест" placeholderTextColor={colors.muted} keyboardType="number-pad" maxLength={3} style={{ borderWidth: 1, borderColor: palette.border, backgroundColor: colors.surface, borderRadius: 16, padding: 13, color: colors.foreground, fontSize: 12, fontWeight: "900" }} />
       </InputModal>
 
       <InputModal visible={commentsModalVisible} title="Комментарий курьера" colors={colors} palette={palette} onClose={() => { setCommentsModalVisible(false); setCommentsInput(""); }} onSave={handleSaveComments}>
-        <TextInput autoFocus editable multiline value={commentsInput} onChangeText={setCommentsInput} placeholder="Напишите ваш комментарий..." placeholderTextColor={colors.muted} maxLength={1000} style={{ borderWidth: 1, borderColor: palette.border, backgroundColor: colors.surface, borderRadius: 16, padding: 13, color: colors.foreground, fontSize: 14, minHeight: 110, textAlignVertical: "top", fontWeight: "700" }} />
+        <TextInput autoFocus editable multiline value={commentsInput} onChangeText={setCommentsInput} placeholder="Напишите ваш комментарий..." placeholderTextColor={colors.muted} maxLength={1000} style={{ borderWidth: 1, borderColor: palette.border, backgroundColor: colors.surface, borderRadius: 16, padding: 13, color: colors.foreground, fontSize: 12, minHeight: 110, textAlignVertical: "top", fontWeight: "700" }} />
       </InputModal>
 
       <Modal visible={datePickerVisible} transparent animationType="slide" onRequestClose={() => setDatePickerVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setDatePickerVisible(false)}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: colors.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 16 }}>
             <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground, marginBottom: 4 }}>Перенос заявки</Text>
-            <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16, fontWeight: "700" }}>Выберите новую дату доставки</Text>
+            <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16, fontWeight: "700" }}>Выберите новую дату доставки</Text>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1))}>
                 <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "900" }}>‹</Text>
               </TouchableOpacity>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.foreground }}>
+              <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>
                 {selectedDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
               </Text>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}>

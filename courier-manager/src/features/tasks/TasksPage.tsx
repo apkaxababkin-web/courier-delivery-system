@@ -5,6 +5,7 @@ import {
   getAllRequests,
   createRequest,
   parseRequestWithAI,
+  assignRequestCourier,
 } from '../../lib/api';
 import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
@@ -17,6 +18,7 @@ import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
 
 type OperationMode = 'requests' | 'hemotest' | 'sberbank';
+type CourierOption = { id: number; name: string; isActive?: boolean };
 type OperationPoint = {
   id: number;
   name: string;
@@ -33,6 +35,7 @@ type PickupList = { id: number; name: string; status: string; date?: string; day
 type PickupListWithItems = { list?: PickupList; items?: OperationPoint[] };
 
 const API_BASE = '/api/trpc';
+const API_URL = import.meta.env.VITE_API_URL || '';
 const weekdayNames: Record<number, string> = { 1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг', 5: 'Пятница' };
 
 function getTodayDate() { return new Date().toISOString().slice(0, 10); }
@@ -55,9 +58,20 @@ async function trpcQuery<T>(path: string, input: Record<string, unknown>): Promi
   return data.result?.data?.json || data.result?.data || [];
 }
 
+async function fetchCouriers(): Promise<CourierOption[]> {
+  const response = await fetch(`${API_URL}/api/manager/couriers`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Failed to load couriers');
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
 export default function TasksPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [couriers, setCouriers] = useState<CourierOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [operationMode, setOperationMode] = useState<OperationMode>('requests');
   const [operationLists, setOperationLists] = useState<OperationList[]>([]);
@@ -72,6 +86,7 @@ export default function TasksPage() {
   const [showAiModal, setShowAiModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isParsingAi, setIsParsingAi] = useState(false);
+  const [assigningRequestId, setAssigningRequestId] = useState<number | null>(null);
 
   useEffect(() => { loadData(); }, []);
   useEffect(() => {
@@ -82,9 +97,14 @@ export default function TasksPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [requestsData, clientsData] = await Promise.all([getAllRequests(), getAllClients()]);
+      const [requestsData, clientsData, couriersData] = await Promise.all([
+        getAllRequests(),
+        getAllClients(),
+        fetchCouriers(),
+      ]);
       setRequests(requestsData);
       setClients(clientsData);
+      setCouriers(couriersData.filter((courier) => courier.isActive !== false));
     } catch (error) {
       console.error('Failed to load data:', error);
       alert('Ошибка при загрузке заявок');
@@ -131,6 +151,19 @@ export default function TasksPage() {
   const stats = getStatistics(requests);
   const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
+
+  const handleAssignCourier = async (requestId: number, courierId: number | null) => {
+    try {
+      setAssigningRequestId(requestId);
+      await assignRequestCourier(requestId, courierId);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to assign courier:', error);
+      alert(`Ошибка при назначении курьера: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      setAssigningRequestId(null);
+    }
+  };
 
   const handleCreateTask = async (data: TaskFormData) => {
     try {
@@ -198,7 +231,7 @@ export default function TasksPage() {
         <>
           <TasksStats stats={stats} selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} />
           <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} dateFrom={dateFrom} onDateFromChange={setDateFrom} dateTo={dateTo} onDateToChange={setDateTo} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
-          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} isLoading={isLoading} />}
+          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} onAssignCourier={handleAssignCourier} />}
         </>
       ) : (
         <div className="max-w-6xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">

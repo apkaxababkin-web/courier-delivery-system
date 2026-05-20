@@ -2,12 +2,20 @@ import { FileText, Loader2 } from 'lucide-react';
 import type { Request } from '../model/types';
 import { getStatusLabel, getStatusBadgeClass, getStatusIcon } from '../model/stats';
 
+type CourierOption = {
+  id: number;
+  name: string;
+};
+
 interface TasksTableProps {
   requests: Request[];
+  couriers?: CourierOption[];
   isLoading?: boolean;
+  assigningRequestId?: number | null;
+  onAssignCourier?: (requestId: number, courierId: number | null) => void;
 }
 
-export function TasksTable({ requests, isLoading }: TasksTableProps) {
+export function TasksTable({ requests, couriers = [], isLoading, assigningRequestId = null, onAssignCourier }: TasksTableProps) {
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -57,13 +65,14 @@ export function TasksTable({ requests, isLoading }: TasksTableProps) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] text-sm">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-left text-xs uppercase tracking-[0.08em] text-slate-500 backdrop-blur">
             <tr>
               <th className="px-5 py-3 font-semibold">ID</th>
               <th className="px-5 py-3 font-semibold">Статус</th>
               <th className="px-5 py-3 font-semibold">Отправитель</th>
               <th className="px-5 py-3 font-semibold">Адрес доставки</th>
+              <th className="px-5 py-3 font-semibold">Курьер</th>
               <th className="px-5 py-3 font-semibold">Дата</th>
               <th className="px-5 py-3 text-right font-semibold">Действия</th>
             </tr>
@@ -98,6 +107,28 @@ export function TasksTable({ requests, isLoading }: TasksTableProps) {
                   <div className="max-w-md truncate text-slate-600" title={request.deliveryAddress || 'N/A'}>
                     {request.deliveryAddress || 'N/A'}
                   </div>
+                </td>
+
+                <td className="px-5 py-4 align-middle">
+                  <select
+                    value={request.courierId ?? ''}
+                    disabled={!onAssignCourier || assigningRequestId === request.id}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      onAssignCourier?.(request.id, value ? Number(value) : null);
+                    }}
+                    className="h-9 w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm outline-none transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <option value="">Не назначен</option>
+                    {couriers.map((courier) => (
+                      <option key={courier.id} value={courier.id}>
+                        {courier.name} #{courier.id}
+                      </option>
+                    ))}
+                  </select>
+                  {request.courierName && (
+                    <div className="mt-1 text-xs text-slate-400">Сейчас: {request.courierName}</div>
+                  )}
                 </td>
 
                 <td className="whitespace-nowrap px-5 py-4 align-middle text-slate-500">

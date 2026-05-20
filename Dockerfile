@@ -73,7 +73,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache postgresql-client && npm install -g pnpm@9.12.0
+RUN npm install -g pnpm@9.12.0
 
 # Копируем только production зависимости
 COPY --from=backend-deps /app/node_modules ./node_modules

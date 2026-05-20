@@ -272,7 +272,7 @@ async function courierSnapshot(courierId: number) {
     ok: true,
     updatedAt: new Date().toISOString(),
     courier,
-    tasks: allTasks.filter((task) => !task.courierId || task.courierId === courierId),
+    tasks: allTasks,
     mails: mailList,
   };
 }
@@ -366,10 +366,20 @@ export function registerCompatRoutes(app: Express) {
   app.get("/api/trpc/tasks.all", async (req, res) => {
     try {
       const courierId = await courierIdFromReq(req);
-      if (courierId) { res.json(trpcBatchJson((await courierSnapshot(courierId)).tasks)); return; }
-      const [active, completed] = await Promise.all([db.getAllTasksWithCourier(), db.getCompletedTasksWithCourier()]);
-      res.json(trpcBatchJson([...active, ...completed]));
-    } catch (error) { sendError(res, error, "Failed to load tasks"); }
+      if (!courierId) {
+        res.status(401).json({ error: { message: "Invalid courier token" } });
+        return;
+      }
+
+      const [active, completed] = await Promise.all([
+        db.getAllTasksWithCourier(),
+        db.getCompletedTasksWithCourier(),
+      ]);
+
+      res.json(trpcJson([...active, ...completed]));
+    } catch (error) {
+      sendError(res, error, "Failed to load tasks");
+    }
   });
 
   app.post("/api/trpc/tasks.setStatus", async (req, res) => {
