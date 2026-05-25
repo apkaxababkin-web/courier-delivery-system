@@ -1,5 +1,6 @@
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { skipToken } from "@tanstack/react-query";
 import { ScreenContainer } from "@/components/screen-container";
 import { NetworkBanner } from "@/components/network-banner";
 import { useCourierAuth } from "@/lib/courier-auth";
@@ -44,20 +45,18 @@ export default function SberbankScreen() {
   const [selectedDate] = useState(new Date());
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
   const [lastTapTime, setLastTapTime] = useState<number>(0);
+  const queryInput = token ? { token, date: selectedDate } : skipToken;
 
-  const { data: pickupPoints = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(
-    { token: token || "", date: selectedDate },
-    { enabled: true },
-  );
+  const { data: pickupPoints = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(queryInput);
 
-  const { data: pickedCount = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(
-    { token: token || "", date: selectedDate },
-    { enabled: true },
-  );
+  const { data: pickedCount = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(queryInput);
 
   useMobileLiveSync({
     enabled: true,
-    onSync: useCallback(() => Promise.all([refetch(), refetchCount()]), [refetch, refetchCount]),
+    onSync: useCallback(() => {
+      if (!token) return;
+      return Promise.all([refetch(), refetchCount()]);
+    }, [token, refetch, refetchCount]),
   });
 
   const toggleMutation = trpc.sberbank.togglePickup.useMutation({
