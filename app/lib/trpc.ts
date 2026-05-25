@@ -5,6 +5,8 @@ import type { AppRouter } from "@/server/routers";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { getCourierSessionToken } from "@/lib/courier-auth";
 
+console.log("[BUILD_MARKER] mobile-auth-realtime-final-v2");
+
 /**
  * tRPC React client for type-safe API calls.
  *
