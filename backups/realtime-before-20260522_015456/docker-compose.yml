@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # PostgreSQL база данных
+  postgres:
+    image: postgres:16-alpine
+    container_name: courier-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-courier}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-courier_password}
+      POSTGRES_DB: ${POSTGRES_DB:-courier_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-courier} -d ${POSTGRES_DB:-courier_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - courier-network
+
+  # Backend API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: courier-api
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://courier:courier_password@postgres:5432/courier_db}
+      PORT: ${PORT:-3000}
+      API_PORT: ${PORT:-3000}
+      API_HOST: 0.0.0.0
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      MANAGER_JWT_SECRET: ${MANAGER_JWT_SECRET:-change-me-manager-jwt-secret}
+      COURIER_JWT_SECRET: ${COURIER_JWT_SECRET:-change-me-courier-jwt-secret}
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - courier-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  courier-network:
+    driver: bridge

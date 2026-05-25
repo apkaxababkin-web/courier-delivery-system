@@ -10,7 +10,7 @@ echo "[Entrypoint] DATABASE_URL: $DATABASE_URL"
 
 echo "[Entrypoint] Running database migrations..."
 if [ -f "drizzle.config.ts" ]; then
-  if npx drizzle-kit push 2>&1; then
+  if yes | npx drizzle-kit push 2>&1; then
     echo "[Entrypoint] ✓ Migrations completed successfully"
   else
     echo "[Entrypoint] ⚠ Migrations encountered an issue (continuing anyway)"
@@ -24,7 +24,7 @@ run_patch() {
   patch_name="$2"
   if [ -f "$patch_file" ]; then
     echo "[Entrypoint] Running $patch_name..."
-    if psql "$DATABASE_URL" -f "$patch_file"; then
+    if command -v psql >/dev/null 2>&1 && psql "$DATABASE_URL" -f "$patch_file"; then
       echo "[Entrypoint] ✓ $patch_name applied"
     else
       echo "[Entrypoint] ⚠ $patch_name failed (continuing anyway)"

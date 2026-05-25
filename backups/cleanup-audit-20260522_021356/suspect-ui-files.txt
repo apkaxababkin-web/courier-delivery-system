@@ -1,0 +1,6 @@
+app/components/solito-header.tsx
+app/components/solito-tab-bar.tsx
+app/components/task-card-optimized.tsx
+app/components/task-list-optimized.tsx
+app/dev/theme-lab.tsx
+app/lib/solito-navigation.ts

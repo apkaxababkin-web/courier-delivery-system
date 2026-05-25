@@ -145,7 +145,7 @@ export const tasks = pgTable("tasks", {
   /** Special instructions for the courier */
   specialInstructions: text("specialInstructions"),
   /** Number of packages/boxes (places). Default 1 */
-  placesCount: integer("placesCount").default(1).notNull(),
+  placesCount: integer("placesCount"),
   /** Estimated delivery time in minutes */
   estimatedMinutes: integer("estimatedMinutes"),
   /** Delivery time interval — e.g. "10:00" to "14:00" */
@@ -456,7 +456,7 @@ export const requests = pgTable("requests", {
   /** Package type: document, small, medium, large, fragile */
   packageType: packageTypeEnum("packageType"),
   /** Number of places (packages) */
-  placesCount: integer("placesCount").default(1),
+  placesCount: integer("placesCount"),
 
   // Movement-specific fields
   /** Sender name (for movement) */

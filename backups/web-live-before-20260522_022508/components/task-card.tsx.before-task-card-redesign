@@ -1,0 +1,139 @@
+import React from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+export type TaskStatus =
+  | "new"
+  | "assigned"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+export interface TaskCardData {
+  id: number;
+  recipientName?: string;
+  deliveryAddress?: string;
+  deliveryCity?: string;
+  recipientAddress?: string;
+  senderName?: string;
+  senderAddress?: string;
+  status?: TaskStatus;
+  placesCount?: number;
+  deliveryTimeFrom?: string;
+  deliveryTimeTo?: string;
+  courierName?: string;
+  taskType?: string;
+  comments?: string;
+}
+
+interface Props {
+  task: TaskCardData;
+  onPress?: () => void;
+}
+
+export function TaskCard({ task, onPress }: Props) {
+  return (
+    <Pressable onPress={onPress} style={styles.card}>
+      <View style={styles.header}>
+        <Text style={styles.title}>
+          Заявка #{task.id}
+        </Text>
+
+        <Text style={styles.status}>
+          {task.status || "new"}
+        </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.label}>Получатель</Text>
+        <Text style={styles.value}>
+          {task.recipientName || "—"}
+        </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.label}>Адрес</Text>
+        <Text style={styles.value}>
+          {task.deliveryAddress || task.recipientAddress || "—"}
+        </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.label}>Отправитель</Text>
+        <Text style={styles.value}>
+          {task.senderName || "—"}
+        </Text>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          Курьер: {task.courierName || "не назначен"}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    minHeight: 180,
+  },
+
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+
+  title: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  status: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#2563EB",
+  },
+
+  section: {
+    marginBottom: 12,
+  },
+
+  label: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginBottom: 4,
+  },
+
+  value: {
+    fontSize: 12,
+    color: "#111827",
+    fontWeight: "500",
+  },
+
+  footer: {
+    marginTop: 10,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+
+  footerText: {
+    fontSize: 12,
+    color: "#374151",
+  },
+});

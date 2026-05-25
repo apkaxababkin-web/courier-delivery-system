@@ -1,0 +1,49 @@
+app/hooks/use-mobile-live-sync.ts:2:import EventSource from "react-native-sse";
+app/hooks/use-mobile-live-sync.ts:38:      const url = `${getApiBaseUrl()}/api/live`;
+app/hooks/use-mobile-live-sync.ts:41:      eventSource = new EventSource(url, {
+app/lib/_core/battery-optimization.ts:174:    refetchOnWindowFocus: false, // Don't refetch on focus (saves battery)
+app/lib/_core/battery-optimization.ts:175:    refetchOnReconnect: true, // Refetch when internet reconnects
+app/lib/_core/battery-optimization.ts:176:    refetchOnMount: false, // Don't refetch on mount if cached
+app/task/[id].tsx:107:  const { data: task, isLoading } = trpc.tasks.byId.useQuery(token ? { token, id: taskId } : skipToken);
+app/task/[id].tsx:108:  const { data: couriersList } = trpc.couriers.list.useQuery(token ? { token } : skipToken);
+app/task/[id].tsx:112:      utils.tasks.byId.invalidate();
+app/task/[id].tsx:113:      utils.tasks.all.invalidate();
+app/task/[id].tsx:121:      utils.tasks.byId.invalidate();
+app/task/[id].tsx:122:      utils.tasks.all.invalidate();
+app/task/[id].tsx:123:      utils.tasks.history.invalidate();
+app/task/[id].tsx:131:      utils.tasks.byId.invalidate();
+app/task/[id].tsx:132:      utils.tasks.all.invalidate();
+app/task/[id].tsx:141:      utils.tasks.byId.invalidate();
+app/task/[id].tsx:142:      utils.tasks.all.invalidate();
+app/task/[id].tsx:152:      utils.tasks.byId.invalidate();
+app/task/[id].tsx:153:      utils.tasks.all.invalidate();
+app/task/[id].tsx:154:      utils.tasks.history.invalidate();
+app/_layout.tsx:63:  const { error } = trpc.courierAuth.me.useQuery(
+app/_layout.tsx:173:            refetchOnWindowFocus: false,
+app/(tabs)/letters.tsx:68:  const { data: mails = [], refetch } = trpc.mails.all.useQuery({ token: token || "" }, { enabled: !!token, refetchInterval: 5000 });
+app/(tabs)/letters.tsx:70:  useMobileLiveSync({ enabled: !!token, onSync: useCallback(() => refetch(), [refetch]) });
+app/(tabs)/letters.tsx:78:      refetch();
+app/(tabs)/pickup-gemotest.tsx:48:  const { data: pickupPoints = [], isLoading, refetch } = trpc.hemotest.pickupPoints.useQuery(
+app/(tabs)/pickup-gemotest.tsx:53:  const { data: pickedCount = 0, refetch: refetchCount } = trpc.hemotest.pickedCount.useQuery(
+app/(tabs)/pickup-gemotest.tsx:60:    onSync: useCallback(() => Promise.all([refetch(), refetchCount()]), [refetch, refetchCount]),
+app/(tabs)/pickup-gemotest.tsx:65:      refetch();
+app/(tabs)/pickup-gemotest.tsx:66:      refetchCount();
+app/(tabs)/pickup-sberbank.tsx:48:  const { data: pickupPoints = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(
+app/(tabs)/pickup-sberbank.tsx:53:  const { data: pickedCount = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(
+app/(tabs)/pickup-sberbank.tsx:60:    onSync: useCallback(() => Promise.all([refetch(), refetchCount()]), [refetch, refetchCount]),
+app/(tabs)/pickup-sberbank.tsx:65:      refetch();
+app/(tabs)/pickup-sberbank.tsx:66:      refetchCount();
+app/(tabs)/index.tsx:12:import { skipToken, useQuery } from "@tanstack/react-query";
+app/(tabs)/index.tsx:54:    refetch,
+app/(tabs)/index.tsx:56:  } = trpc.tasks.all.useQuery(
+app/(tabs)/index.tsx:60:      refetchInterval: 15_000,
+app/(tabs)/index.tsx:70:    onSync: useCallback(() => refetch(), [refetch]),
+app/(tabs)/index.tsx:142:      refetch();
+app/(tabs)/index.tsx:143:    }, [refetch]),
+server/_core/compatRoutes.ts:363:  app.get("/api/live", (req: Request, res: Response) => {
+server/_core/compatRoutes.ts:518:  app.get("/api/trpc/managerTasks.all", async (_req, res) => {
+server/_core/compatRoutes.ts:581:  app.get("/api/trpc/requests.all", async (_req, res) => {
+server/_core/compatRoutes.ts:663:  app.get("/api/trpc/managerMails.all", async (req, res) => {
+server/README.md:305:  const { data: items, isLoading, refetch } = trpc.items.list.useQuery();
+server/README.md:309:    onSuccess: () => refetch(),
+server/README.md:1188:    utils.items.list.invalidate();

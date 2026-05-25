@@ -1,0 +1,9 @@
+app/dev/theme-lab.tsx:27:export default function ThemeLabScreen() {
+app/components/solito-header.tsx:7:interface SolitoHeaderProps {
+app/components/solito-header.tsx:15:export function SolitoHeader({
+app/components/solito-header.tsx:21:}: SolitoHeaderProps) {
+app/components/task-card-optimized.tsx:145:export const TaskCardOptimized = React.memo(TaskCardInternal, (prevProps, nextProps) => {
+app/components/task-card-optimized.tsx:158:TaskCardOptimized.displayName = "TaskCardOptimized";
+app/components/solito-tab-bar.tsx:23:export function SolitoTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+app/components/task-list-optimized.tsx:8:import { TaskCardOptimized, type TaskData } from "./task-card-optimized";
+app/components/task-list-optimized.tsx:43:      <TaskCardOptimized

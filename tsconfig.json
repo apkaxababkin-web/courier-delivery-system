@@ -23,9 +23,15 @@
     "nativewind-env.d.ts"
   ],
   "exclude": [
-    "node_modules",
-    "dist",
+    "_archive",
+    "_archive/**",
+    "android",
+    "android/**",
+    "backups",
+    "backups/**",
     "courier-manager",
-    "courier-web"
+    "courier-web",
+    "dist",
+    "node_modules"
   ]
 }
