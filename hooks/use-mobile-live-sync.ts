@@ -3,8 +3,9 @@ import EventSource from "react-native-sse";
 
 import { getApiBaseUrl } from "@/constants/oauth";
 
-const MIN_SYNC_INTERVAL_MS = 700;
+const MIN_SYNC_INTERVAL_MS = 900;
 const RECONNECT_DELAY_MS = 3000;
+const SYNC_DEBOUNCE_MS = 350;
 
 type LiveSyncOptions = {
   enabled?: boolean;
@@ -14,6 +15,8 @@ type LiveSyncOptions = {
 export function useMobileLiveSync({ enabled = true, onSync }: LiveSyncOptions) {
   const onSyncRef = useRef(onSync);
   const lastSyncAtRef = useRef(0);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingReasonRef = useRef<string | null>(null);
 
   useEffect(() => {
     onSyncRef.current = onSync;
@@ -27,15 +30,39 @@ export function useMobileLiveSync({ enabled = true, onSync }: LiveSyncOptions) {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let eventSource: any = null;
 
-    const runSync = (reason: string) => {
+    const executeSync = (reason: string) => {
       const now = Date.now();
-      if (now - lastSyncAtRef.current < MIN_SYNC_INTERVAL_MS) return;
+      const waitMs = Math.max(0, MIN_SYNC_INTERVAL_MS - (now - lastSyncAtRef.current));
 
-      lastSyncAtRef.current = now;
-      console.log("[LiveSync] sync:", reason);
-      Promise.resolve(onSyncRef.current()).catch((error) => {
-        console.warn("[LiveSync] sync failed:", error);
-      });
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+
+      syncTimerRef.current = setTimeout(() => {
+        if (closed) return;
+
+        lastSyncAtRef.current = Date.now();
+        const finalReason = pendingReasonRef.current || reason;
+        pendingReasonRef.current = null;
+
+        console.log("[LiveSync] sync:", finalReason);
+        Promise.resolve(onSyncRef.current()).catch((error) => {
+          console.warn("[LiveSync] sync failed:", error);
+        });
+      }, waitMs);
+    };
+
+    const scheduleSync = (reason: string) => {
+      pendingReasonRef.current = pendingReasonRef.current
+        ? `${pendingReasonRef.current}+${reason}`
+        : reason;
+
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+      }
+
+      syncTimerRef.current = setTimeout(() => executeSync(reason), SYNC_DEBOUNCE_MS);
     };
 
     const connect = () => {
@@ -60,10 +87,10 @@ export function useMobileLiveSync({ enabled = true, onSync }: LiveSyncOptions) {
         console.log("[LiveSync] ping");
       });
 
-      eventSource.addEventListener("tasks_changed", () => runSync("tasks_changed"));
-      eventSource.addEventListener("requests_changed", () => runSync("requests_changed"));
-      eventSource.addEventListener("mails_changed", () => runSync("mails_changed"));
-      eventSource.addEventListener("data_changed", () => runSync("data_changed"));
+      eventSource.addEventListener("tasks_changed", () => scheduleSync("tasks_changed"));
+      eventSource.addEventListener("requests_changed", () => scheduleSync("requests_changed"));
+      eventSource.addEventListener("mails_changed", () => scheduleSync("mails_changed"));
+      eventSource.addEventListener("data_changed", () => scheduleSync("data_changed"));
 
       eventSource.addEventListener("error", (error: unknown) => {
         console.warn("[LiveSync] error:", error);
@@ -78,11 +105,16 @@ export function useMobileLiveSync({ enabled = true, onSync }: LiveSyncOptions) {
       });
     };
 
-    runSync("initial");
+    scheduleSync("initial");
     connect();
 
     return () => {
       closed = true;
+
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
 
       if (reconnectTimer) clearTimeout(reconnectTimer);
 
