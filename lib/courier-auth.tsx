@@ -2,8 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-const COURIER_TOKEN_KEY = "courier_session_token";
-const COURIER_INFO_KEY = "courier_info";
+export const COURIER_TOKEN_KEY = "courier_session_token";
+export const COURIER_INFO_KEY = "courier_info";
 
 export type CourierInfo = {
   id: number;
@@ -58,6 +58,21 @@ async function removeItem(key: string) {
   }
 }
 
+export async function getCourierSessionToken(): Promise<string | null> {
+  return getItem(COURIER_TOKEN_KEY);
+}
+
+export async function getCourierInfo(): Promise<CourierInfo | null> {
+  const raw = await getItem(COURIER_INFO_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as CourierInfo;
+  } catch {
+    return null;
+  }
+}
+
 export function CourierAuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [courier, setCourier] = useState<CourierInfo | null>(null);
@@ -70,8 +85,8 @@ export function CourierAuthProvider({ children }: { children: React.ReactNode })
     (async () => {
       try {
         const [savedToken, savedCourier] = await Promise.all([
-          getItem(COURIER_TOKEN_KEY),
-          getItem(COURIER_INFO_KEY),
+          getCourierSessionToken(),
+          getCourierInfo(),
         ]);
 
         if (!mountedRef.current) return;
@@ -87,14 +102,12 @@ export function CourierAuthProvider({ children }: { children: React.ReactNode })
           return;
         }
 
-        const parsedCourier = JSON.parse(savedCourier) as CourierInfo;
-
-        if (!parsedCourier?.id || !parsedCourier?.username) {
+        if (!savedCourier?.id || !savedCourier?.username) {
           throw new Error("Invalid courier session payload");
         }
 
         setToken(savedToken);
-        setCourier(parsedCourier);
+        setCourier(savedCourier);
       } catch (e) {
         console.error("[CourierAuth] Failed to load session:", e);
 
