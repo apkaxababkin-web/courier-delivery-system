@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
-import { AppState, type AppStateStatus } from "react-native";
-import NetInfo from "@react-native-community/netinfo";
+import EventSource from "react-native-sse";
 
-const MIN_SYNC_INTERVAL_MS = 1500;
+import { getApiBaseUrl } from "@/constants/oauth";
+
+const MIN_SYNC_INTERVAL_MS = 700;
+const RECONNECT_DELAY_MS = 3000;
 
 type LiveSyncOptions = {
   enabled?: boolean;
@@ -10,47 +12,83 @@ type LiveSyncOptions = {
 };
 
 export function useMobileLiveSync({ enabled = true, onSync }: LiveSyncOptions) {
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const onSyncRef = useRef(onSync);
   const lastSyncAtRef = useRef(0);
-  const syncRef = useRef(onSync);
 
   useEffect(() => {
-    syncRef.current = onSync;
+    onSyncRef.current = onSync;
   }, [onSync]);
 
   useEffect(() => {
+    console.log("[LiveSync] hook enabled:", enabled);
     if (!enabled) return;
 
-    const runSync = () => {
+    let closed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let eventSource: any = null;
+
+    const runSync = (reason: string) => {
       const now = Date.now();
       if (now - lastSyncAtRef.current < MIN_SYNC_INTERVAL_MS) return;
+
       lastSyncAtRef.current = now;
-      Promise.resolve(syncRef.current()).catch((error) => {
-        console.warn("[LiveSync] Sync failed", error);
+      console.log("[LiveSync] sync:", reason);
+      Promise.resolve(onSyncRef.current()).catch((error) => {
+        console.warn("[LiveSync] sync failed:", error);
       });
     };
 
-    runSync();
+    const connect = () => {
+      if (closed) return;
 
-    const appStateSubscription = AppState.addEventListener("change", (nextState) => {
-      const previousState = appStateRef.current;
-      appStateRef.current = nextState;
+      const url = `${getApiBaseUrl()}/api/live`;
+      console.log("[LiveSync] connecting:", url);
 
-      const wasInactive = previousState === "inactive" || previousState === "background";
-      if (wasInactive && nextState === "active") {
-        runSync();
-      }
-    });
+      eventSource = new EventSource(url, {
+        pollingInterval: 0,
+      });
 
-    const netInfoUnsubscribe = NetInfo.addEventListener((state) => {
-      if (state.isConnected && state.isInternetReachable !== false) {
-        runSync();
-      }
-    });
+      eventSource.addEventListener("open", () => {
+        console.log("[LiveSync] opened");
+      });
+
+      eventSource.addEventListener("connected", () => {
+        console.log("[LiveSync] connected");
+      });
+
+      eventSource.addEventListener("ping", () => {
+        console.log("[LiveSync] ping");
+      });
+
+      eventSource.addEventListener("tasks_changed", () => runSync("tasks_changed"));
+      eventSource.addEventListener("requests_changed", () => runSync("requests_changed"));
+      eventSource.addEventListener("mails_changed", () => runSync("mails_changed"));
+      eventSource.addEventListener("data_changed", () => runSync("data_changed"));
+
+      eventSource.addEventListener("error", (error: unknown) => {
+        console.warn("[LiveSync] error:", error);
+
+        try {
+          eventSource?.close();
+        } catch {}
+
+        if (!closed) {
+          reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+        }
+      });
+    };
+
+    runSync("initial");
+    connect();
 
     return () => {
-      appStateSubscription.remove();
-      netInfoUnsubscribe();
+      closed = true;
+
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+
+      try {
+        eventSource?.close();
+      } catch {}
     };
   }, [enabled]);
 }
