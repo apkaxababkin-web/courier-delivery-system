@@ -34,8 +34,6 @@ async function hideAndroidNavigationBar() {
   if (Platform.OS !== "android") return;
 
   try {
-    await NavigationBar.setBehaviorAsync("overlay-swipe");
-    await NavigationBar.setBackgroundColorAsync("transparent");
     await NavigationBar.setVisibilityAsync("hidden");
   } catch (error) {
     console.warn("[App] Failed to hide Android navigation bar", error);
