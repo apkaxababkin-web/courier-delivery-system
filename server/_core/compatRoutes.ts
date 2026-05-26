@@ -626,6 +626,7 @@ export function registerCompatRoutes(app: Express) {
       const request = inserted[0] as DeliveryRequest;
       const taskId = await syncTaskForRequest(request);
       broadcastLive("requests_changed");
+      broadcastLive("tasks_changed");
       res.json(trpcBatchJson({ id: request.id, taskId, success: true }));
     } catch (error) { sendError(res, error, "Failed to create request"); }
   });
@@ -641,6 +642,7 @@ export function registerCompatRoutes(app: Express) {
       const updated = await conn.update(requests).set({ status, completedAt: status === "completed" ? new Date() : null, updatedAt: new Date() }).where(eq(requests.id, id)).returning();
       if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
       broadcastLive("requests_changed");
+      broadcastLive("tasks_changed");
       res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to update request status"); }
   });
@@ -656,6 +658,7 @@ export function registerCompatRoutes(app: Express) {
       const updated = await conn.update(requests).set({ courierId, status: courierId ? "assigned" : "pending", updatedAt: new Date() }).where(eq(requests.id, id)).returning();
       if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
       broadcastLive("requests_changed");
+      broadcastLive("tasks_changed");
       res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to assign request courier"); }
   });
