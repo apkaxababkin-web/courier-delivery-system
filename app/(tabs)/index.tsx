@@ -14,7 +14,6 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { NetworkBanner } from "@/components/network-banner";
 import { ScreenContainer } from "@/components/screen-container";
-import { TaskCard, type TaskCardData } from "@/components/task-card";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
@@ -57,7 +56,8 @@ export default function TaskListScreen() {
     token ? { token, date: selectedDate.toISOString().slice(0, 10) } : skipToken,
     {
       staleTime: 5_000,
-      refetchInterval: 15_000,
+      refetchInterval: 60_000,
+      placeholderData: (previousData) => previousData,
     },
   );
 
@@ -66,8 +66,11 @@ export default function TaskListScreen() {
   }, [tasksDataRaw]);
 
   useMobileLiveSync({
-    enabled: true,
-    onSync: useCallback(() => refetch(), [refetch]),
+    enabled: !!token,
+    onSync: useCallback(() => {
+      if (!token) return;
+      return refetch();
+    }, [token, refetch]),
   });
 
   const isToday = useMemo(() => {
@@ -77,7 +80,6 @@ export default function TaskListScreen() {
 
   const filteredTasks = useMemo(() => {
     if (!tasksData.length) {
-      console.log("[TaskList] No tasks data to filter");
       return [];
     }
 
@@ -106,9 +108,6 @@ export default function TaskListScreen() {
       return true;
     });
 
-    console.log(
-      `[TaskList] Filtered tasks: ${tasks.length} (total: ${tasksData.length}, mode: ${filterMode})`,
-    );
     return tasks;
   }, [tasksData, filterMode, courier?.id, courier?.name, selectedDate]);
 
@@ -496,7 +495,6 @@ export default function TaskListScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            console.log("[TaskCardData]", { id: item.id, requestId: item.requestId, requestType: item.requestType, taskType: item.taskType, recipientName: item.recipientName, recipientPhone: item.recipientPhone, deliveryAddress: item.deliveryAddress, items: item.items, description: item.description, comments: item.comments, paymentAmount: item.paymentAmount });
             return (
             <TouchableOpacity
               activeOpacity={0.75}
