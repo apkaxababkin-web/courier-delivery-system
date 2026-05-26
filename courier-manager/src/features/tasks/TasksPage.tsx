@@ -93,6 +93,7 @@ export default function TasksPage() {
   useEffect(() => { loadData(); }, []);
   useEffect(() => {
     if (!realtimeSnapshot) return;
+    console.log('[TasksPage] realtime requests sync', realtimeSnapshot.requests.length, realtimeSnapshot.updatedAt);
     setRequests(realtimeSnapshot.requests);
   }, [realtimeSnapshot]);
   useEffect(() => {
