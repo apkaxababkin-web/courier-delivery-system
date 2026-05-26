@@ -7,6 +7,7 @@ import {
   parseRequestWithAI,
   assignRequestCourier,
 } from '../../lib/api';
+import { useManagerRealtime } from '../../lib/useManagerRealtime';
 import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
 import { TasksTable } from './components/TasksTable';
@@ -87,8 +88,13 @@ export default function TasksPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isParsingAi, setIsParsingAi] = useState(false);
   const [assigningRequestId, setAssigningRequestId] = useState<number | null>(null);
+  const { snapshot: realtimeSnapshot } = useManagerRealtime();
 
   useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (!realtimeSnapshot) return;
+    setRequests(realtimeSnapshot.requests);
+  }, [realtimeSnapshot]);
   useEffect(() => {
     if (operationMode === 'hemotest') loadHemotestLists();
     if (operationMode === 'sberbank') loadSberbankLists();
