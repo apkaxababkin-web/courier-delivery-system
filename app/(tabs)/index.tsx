@@ -24,7 +24,7 @@ import { sortTasks } from "@/lib/task-sorting";
 import { createCourierMobileClient } from "@/shared/mobileCourierClient";
 import { type TaskStatus } from "@/shared/types";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Package,
   MapPin,
@@ -55,7 +55,9 @@ export default function TaskListScreen() {
   } = trpc.tasks.all.useQuery(
     token ? { token, date: selectedDate.toISOString().slice(0, 10) } : skipToken,
     {
-      staleTime: 5_000,
+      staleTime: 0,
+      refetchOnMount: "always",
+      refetchOnReconnect: true,
       refetchInterval: 60_000,
       placeholderData: (previousData) => previousData,
     },
@@ -72,6 +74,14 @@ export default function TaskListScreen() {
       return refetch();
     }, [token, refetch]),
   });
+
+  useEffect(() => {
+    if (!token) return;
+
+    console.log("[Tasks] force initial refetch");
+    refetch();
+  }, [token, selectedDate, refetch]);
+
 
   const isToday = useMemo(() => {
     const today = new Date();
