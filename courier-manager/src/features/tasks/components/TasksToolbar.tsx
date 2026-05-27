@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import type { StatusFilter } from '../model/types';
 
 type CalendarDay =
@@ -72,8 +72,6 @@ export function TasksToolbar({
   onDateChange,
   searchQuery,
   onSearchChange,
-  onCreateClick,
-  onAiCreateClick,
   hideDatePicker = false,
 }: TasksToolbarProps) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -245,24 +243,6 @@ export function TasksToolbar({
                 </div>
               </div>
               )}
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                onClick={onCreateClick}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 transition hover:opacity-95"
-              >
-                <Plus className="h-4 w-4" />
-                Создать заявку
-              </button>
-
-              <button
-                onClick={onAiCreateClick}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
-                <Sparkles className="h-4 w-4" />
-                Создать по тексту
-              </button>
             </div>
           </div>
         </div>

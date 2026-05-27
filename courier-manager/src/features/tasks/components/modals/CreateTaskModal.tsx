@@ -26,6 +26,16 @@ type LocalFormData = TaskFormData & {
   cedroilTariff?: number;
 };
 
+
+const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
+  delivery: 'Доставка',
+  movement: 'Перемещение',
+  nuts: 'Орехи',
+  courier_call: 'Вызов курьера',
+  pickup_from_tc: 'Транспортная компания',
+  simple: 'Простая заявка',
+};
+
 const NUTS_TARIFF_STORAGE_KEY = 'courier-manager:nuts-tariff';
 const CEDROIL_TARIFF_STORAGE_KEY = 'courier-manager:cedroil-tariff';
 const NUTS_WEIGHTS: Record<string, number> = { '1': 15, '2': 16, '3': 16.5, '4': 18, '5': 18, '6': 0 };
@@ -155,24 +165,19 @@ export function CreateTaskModal({
       setFormData(makeInitialFormData());
     }
   };
-
-  const requestTypeSelector = <SelectField label="Тип заявки" value={requestType} onChange={(value) => {
-    setFormData((prev) => ({
-      ...makeInitialFormData(),
-      ...prev,
-      requestType: value as RequestType,
-    }));
-  }} options={[["delivery", "Доставка"], ["movement", "Перемещение"], ["nuts", "Орехи"], ["courier_call", "Вызов курьера"], ["pickup_from_tc", "Получение и отправка груза в ТК"], ["simple", "Простая заявка"]]} />;
+  const requestTypeLabel = REQUEST_TYPE_LABELS[requestType] || "Заявка";
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-h-[92vh] w-[min(1180px,calc(100vw-32px))] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-950/20" overlayStyle={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(8px)' }}>
       <form onSubmit={handleSubmit} className="flex max-h-[92vh] flex-col">
-        <div className="grid gap-3 border-b border-slate-200 px-5 py-3 md:grid-cols-[1fr_360px_auto] md:items-end">
+        <div className="grid gap-3 border-b border-slate-200 px-5 py-3 md:grid-cols-[1fr_auto_auto] md:items-center">
           <div className="self-center">
             <h2 className="text-xl font-semibold tracking-tight text-slate-950">Создать заявку</h2>
             <p className="mt-0.5 text-sm text-slate-500">Операционная форма без лишних шагов.</p>
           </div>
-          {requestTypeSelector}
+          <div className="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 md:block">
+            {requestTypeLabel}
+          </div>
           <button type="button" onClick={onClose} className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-950 md:static"><X className="h-4 w-4" /></button>
         </div>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, CalendarDays, CheckCircle2, Landmark, MapPin } from 'lucide-react';
+import { Activity, CheckCircle2, Landmark, MapPin, Plus, Sparkles } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -43,6 +43,21 @@ type PickupListWithItems = { list?: PickupList; items?: OperationPoint[] };
 
 const API_BASE = '/api/trpc';
 const API_URL = import.meta.env.VITE_API_URL || '';
+
+const REQUEST_CREATE_OPTIONS: Array<{
+  type: NonNullable<TaskFormData['requestType']>;
+  title: string;
+  description: string;
+  icon: string;
+}> = [
+  { type: 'delivery', title: 'Доставка', description: 'Обычная доставка от отправителя к получателю', icon: '↗' },
+  { type: 'movement', title: 'Перемещение', description: 'Перевезти между двумя точками или клиентами', icon: '⇄' },
+  { type: 'nuts', title: 'Орехи', description: 'Заявка по коробкам, весу и тарифам', icon: '◈' },
+  { type: 'courier_call', title: 'Вызов курьера', description: 'Курьер нужен по адресу клиента', icon: '⌁' },
+  { type: 'pickup_from_tc', title: 'Транспортная компания', description: 'Получение или отправка груза через ТК', icon: '▣' },
+  { type: 'simple', title: 'Простая заявка', description: 'Минимальная форма без лишних полей', icon: '+' },
+];
+
 const weekdayNames: Record<number, string> = { 1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг', 5: 'Пятница' };
 
 
@@ -170,6 +185,8 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
+  const [showCreateActionMenu, setShowCreateActionMenu] = useState(false);
+  const [createInitialData, setCreateInitialData] = useState<Partial<TaskFormData> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isParsingAi, setIsParsingAi] = useState(false);
   const [isUpdatingRequest, setIsUpdatingRequest] = useState(false);
@@ -258,6 +275,18 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
 
+
+  const openCreateRequest = (requestType: NonNullable<TaskFormData['requestType']>) => {
+    setCreateInitialData({ requestType });
+    setShowCreateActionMenu(false);
+    setShowCreateModal(true);
+  };
+
+  const closeCreateRequest = () => {
+    setShowCreateModal(false);
+    setCreateInitialData(null);
+  };
+
   const handleAssignCourier = async (requestId: number, courierId: number | null) => {
     try {
       setAssigningRequestId(requestId);
@@ -282,7 +311,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
         ...data,
       };
       await createRequest(requestData as any);
-      setShowCreateModal(false);
+      closeCreateRequest();
       setOperationMode('requests');
       setSelectedStatus('all');
       await loadData();
@@ -408,8 +437,8 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
       {operationMode === 'requests' ? (
         <>
-          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} hideDatePicker />
-          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
+          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateActionMenu(true)} onAiCreateClick={() => setShowAiModal(true)} hideDatePicker />
+          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateActionMenu(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
       ) : (
         <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -491,7 +520,81 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
         </div>
       )}
 
-      <CreateTaskModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} />
+
+      {operationMode === 'requests' && (
+        <>
+          {showCreateActionMenu && (
+            <button
+              type="button"
+              aria-label="Закрыть меню создания"
+              className="fixed inset-0 z-40 bg-transparent"
+              onClick={() => setShowCreateActionMenu(false)}
+            />
+          )}
+
+          <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+            {showCreateActionMenu && (
+              <div className="w-[min(420px,calc(100vw-32px))] overflow-hidden rounded-[28px] border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-950/20">
+                <div className="px-3 pb-2 pt-2">
+                  <p className="text-sm font-semibold text-slate-950">Создать заявку</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Выбери тип — форма откроется сразу нужная.</p>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {REQUEST_CREATE_OPTIONS.map((option) => (
+                    <button
+                      key={option.type}
+                      type="button"
+                      onClick={() => openCreateRequest(option.type)}
+                      className="group flex min-h-[92px] items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-slate-300 hover:bg-white hover:shadow-sm"
+                    >
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-sm">
+                        {option.icon}
+                      </span>
+
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-950">{option.title}</span>
+                        <span className="mt-1 block text-xs leading-4 text-slate-500">{option.description}</span>
+                      </span>
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateActionMenu(false);
+                      setShowAiModal(true);
+                    }}
+                    className="group flex min-h-[92px] items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm sm:col-span-2"
+                  >
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+                      <Sparkles className="h-4 w-4" />
+                    </span>
+
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-950">Создать по тексту</span>
+                      <span className="mt-1 block text-xs leading-4 text-slate-500">Вставить текст заявки и разобрать автоматически.</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowCreateActionMenu((value) => !value)}
+              className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
+              title="Создать заявку"
+              aria-label="Создать заявку"
+            >
+              <Plus className={`h-6 w-6 transition ${showCreateActionMenu ? 'rotate-45' : ''}`} />
+            </button>
+          </div>
+        </>
+      )}
+
+
+      <CreateTaskModal isOpen={showCreateModal} onClose={closeCreateRequest} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} initialData={createInitialData} />
       <CreateTaskModal
         isOpen={Boolean(selectedRequest)}
         onClose={() => { setSelectedRequest(null); setSelectedRequestNumber(null); }}

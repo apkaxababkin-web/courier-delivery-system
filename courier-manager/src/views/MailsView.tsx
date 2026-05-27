@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MailCheck, Search, Upload } from 'lucide-react';
+import { MailCheck, Plus, Search, Upload } from 'lucide-react';
 import * as api from '../lib/api';
 import * as XLSX from 'xlsx';
 
@@ -177,19 +177,22 @@ export default function MailsView() {
             onChange={handleFileSelect}
             className="hidden"
           />
-
-          <button
-            type="button"
-            onClick={() => manifestInputRef.current?.click()}
-            className={primaryButtonClass}
-          >
-            <Upload size={16} />
-            Манифест загрузить
-          </button>
         </div>
 
         <div className="p-4"><MailsTable mails={filteredMails.slice(0, 30)} loading={loading} compactTitle="Операционная очередь" /></div>
       </div>
+
+
+      <button
+        type="button"
+        onClick={() => manifestInputRef.current?.click()}
+        className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
+        title="Загрузить манифест"
+        aria-label="Загрузить манифест"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+
 
       {showMappingForm && fileData.length > 0 && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
