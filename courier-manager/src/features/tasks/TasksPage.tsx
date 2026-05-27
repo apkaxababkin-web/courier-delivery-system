@@ -386,10 +386,6 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                 <PackageCheck className="h-4 w-4 text-slate-400" />
                 {pickedCount}/{flattenedPoints.length} забрано
               </span>
-              <span className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">
-                <CalendarDays className="h-4 w-4 text-slate-400" />
-                Архив: <span className="capitalize">{formatArchiveDateLabel(selectedDate)}</span>
-              </span>
             </div>
           </div>
 
