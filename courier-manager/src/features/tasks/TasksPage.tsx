@@ -204,11 +204,11 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     setRequests(realtimeSnapshot.requests);
 
     if (operationMode === 'hemotest') {
-      loadHemotestLists(false);
+      loadHemotestLists(true);
     }
 
     if (operationMode === 'sberbank') {
-      loadSberbankLists(false);
+      loadSberbankLists(true);
     }
   }, [realtimeSnapshot, operationMode, hemotestDate, sberbankDay]);
   useEffect(() => {

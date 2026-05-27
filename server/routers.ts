@@ -690,6 +690,7 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
         await db.toggleHemotestPickup(payload.courierId, input.pointId, input.date);
+        broadcastLive("hemotest_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
       }),
   }),
@@ -794,6 +795,7 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
         await db.toggleSberbankPickup(payload.courierId, input.pointId, input.date);
+        broadcastLive("sberbank_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
       }),
   }),
