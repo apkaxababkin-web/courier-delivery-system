@@ -412,7 +412,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
       ) : (
-        <div className="max-w-6xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-950">{operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</h2>
@@ -429,33 +429,63 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
             <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500">
               <MapPin className="mb-3 h-8 w-8 text-slate-300" />
               <p className="font-medium text-slate-950">На выбранный период точек нет</p>
-              <p className="mt-1 max-w-sm">Измените дату/день недели или проверьте, что список сборов создан в разделе направления.</p>
+              <p className="mt-1 max-w-sm">На выбранную дату список сборов не создан или точки ещё не добавлены.</p>
             </div>
           ) : (
-            <div className="space-y-2 bg-slate-50/70 p-3">
-              {flattenedPoints.map((point) => {
-                const pickup = getPickupMeta(point);
-                return (
-                  <div key={`${point.listName}-${point.id}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-slate-300 hover:shadow-md md:grid-cols-[1.1fr_minmax(0,1.7fr)_170px] md:items-center">
-                    <div className="min-w-0">
-                      <p className="truncate text-[15px] font-semibold text-slate-950">{point.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-slate-400">{point.listName} · {point.listMeta}</p>
-                      {point.contactPerson && <p className="mt-0.5 truncate text-xs text-slate-500">{point.contactPerson}</p>}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-700">{point.address}</p>
-                      {point.phone && <p className="mt-0.5 text-xs text-slate-400">{point.phone}</p>}
-                    </div>
-                    <div className="flex items-center gap-2 md:justify-end">
-                      {pickup.isPicked && <CheckCircle2 className="h-4 w-4 text-slate-500" />}
-                      <div className="text-left md:text-right">
-                        <p className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${pickup.isPicked ? 'border-slate-300 bg-white text-slate-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{pickup.label}</p>
-                        {pickup.detail && <p className="mt-1 text-xs text-slate-400">{pickup.detail}</p>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50/95 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold">Точка сбора</th>
+                    <th className="px-5 py-3 font-semibold">Адрес</th>
+                    <th className="px-5 py-3 font-semibold">Статус</th>
+                    <th className="px-5 py-3 font-semibold">Курьер</th>
+                    <th className="px-5 py-3 font-semibold">Время</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {flattenedPoints.map((point) => {
+                    const pickup = getPickupMeta(point);
+                    const pickedAt = point.pickedAt || point.completedAt;
+                    const pickedBy = point.pickedBy || point.courierName;
+                    const pickupTime = pickedAt
+                      ? new Date(pickedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+                      : '—';
+
+                    return (
+                      <tr key={`${point.listName}-${point.id}`} className="transition-colors hover:bg-slate-50/80">
+                        <td className="px-5 py-4 align-middle">
+                          <div className="font-semibold text-slate-950">{point.name}</div>
+                          <div className="mt-1 text-xs text-slate-400">{point.listName}</div>
+                        </td>
+
+                        <td className="px-5 py-4 align-middle">
+                          <div className="max-w-xl truncate text-slate-700" title={point.address}>
+                            {point.address}
+                          </div>
+                          {point.phone && <div className="mt-1 text-xs text-slate-400">Тел: {point.phone}</div>}
+                        </td>
+
+                        <td className="whitespace-nowrap px-5 py-4 align-middle">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${pickup.isPicked ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}>
+                            {pickup.isPicked && <CheckCircle2 className="h-3.5 w-3.5" />}
+                            {pickup.label}
+                          </span>
+                        </td>
+
+                        <td className="whitespace-nowrap px-5 py-4 align-middle text-slate-600">
+                          {pickedBy || '—'}
+                        </td>
+
+                        <td className="whitespace-nowrap px-5 py-4 align-middle text-slate-500">
+                          {pickupTime}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
