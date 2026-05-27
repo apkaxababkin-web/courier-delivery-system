@@ -57,6 +57,7 @@ function AuthRedirect() {
 function SessionValidator() {
   const { token, isAuthenticated, loading, logout } = useCourierAuth();
   const router = useRouter();
+  const registerPushTokenMutation = trpc.couriers.registerPushToken.useMutation();
 
   const { error } = trpc.courierAuth.me.useQuery(
     token && isAuthenticated && !loading ? { token } : skipToken,
@@ -66,6 +67,34 @@ function SessionValidator() {
       staleTime: 60_000,
     },
   );
+
+  useEffect(() => {
+    if (Platform.OS === "web" || !token || !isAuthenticated || loading) return;
+
+    const registerPushToken = async () => {
+      try {
+        const permission = await Notifications.requestPermissionsAsync();
+        if (permission.status !== "granted") return;
+
+        const projectId =
+          (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
+          undefined;
+
+        if (!projectId) {
+          console.log("[Session] Push token skipped: no projectId configured");
+          return;
+        }
+
+        const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
+        await registerPushTokenMutation.mutateAsync({ token, pushToken: pushToken.data });
+        console.log("[Session] Push token registered");
+      } catch (pushError) {
+        console.warn("[Session] Failed to register push token", pushError);
+      }
+    };
+
+    registerPushToken();
+  }, [token, isAuthenticated, loading, registerPushTokenMutation]);
 
   useEffect(() => {
     if (!error || !isAuthenticated) return;
