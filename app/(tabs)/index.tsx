@@ -58,12 +58,10 @@ export default function TaskListScreen() {
     token ? { token, date: selectedDate.toISOString().slice(0, 10) } : skipToken,
     {
       staleTime: 0,
-      gcTime: 0,
       refetchOnMount: "always",
       refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
       refetchInterval: 60_000,
-      placeholderData: undefined,
+      placeholderData: (previousData) => previousData,
     },
   );
 
