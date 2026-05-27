@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { trpc } from "@/lib/trpc";
 import { NetworkBanner } from "@/components/network-banner";
@@ -47,7 +47,6 @@ export default function TaskListScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const queryClient = useQueryClient();
 
   const {
     data: tasksDataRaw,
@@ -69,22 +68,9 @@ export default function TaskListScreen() {
     },
   );
 
-  console.log("[Tasks] token changed", !!token);
-
-  console.log("[Tasks] query state", {
-    hasData: !!tasksDataRaw,
-    isLoading,
-    isRefetchingQuery,
-  });
 
   const tasksData = useMemo(() => {
     const next = Array.isArray(tasksDataRaw) ? (tasksDataRaw as any[]) : [];
-    console.log("[Tasks] raw count", next.length, {
-      authLoading,
-      hasToken: !!token,
-      isLoading,
-      isRefetchingQuery,
-    });
     return next;
   }, [tasksDataRaw, authLoading, token, isLoading, isRefetchingQuery]);
 
@@ -97,25 +83,20 @@ export default function TaskListScreen() {
   });
 
   useEffect(() => {
-    if (!token) return;
-
-    console.log("[Tasks] force initial refetch");
+    if (!token || authLoading) return;
 
     const timer = setTimeout(() => {
-      queryClient.invalidateQueries();
       refetch();
     }, 700);
 
     return () => clearTimeout(timer);
-  }, [token, selectedDate, queryClient, refetch]);
+  }, [token, authLoading, selectedDate, refetch]);
 
   useEffect(() => {
     if (!token) return;
 
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
-
-      console.log("[Tasks] app active refetch");
       refetch();
     });
 
