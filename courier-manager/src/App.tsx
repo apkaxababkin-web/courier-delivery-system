@@ -8,7 +8,6 @@ import {
   Users,
   LogOut,
   Menu,
-  Search,
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TasksView from './views/TasksView';
@@ -138,7 +137,6 @@ function App() {
               <button type="button" onClick={() => setIsSidebarOpen(true)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden" aria-label="Открыть меню"><Menu className="h-5 w-5" /></button>
               <div className="hidden min-w-0 flex-col md:flex"><h1 className="truncate text-lg font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="truncate text-xs text-slate-500">{getPageDescription()}</p></div>
             </div>
-            <div className="hidden flex-1 items-center justify-center xl:flex"><div className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"><Search className="h-4 w-4" /><span className="truncate">Поиск по заявкам, клиентам, адресам...</span></div></div>
             <div className="flex items-center gap-3">
               <div className="hidden text-right sm:block"><p className="text-sm font-medium text-slate-950">{managerName}</p><p className="text-xs text-slate-500">{managerRole}</p></div>
               <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">{(managerName || 'M').charAt(0).toUpperCase()}</div>
