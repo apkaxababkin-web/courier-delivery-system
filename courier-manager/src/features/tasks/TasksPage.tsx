@@ -166,7 +166,14 @@ export default function TasksPage() {
   };
 
   const filteredRequests = getFilteredRequests(requests, selectedStatus, selectedDate, searchQuery);
-  const stats = getStatistics(requests);
+
+  // Верхние счётчики всегда считаются только за сегодняшний день.
+  // Выбор другой даты нужен только для просмотра архива в таблице.
+  const todayRequests = requests.filter((request) => {
+    if (!request.createdAt) return false;
+    return new Date(request.createdAt).toISOString().slice(0, 10) === getTodayDate();
+  });
+  const stats = getStatistics(todayRequests);
   const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
 
