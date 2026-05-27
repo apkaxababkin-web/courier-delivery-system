@@ -156,11 +156,6 @@ export default function MailsView() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Почтовые отправления</p>
-        <h1 className="mt-1 text-xl font-semibold text-slate-950">Письма</h1>
-        <p className="mt-1 text-sm text-slate-500">Загрузка манифеста и поиск по почтовым отправлениям.</p>
-      </div>
 
       <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -219,7 +214,57 @@ function MappingField({ label, required, columns, value, onChange }: { label: st
 function PhoneMapping({ columns, mapping, setMapping }: { columns: string[]; mapping: FieldMapping; setMapping: React.Dispatch<React.SetStateAction<FieldMapping>> }) { return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">Телефон</label><select value={mapping.phone?.column || ''} onChange={(e) => setMapping((prev) => ({ ...prev, phone: e.target.value ? { column: e.target.value, startRow: prev.phone?.startRow || prev.waybill.startRow, endRow: prev.phone?.endRow || prev.waybill.endRow } : undefined }))} className={`${compactInputClass} mt-2`}><option value="">Не использовать</option>{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select>{mapping.phone && <div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={mapping.phone.startRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, startRow: value } }))} /><RangeInput label="До строки" value={mapping.phone.endRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, endRow: value } }))} /></div>}</div>; }
 function RangeInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <label className="block"><span className="text-xs font-medium text-slate-500">{label}</span><input type="number" min="1" value={value} onChange={(e) => onChange(parseInt(e.target.value) || 1)} className={`${compactInputClass} mt-1`} /></label>; }
 
+
+function MailCompletionProgress({
+  completed,
+  total,
+}: {
+  completed: number;
+  total: number;
+}) {
+  const size = 20;
+  const stroke = 2.5;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = total > 0 ? completed / total : 0;
+  const dashOffset = circumference * (1 - progress);
+  const isDone = total > 0 && completed === total;
+
+  return (
+    <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600 shadow-sm">
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="rgb(226 232 240)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={isDone ? 'rgb(16 185 129)' : 'rgb(100 116 139)'}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          className="transition-all duration-500 ease-out"
+        />
+      </svg>
+
+      <span className={isDone ? 'text-emerald-600' : 'text-slate-600'}>
+        {completed}/{total} доставлено
+      </span>
+    </div>
+  );
+}
+
 function MailsTable({ mails, loading, compactTitle, showReportColumns = false }: { mails: Mail[]; loading: boolean; compactTitle: string; showReportColumns?: boolean }) {
+  const deliveredCount = mails.filter((mail) => mail.status === 'delivered').length;
+
   return <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5"><div><h2 className="text-sm font-semibold text-slate-950">{compactTitle}</h2><p className="text-xs text-slate-500">Показано: {mails.length}</p></div></div>{loading ? <MailsSkeleton /> : mails.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500"><MailCheck className="mb-3 h-8 w-8 text-slate-300" /><p className="font-medium text-slate-950">Нет писем для отображения</p><p className="mt-1 max-w-sm">Измените фильтры или загрузите новый манифест.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50"><tr className="border-b border-slate-200"><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Накладная</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Получатель</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адрес</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус</th>{showReportColumns && <><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Курьер</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Доставка</th></>}<th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th></tr></thead><tbody className="divide-y divide-slate-100">{mails.map((mail) => <tr key={mail.id} className="hover:bg-slate-50/80"><td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-950">{mail.waybillNumber}</td><td className="px-3 py-2.5 text-slate-900"><div className="font-medium">{mail.recipientName}</div><div className="text-xs text-slate-500">{mail.recipientPhone || 'Телефон не указан'}</div></td><td className="max-w-[360px] px-3 py-2.5 text-slate-600"><span className="line-clamp-2">{mail.deliveryAddress}</span></td><td className="px-3 py-2.5"><span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[mail.status]}`}><span className={`h-1.5 w-1.5 rounded-full ${statusDotClass[mail.status]}`} />{statusLabels[mail.status]}</span></td>{showReportColumns && <><td className="px-3 py-2.5 text-slate-600">{getCourierName(mail)}</td><td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{mail.deliveredAt ? new Date(mail.deliveredAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td></>}<td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{new Date(mail.createdAt).toLocaleDateString('ru-RU')}</td></tr>)}</tbody></table></div>}</div>;
 }
 
