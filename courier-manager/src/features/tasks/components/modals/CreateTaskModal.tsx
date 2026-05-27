@@ -9,6 +9,10 @@ interface CreateTaskModalProps {
   onSubmit: (data: TaskFormData) => void;
   clients: Client[];
   isLoading?: boolean;
+  mode?: 'create' | 'edit';
+  initialData?: Partial<TaskFormData> | null;
+  title?: string;
+  submitLabel?: string;
 }
 
 type RequestType = NonNullable<TaskFormData['requestType']>;
@@ -75,15 +79,33 @@ const makeInitialFormData = (): LocalFormData => ({
   pickupRecipientClientId: undefined,
 });
 
-export function CreateTaskModal({ isOpen, onClose, onSubmit, clients, isLoading }: CreateTaskModalProps) {
+export function CreateTaskModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  clients,
+  isLoading,
+  mode = 'create',
+  initialData = null,
+  title,
+  submitLabel,
+}: CreateTaskModalProps) {
   const [formData, setFormData] = useState<LocalFormData>(makeInitialFormData);
   const requestType = formData.requestType || 'delivery';
 
   useEffect(() => {
     if (!isOpen) return;
 
-    setFormData(makeInitialFormData());
-  }, [isOpen]);
+    const base = makeInitialFormData();
+    setFormData({
+      ...base,
+      ...(initialData || {}),
+      requestType: initialData?.requestType || base.requestType,
+      nutsBoxes: base.nutsBoxes,
+      nutsTariff: base.nutsTariff,
+      cedroilTariff: base.cedroilTariff,
+    });
+  }, [isOpen, initialData]);
 
   const nutsTotal = useMemo(() => (formData.nutsBoxes || []).reduce((sum, box, index) => {
     const tariff = index === 5 ? formData.cedroilTariff || 0 : (NUTS_WEIGHTS[box.id] || 0) * (formData.nutsTariff || 0);
@@ -129,14 +151,17 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, clients, isLoading 
       description: requestType === 'nuts' ? `Орехи. Сумма: ${nutsTotal.toFixed(2)}` : payload.description,
       comments: requestType === 'pickup_from_tc' ? [payload.comments, pickupDirection === 'recipient_to_tc' ? 'Направление: получатель → ТК' : 'Направление: ТК → получатель'].filter(Boolean).join('\n') : payload.comments,
     });
-    setFormData(makeInitialFormData());
+    if (mode === 'create') {
+      setFormData(makeInitialFormData());
+    }
   };
 
   const requestTypeSelector = <SelectField label="Тип заявки" value={requestType} onChange={(value) => {
-    setFormData({
+    setFormData((prev) => ({
       ...makeInitialFormData(),
+      ...prev,
       requestType: value as RequestType,
-    });
+    }));
   }} options={[["delivery", "Доставка"], ["movement", "Перемещение"], ["nuts", "Орехи"], ["courier_call", "Вызов курьера"], ["pickup_from_tc", "Получение и отправка груза в ТК"], ["simple", "Простая заявка"]]} />;
 
   return (
@@ -216,7 +241,7 @@ className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 te
           {requestType === 'pickup_from_tc' && <><Section title="Клиент"><ClientSelect label="Выберите клиента" value={formData.clientId} clients={clients} onChange={(id) => selectClient(id, 'pickupClient')} /></Section><div className="grid gap-3 lg:grid-cols-2"><Section title="Транспортная компания"><div className="grid gap-2.5 md:grid-cols-2"><SelectField label="Направление" value={formData.pickupDirection || 'tc_to_recipient'} onChange={(value) => updateField('pickupDirection', value as LocalFormData['pickupDirection'])} options={[["tc_to_recipient", "ТК → получатель"], ["recipient_to_tc", "Получатель → ТК"]]} className="md:col-span-2" /><Field label="Название ТК" value={formData.tcName || ''} onChange={(value) => updateField('tcName', value)} className="md:col-span-2" /><Field label="Адрес ТК" value={formData.tcAddress || ''} onChange={(value) => updateField('tcAddress', value)} className="md:col-span-2" /><Field label="Номер трекинга" value={formData.trackingNumber || ''} onChange={(value) => updateField('trackingNumber', value)} className="md:col-span-2" /></div></Section><Section title="Получатель"><div className="grid gap-2.5 md:grid-cols-2"><ClientSelect label="Выберите получателя" value={formData.pickupRecipientClientId} clients={clients} onChange={(id) => selectClient(id, 'pickupRecipient')} className="md:col-span-2" /><Field label="Получатель" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} /><Field label="Телефон получателя" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} /><Field label="Адрес доставки" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} className="md:col-span-2" /><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} className="md:col-span-2" /></div></Section></div></>}
         </div>
 
-        <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">Отмена</button><button type="submit" disabled={isLoading} className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? 'Создание...' : 'Создать заявку'}</button></div>
+        <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">Отмена</button><button type="submit" disabled={isLoading} className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? (mode === 'edit' ? 'Сохранение...' : 'Создание...') : (submitLabel || (mode === 'edit' ? 'Сохранить изменения' : 'Создать заявку'))}</button></div>
       </form>
     </Modal>
   );

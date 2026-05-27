@@ -15,12 +15,18 @@ import { TasksTable } from './components/TasksTable';
 import { EmptyState } from './components/EmptyState';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { AiTaskModal } from './components/modals/AiTaskModal';
-import { EditRequestModal } from './components/modals/EditRequestModal';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
 import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
 
 type OperationMode = 'requests' | 'hemotest' | 'sberbank';
+const normalizePackageType = (value: unknown): TaskFormData['packageType'] => {
+  if (value === 'document' || value === 'small' || value === 'medium' || value === 'large' || value === 'fragile') {
+    return value;
+  }
+  return 'small';
+};
+
 type CourierOption = { id: number; name: string; isActive?: boolean };
 type OperationPoint = {
   id: number;
@@ -202,6 +208,40 @@ export default function TasksPage() {
   };
 
 
+  const requestToFormData = (request: Request): TaskFormData => ({
+    requestType: request.requestType,
+    clientId: request.clientId,
+    courierId: request.courierId ?? undefined,
+    senderName: request.senderName || '',
+    senderCompany: request.senderCompany || '',
+    senderCity: request.senderCity || '',
+    senderAddress: request.senderAddress || '',
+    senderPhone: request.senderPhone || '',
+    recipientName: request.recipientName || '',
+    recipientCompany: request.recipientCompany || '',
+    recipientCity: request.recipientCity || '',
+    recipientPhone: request.recipientPhone || '',
+    recipientAddress: request.recipientAddress || '',
+    deliveryAddress: request.deliveryAddress || '',
+    deliveryCity: request.deliveryCity || '',
+    packageDescription: request.packageDescription || '',
+    packageType: normalizePackageType(request.packageType),
+    specialInstructions: request.specialInstructions || '',
+    deliveryTimeFrom: request.deliveryTimeFrom || '',
+    deliveryTimeTo: request.deliveryTimeTo || '',
+    placesCount: request.placesCount,
+    comments: request.comments || '',
+    paymentMethod: request.paymentMethod || 'paid',
+    paymentAmount: Number(request.paymentAmount || 0),
+    items: request.items || '',
+    callReason: request.callReason || '',
+    tcName: request.tcName || '',
+    tcAddress: request.tcAddress || '',
+    trackingNumber: request.trackingNumber || '',
+    description: request.description || '',
+    estimatedMinutes: request.estimatedMinutes,
+  });
+
   const handleOpenRequest = (request: Request, displayNumber: number) => {
     setSelectedRequest(request);
     setSelectedRequestNumber(displayNumber);
@@ -349,7 +389,17 @@ export default function TasksPage() {
       )}
 
       <CreateTaskModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} />
-      <EditRequestModal request={selectedRequest} displayNumber={selectedRequestNumber} isOpen={Boolean(selectedRequest)} isSaving={isUpdatingRequest} isDeleting={Boolean(deletingRequestId)} onClose={() => { setSelectedRequest(null); setSelectedRequestNumber(null); }} onSave={handleUpdateRequest} onDelete={handleDeleteRequest} />
+      <CreateTaskModal
+        isOpen={Boolean(selectedRequest)}
+        onClose={() => { setSelectedRequest(null); setSelectedRequestNumber(null); }}
+        onSubmit={(data) => selectedRequest && handleUpdateRequest(selectedRequest.id, data as Partial<Request>)}
+        clients={clients}
+        isLoading={isUpdatingRequest}
+        mode="edit"
+        initialData={selectedRequest ? requestToFormData(selectedRequest) : null}
+        title={selectedRequestNumber ? `Редактировать заявку #${selectedRequestNumber}` : 'Редактировать заявку'}
+        submitLabel="Сохранить изменения"
+      />
       <AiTaskModal isOpen={showAiModal} onClose={() => setShowAiModal(false)} onSubmit={handleAiParse} isLoading={isParsingAi} />
     </div>
   );
