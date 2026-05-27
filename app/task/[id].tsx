@@ -26,6 +26,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
+import { getDisplayRequestId } from "@/shared/request-number";
 
 type Palette = {
   border: string;
@@ -270,7 +271,7 @@ export default function TaskDetailScreen() {
             <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "800" }}>←</Text>
           </TouchableOpacity>
           <View style={{ alignItems: "center" }}>
-            <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>#{task.id}</Text>
+            <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>#{getDisplayRequestId(task)}</Text>
             <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2, fontWeight: "700" }}>{formatCreatedAt((task as any).createdAt)}</Text>
           </View>
           <StatusBadge status={task.status} />

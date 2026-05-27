@@ -1,4 +1,5 @@
 import React from "react";
+import { getDisplayRequestId } from "@/shared/request-number";
 import {
   Pressable,
   StyleSheet,
@@ -40,7 +41,7 @@ export function TaskCard({ task, onPress }: Props) {
     <Pressable onPress={onPress} style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.title}>
-          Заявка #{task.id}
+          Заявка #{getDisplayRequestId(task)}
         </Text>
 
         <Text style={styles.status}>

@@ -1,3 +1,4 @@
+import { getDisplayRequestId } from "@/shared/request-number";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBadge } from "@/components/status-badge";
 import { CourierBadge } from "@/components/courier-badge";
@@ -149,7 +150,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
           </Text>
         )}
         <Text style={[styles.idText, { color: colors.muted }]}>
-          ID: {task.id}
+          ID: {getDisplayRequestId(task)}
         </Text>
       </View>
 
