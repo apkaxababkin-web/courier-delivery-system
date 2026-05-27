@@ -329,8 +329,8 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
         )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 p-4">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3">
+          <div className="flex items-center gap-3">
             <input
               type="checkbox"
               checked={selectedPoints.length === visiblePoints.length && visiblePoints.length > 0}
@@ -338,7 +338,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
               className="h-5 w-5 cursor-pointer rounded border-slate-300 text-slate-950 focus:ring-2 focus:ring-slate-300"
             />
 
-            <span className="text-sm font-medium text-slate-700">
+            <span className="inline-flex h-9 items-center rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
               Выбрано: {selectedPoints.length} из {visiblePoints.length}
             </span>
           </div>
@@ -355,64 +355,93 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
         ) : visiblePoints.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">Нет сохранённых точек</div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {visiblePoints.map((point) => (
-              <div
-                key={point.id}
-                draggable
-                onDragStart={() => setDraggedPointId(point.id)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => handleDropPoint(point.id)}
-                onDragEnd={() => setDraggedPointId(null)}
-                className={`flex items-start gap-4 p-4 transition hover:bg-slate-50 ${
-                  draggedPointId === point.id ? 'bg-slate-50 opacity-60' : ''
-                }`}
-              >
-                <button
-                  type="button"
-                  className="mt-1 cursor-grab rounded-lg p-1 text-slate-300 transition hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
-                  title="Перетащить точку"
-                >
-                  <GripVertical className="h-5 w-5" />
-                </button>
-
-                <input
-                  type="checkbox"
-                  checked={selectedPoints.includes(point.id)}
-                  onChange={() => handleTogglePoint(point.id)}
-                  className="mt-1 h-5 w-5 cursor-pointer rounded border-slate-300 text-slate-950 focus:ring-2 focus:ring-slate-300"
-                />
-
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-medium text-slate-950">{point.name}</h4>
-                  <p className="text-sm text-slate-600">{point.address}</p>
-                  {point.phone && <p className="text-sm text-slate-500">Тел: {point.phone}</p>}
-                  {point.contactPerson && <p className="text-sm text-slate-500">Контакт: {point.contactPerson}</p>}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openEditForm(point)}
-                    className={secondaryButtonClass}
-                    title="Редактировать точку"
-                  >
-                    <Pencil size={16} />
-                    Редактировать
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleHidePoint(point)}
-                    className={dangerButtonClass}
-                    title="Убрать точку из списка"
-                  >
-                    <Trash2 size={16} />
-                    Удалить
-                  </button>
-                </div>
+          <div className="overflow-x-auto">
+            <div className="min-w-[980px]">
+              <div className="grid grid-cols-[44px_44px_minmax(180px,0.8fr)_minmax(320px,1.4fr)_minmax(170px,0.7fr)_230px] items-center border-b border-slate-200 bg-slate-50/95 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                <div />
+                <div />
+                <div>Точка</div>
+                <div>Адрес</div>
+                <div>Контакты</div>
+                <div className="text-right">Действия</div>
               </div>
-            ))}
+
+              <div className="divide-y divide-slate-100">
+                {visiblePoints.map((point) => (
+                  <div
+                    key={point.id}
+                    draggable
+                    onDragStart={() => setDraggedPointId(point.id)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => handleDropPoint(point.id)}
+                    onDragEnd={() => setDraggedPointId(null)}
+                    className={`grid grid-cols-[44px_44px_minmax(180px,0.8fr)_minmax(320px,1.4fr)_minmax(170px,0.7fr)_230px] items-center gap-0 px-4 py-3 transition hover:bg-slate-50 ${
+                      draggedPointId === point.id ? 'bg-slate-50 opacity-60' : ''
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
+                      title="Перетащить точку"
+                    >
+                      <GripVertical className="h-5 w-5" />
+                    </button>
+
+                    <input
+                      type="checkbox"
+                      checked={selectedPoints.includes(point.id)}
+                      onChange={() => handleTogglePoint(point.id)}
+                      className="h-5 w-5 cursor-pointer rounded border-slate-300 text-slate-950 focus:ring-2 focus:ring-slate-300"
+                    />
+
+                    <div className="min-w-0 pr-4">
+                      <p className="truncate text-sm font-semibold text-slate-950" title={point.name}>
+                        {point.name}
+                      </p>
+                    </div>
+
+                    <div className="min-w-0 pr-4">
+                      <p className="truncate text-sm text-slate-700" title={point.address}>
+                        {point.address}
+                      </p>
+                    </div>
+
+                    <div className="min-w-0 pr-4">
+                      <p className="truncate text-xs font-medium text-slate-600" title={point.phone || ''}>
+                        {point.phone || '—'}
+                      </p>
+                      {point.contactPerson && (
+                        <p className="mt-0.5 truncate text-xs text-slate-400" title={point.contactPerson}>
+                          {point.contactPerson}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditForm(point)}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                        title="Редактировать точку"
+                      >
+                        <Pencil size={14} />
+                        Изменить
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleHidePoint(point)}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+                        title="Убрать точку из списка"
+                      >
+                        <Trash2 size={14} />
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
