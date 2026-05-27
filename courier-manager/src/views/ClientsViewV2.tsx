@@ -293,36 +293,24 @@ export default function ClientsViewV2() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-              <Building2 className="h-4 w-4" />
-              Основная информация
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <Info label="Адрес" value={selected.address} full />
-              <Info label="Контакт" value={selected.contactPerson || '—'} />
-              <Info label="Телефон" value={selected.phone || '—'} />
-              <Info label="Email" value={selected.email || '—'} full />
-            </div>
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+            <UserRound className="h-4 w-4" />
+            Руководитель / владелец
           </div>
 
-          <div className="grid gap-3">
-            <Metric label="Точек" value={points.length} />
-            <Metric label="Магазинов" value={Math.max(points.length - 1, 0)} />
-            <Metric label="Постоянных клиентов" value={regularClients.length} />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Info label="Руководитель" value={selected.contactPerson || '—'} />
+            <Info label="Телефон" value={selected.phone || '—'} />
+            <Info label="Email" value={selected.email || '—'} />
+            <Info label="Роль" value="Ответственный за клиента" />
           </div>
         </div>
 
         <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-950">Точки и магазины</h2>
-              <p className="mt-1 text-xs text-slate-500">Основная точка и дополнительные магазины клиента.</p>
-            </div>
-
-            <div className="text-xs text-slate-400">{points.length} точек</div>
+          <div className="border-b border-slate-200 px-5 py-4">
+            <h2 className="text-sm font-semibold text-slate-950">Точки и магазины</h2>
+            <p className="mt-1 text-xs text-slate-500">Адреса, контакты и телефоны конкретных точек клиента.</p>
           </div>
 
           <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
@@ -434,7 +422,7 @@ export default function ClientsViewV2() {
         <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по клиенту или адресу..." className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none focus:border-slate-300 focus:bg-white" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по клиенту, руководителю, телефону или адресу..." className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none focus:border-slate-300 focus:bg-white" />
           </div>
 
           <div className="text-xs text-slate-400">{filtered.length} клиентов</div>
@@ -453,9 +441,9 @@ export default function ClientsViewV2() {
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.08em] text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Клиент</th>
-                  <th className="px-5 py-3 font-semibold">Адрес</th>
-                  <th className="px-5 py-3 font-semibold">Контакт</th>
+                  <th className="px-5 py-3 font-semibold">Руководитель</th>
                   <th className="px-5 py-3 font-semibold">Телефон</th>
+                  <th className="px-5 py-3 font-semibold">Email</th>
                   <th className="px-5 py-3 text-right font-semibold">Открыть</th>
                 </tr>
               </thead>
@@ -467,9 +455,9 @@ export default function ClientsViewV2() {
                       <p className="font-semibold text-slate-950">{client.name}</p>
                       <p className="mt-1 text-xs text-slate-500">Вся строка кликабельна</p>
                     </td>
-                    <td className="px-5 py-4 text-slate-600">{client.address}</td>
                     <td className="px-5 py-4 text-slate-600">{client.contactPerson || '—'}</td>
                     <td className="px-5 py-4 text-slate-600">{client.phone || '—'}</td>
+                    <td className="px-5 py-4 text-slate-600">{client.email || '—'}</td>
                     <td className="px-5 py-4 text-right">
                       <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition group-hover:bg-slate-950 group-hover:text-white">
                         <ChevronRight className="h-4 w-4" />
@@ -544,10 +532,6 @@ function PointCard({ point, onEdit, onDelete }: { point: Point; onEdit: () => vo
       </div>
     </div>
   );
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p></div>;
 }
 
 function Info({ label, value, full }: { label: string; value: string; full?: boolean }) {

@@ -159,7 +159,7 @@ function App() {
       case 'tasks':
         return <TasksView archiveDate={archiveDate} />;
       case 'mails':
-        return <MailsView />;
+        return <MailsView archiveDate={archiveDate} />;
       case 'hemotest':
         return <HemotestView archiveDate={archiveDate} />;
       case 'sberbank':

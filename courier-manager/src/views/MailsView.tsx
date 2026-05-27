@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MailCheck, Plus, Search, Upload } from 'lucide-react';
+import { MailCheck, Plus, Search } from 'lucide-react';
 import * as api from '../lib/api';
 import * as XLSX from 'xlsx';
 
@@ -35,6 +35,32 @@ const statusDotClass: Record<Exclude<MailStatus, 'all'>, string> = { delivered: 
 const getCourierName = (mail: Mail) => mail.courierName || mail.courier?.name || mail.courier?.fullName || 'Не назначен';
 const cellToText = (value: PreviewCell) => value === null || value === undefined ? '' : String(value).trim();
 
+function toDateKey(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayDateKey(): string {
+  return toDateKey(new Date());
+}
+
+function isMailVisibleOnArchiveDate(mail: Mail, archiveDate: string): boolean {
+  const createdDate = toDateKey(mail.createdAt);
+  const deliveredDate = mail.deliveredAt ? toDateKey(mail.deliveredAt) : '';
+
+  if (!createdDate) return false;
+
+  if (mail.status === 'delivered') {
+    return deliveredDate === archiveDate || (!deliveredDate && createdDate === archiveDate);
+  }
+
+  return createdDate <= archiveDate;
+}
+
 function columnToIndex(col: string): number {
   let index = 0;
   const normalized = col.trim().toUpperCase();
@@ -53,7 +79,7 @@ function indexToColumn(index: number): string {
   return col;
 }
 
-export default function MailsView() {
+export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const [mails, setMails] = useState<Mail[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -63,6 +89,7 @@ export default function MailsView() {
   const [previewRows, setPreviewRows] = useState(50);
   const [mapping, setMapping] = useState<FieldMapping>({ waybill: { column: 'A', startRow: 2, endRow: 100 }, recipient: { column: 'B', startRow: 2, endRow: 100 }, address: { column: 'C', startRow: 2, endRow: 100 } });
   const [searchQuery, setSearchQuery] = useState('');
+  const selectedArchiveDate = archiveDate || getTodayDateKey();
   const manifestInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => { loadMails(); }, []);
@@ -144,7 +171,8 @@ export default function MailsView() {
   const filteredMails = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    return mails.filter(mail => {
+    return mails.filter((mail) => {
+      if (!isMailVisibleOnArchiveDate(mail, selectedArchiveDate)) return false;
       if (!query) return true;
 
       return [mail.waybillNumber, mail.recipientName, mail.recipientPhone || '', mail.deliveryAddress, getCourierName(mail)]
@@ -152,7 +180,10 @@ export default function MailsView() {
         .toLowerCase()
         .includes(query);
     });
-  }, [mails, searchQuery]);
+  }, [mails, searchQuery, selectedArchiveDate]);
+
+  const deliveredTodayCount = filteredMails.filter((mail) => mail.status === 'delivered').length;
+  const inWorkCount = filteredMails.length - deliveredTodayCount;
 
   return (
     <div className="space-y-4">
@@ -170,6 +201,12 @@ export default function MailsView() {
             />
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+            <span className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">Дата: {selectedArchiveDate}</span>
+            <span className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">В работе: {inWorkCount}</span>
+            <span className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">Доставлено: {deliveredTodayCount}</span>
+          </div>
+
           <input
             ref={manifestInputRef}
             type="file"
@@ -179,7 +216,7 @@ export default function MailsView() {
           />
         </div>
 
-        <div className="p-4"><MailsTable mails={filteredMails.slice(0, 30)} loading={loading} compactTitle="Операционная очередь" /></div>
+        <div className="p-4"><MailsTable mails={filteredMails} loading={loading} compactTitle="Письма выбранного дня" /></div>
       </div>
 
 
@@ -268,7 +305,7 @@ function MailCompletionProgress({
 function MailsTable({ mails, loading, compactTitle, showReportColumns = false }: { mails: Mail[]; loading: boolean; compactTitle: string; showReportColumns?: boolean }) {
   const deliveredCount = mails.filter((mail) => mail.status === 'delivered').length;
 
-  return <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3"><h2 className="text-sm font-semibold text-slate-950">{compactTitle}</h2><MailCompletionProgress completed={deliveredCount} total={mails.length} /></div>{loading ? <MailsSkeleton /> : mails.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500"><MailCheck className="mb-3 h-8 w-8 text-slate-300" /><p className="font-medium text-slate-950">Нет писем для отображения</p><p className="mt-1 max-w-sm">Измените фильтры или загрузите новый манифест.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50"><tr className="border-b border-slate-200"><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Накладная</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Получатель</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адрес</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус</th>{showReportColumns && <><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Курьер</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Доставка</th></>}<th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th></tr></thead><tbody className="divide-y divide-slate-100">{mails.map((mail) => <tr key={mail.id} className="hover:bg-slate-50/80"><td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-950">{mail.waybillNumber}</td><td className="px-3 py-2.5 text-slate-900"><div className="font-medium">{mail.recipientName}</div><div className="text-xs text-slate-500">{mail.recipientPhone || 'Телефон не указан'}</div></td><td className="max-w-[360px] px-3 py-2.5 text-slate-600"><span className="line-clamp-2">{mail.deliveryAddress}</span></td><td className="px-3 py-2.5"><span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[mail.status]}`}><span className={`h-1.5 w-1.5 rounded-full ${statusDotClass[mail.status]}`} />{statusLabels[mail.status]}</span></td>{showReportColumns && <><td className="px-3 py-2.5 text-slate-600">{getCourierName(mail)}</td><td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{mail.deliveredAt ? new Date(mail.deliveredAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td></>}<td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{new Date(mail.createdAt).toLocaleDateString('ru-RU')}</td></tr>)}</tbody></table></div>}</div>;
+  return <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3"><h2 className="text-sm font-semibold text-slate-950">{compactTitle}</h2><MailCompletionProgress completed={deliveredCount} total={mails.length} /></div>{loading ? <MailsSkeleton /> : mails.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500"><MailCheck className="mb-3 h-8 w-8 text-slate-300" /><p className="font-medium text-slate-950">Нет писем для отображения</p><p className="mt-1 max-w-sm">На выбранную дату нет писем. Недоставленные письма автоматически переходят на следующий день.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50"><tr className="border-b border-slate-200"><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Накладная</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Получатель</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адрес</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус</th>{showReportColumns && <><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Курьер</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Доставка</th></>}<th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th></tr></thead><tbody className="divide-y divide-slate-100">{mails.map((mail) => <tr key={mail.id} className="hover:bg-slate-50/80"><td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-950">{mail.waybillNumber}</td><td className="px-3 py-2.5 text-slate-900"><div className="font-medium">{mail.recipientName}</div><div className="text-xs text-slate-500">{mail.recipientPhone || 'Телефон не указан'}</div></td><td className="max-w-[360px] px-3 py-2.5 text-slate-600"><span className="line-clamp-2">{mail.deliveryAddress}</span></td><td className="px-3 py-2.5"><span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[mail.status]}`}><span className={`h-1.5 w-1.5 rounded-full ${statusDotClass[mail.status]}`} />{statusLabels[mail.status]}</span></td>{showReportColumns && <><td className="px-3 py-2.5 text-slate-600">{getCourierName(mail)}</td><td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{mail.deliveredAt ? new Date(mail.deliveredAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td></>}<td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{new Date(mail.createdAt).toLocaleDateString('ru-RU')}</td></tr>)}</tbody></table></div>}</div>;
 }
 
 function MailsSkeleton() {
