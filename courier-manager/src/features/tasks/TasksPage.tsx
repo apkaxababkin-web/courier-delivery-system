@@ -101,9 +101,9 @@ export default function TasksPage() {
     if (operationMode === 'sberbank') loadSberbankLists();
   }, [operationMode, hemotestDate, sberbankDay]);
 
-  const loadData = async () => {
+  const loadData = async (showLoader = true) => {
     try {
-      setIsLoading(true);
+      if (showLoader) setIsLoading(true);
       const [requestsData, clientsData, couriersData] = await Promise.all([
         getAllRequests(),
         getAllClients(),
@@ -114,15 +114,15 @@ export default function TasksPage() {
       setCouriers(couriersData.filter((courier) => courier.isActive !== false));
     } catch (error) {
       console.error('Failed to load data:', error);
-      alert('Ошибка при загрузке заявок');
+      if (showLoader) alert('Ошибка при загрузке заявок');
     } finally {
-      setIsLoading(false);
+      if (showLoader) setIsLoading(false);
     }
   };
 
-  const loadHemotestLists = async () => {
+  const loadHemotestLists = async (showLoader = true) => {
     try {
-      setIsOperationLoading(true);
+      if (showLoader) setIsOperationLoading(true);
       const lists = await trpcQuery<PickupList[]>('hemotest.listsForDate', { date: hemotestDate });
       const detailed = await Promise.all(lists.map(async (list) => {
         const full = await trpcQuery<PickupListWithItems>('hemotest.getList', { listId: list.id });
@@ -133,13 +133,13 @@ export default function TasksPage() {
       console.error('Failed to load hemotest lists:', error);
       setOperationLists([]);
     } finally {
-      setIsOperationLoading(false);
+      if (showLoader) setIsOperationLoading(false);
     }
   };
 
-  const loadSberbankLists = async () => {
+  const loadSberbankLists = async (showLoader = true) => {
     try {
-      setIsOperationLoading(true);
+      if (showLoader) setIsOperationLoading(true);
       const lists = await trpcQuery<PickupList[]>('sberbank.listsForDay', { dayOfWeek: sberbankDay });
       const detailed = await Promise.all(lists.map(async (list) => {
         const full = await trpcQuery<PickupListWithItems>('sberbank.getList', { listId: list.id });
@@ -150,7 +150,7 @@ export default function TasksPage() {
       console.error('Failed to load sberbank lists:', error);
       setOperationLists([]);
     } finally {
-      setIsOperationLoading(false);
+      if (showLoader) setIsOperationLoading(false);
     }
   };
 
