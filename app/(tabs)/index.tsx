@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { trpc } from "@/lib/trpc";
 import { NetworkBanner } from "@/components/network-banner";
@@ -47,6 +47,7 @@ export default function TaskListScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
 
   const {
     data: tasksDataRaw,
@@ -82,8 +83,14 @@ export default function TaskListScreen() {
     if (!token) return;
 
     console.log("[Tasks] force initial refetch");
-    refetch();
-  }, [token, selectedDate, refetch]);
+
+    const timer = setTimeout(() => {
+      queryClient.invalidateQueries();
+      refetch();
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [token, selectedDate, queryClient, refetch]);
 
   useEffect(() => {
     if (!token) return;
