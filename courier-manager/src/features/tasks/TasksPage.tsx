@@ -9,14 +9,12 @@ import {
   post,
 } from '../../lib/api';
 import { useManagerRealtime } from '../../lib/useManagerRealtime';
-import { TasksStats } from './components/TasksStats';
 import { TasksToolbar } from './components/TasksToolbar';
 import { TasksTable } from './components/TasksTable';
 import { EmptyState } from './components/EmptyState';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { AiTaskModal } from './components/modals/AiTaskModal';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
-import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
 
 type OperationMode = 'requests' | 'hemotest' | 'sberbank';
@@ -209,14 +207,6 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   };
 
   const filteredRequests = getFilteredRequests(requests, selectedStatus, selectedDate, searchQuery);
-
-  // Верхние счётчики всегда считаются только за сегодняшний день.
-  // Выбор другой даты нужен только для просмотра архива в таблице.
-  const todayRequests = requests.filter((request) => {
-    if (!request.createdAt) return false;
-    return new Date(request.createdAt).toISOString().slice(0, 10) === getTodayDate();
-  });
-  const stats = getStatistics(todayRequests);
   const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
 
@@ -370,7 +360,6 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
       {operationMode === 'requests' ? (
         <>
-          <TasksStats stats={stats} selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} />
           <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} hideDatePicker />
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>

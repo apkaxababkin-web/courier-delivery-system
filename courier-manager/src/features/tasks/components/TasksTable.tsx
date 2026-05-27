@@ -34,7 +34,7 @@ function CompletionProgress({
   const isDone = total > 0 && completed === total;
 
   return (
-    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">
+    <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600 shadow-sm">
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2}
@@ -117,15 +117,8 @@ export function TasksTable({
   return (
     <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-950">Список заявок</h2>
-          <CompletionProgress completed={completedRequests} total={totalRequests} />
-        </div>
-
-        <div className="hidden items-center gap-2 text-xs text-slate-400 sm:flex">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          Обновлено сейчас
-        </div>
+        <h2 className="text-sm font-semibold text-slate-950">Список заявок</h2>
+        <CompletionProgress completed={completedRequests} total={totalRequests} />
       </div>
 
       <div className="overflow-x-auto">
