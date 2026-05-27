@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, FileText, Filter, MailCheck, Upload } from 'lucide-react';
+import { MailCheck, Search, Upload } from 'lucide-react';
 import * as api from '../lib/api';
 import * as XLSX from 'xlsx';
 
@@ -20,7 +20,6 @@ interface Mail {
 
 interface CellRange { column: string; startRow: number; endRow: number }
 interface FieldMapping { waybill: CellRange; recipient: CellRange; address: CellRange; phone?: CellRange }
-type TabId = 'upload' | 'reports';
 type MailStatus = 'all' | 'not_delivered' | 'delivered';
 type PreviewCell = string | number | boolean | Date | null | undefined;
 
@@ -55,7 +54,6 @@ function indexToColumn(index: number): string {
 }
 
 export default function MailsView() {
-  const [activeTab, setActiveTab] = useState<TabId>('upload');
   const [mails, setMails] = useState<Mail[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -64,9 +62,8 @@ export default function MailsView() {
   const [columns, setColumns] = useState<string[]>([]);
   const [previewRows, setPreviewRows] = useState(50);
   const [mapping, setMapping] = useState<FieldMapping>({ waybill: { column: 'A', startRow: 2, endRow: 100 }, recipient: { column: 'B', startRow: 2, endRow: 100 }, address: { column: 'C', startRow: 2, endRow: 100 } });
-  const [filterStatus, setFilterStatus] = useState<MailStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateRange, setDateRange] = useState({ from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] });
+  const manifestInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => { loadMails(); }, []);
 
@@ -134,7 +131,7 @@ export default function MailsView() {
   const loadMails = async () => {
     try {
       setLoading(true);
-      const data = await api.getAllMails({ status: filterStatus, dateFrom: dateRange.from, dateTo: dateRange.to });
+      const data = await api.getAllMails({});
       setMails(data);
     } catch (error) {
       console.error('Error loading mails:', error);
@@ -144,61 +141,59 @@ export default function MailsView() {
     }
   };
 
-  const handleExportReport = async () => {
-    try {
-      const headers = ['Номер накладной', 'Получатель', 'Адрес', 'Телефон', 'Статус', 'Курьер', 'Дата доставки'];
-      const rows = filteredMails.map(mail => [mail.waybillNumber, mail.recipientName, mail.deliveryAddress, mail.recipientPhone || '', mail.status, getCourierName(mail), mail.deliveredAt ? new Date(mail.deliveredAt).toLocaleDateString('ru-RU') : '']);
-      const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `report_${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error('Error exporting report:', error);
-      alert('Ошибка при экспорте отчёта');
-    }
-  };
-
   const filteredMails = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return mails.filter(mail => {
-      if (filterStatus !== 'all' && mail.status !== filterStatus) return false;
-      if (!query) return true;
-      return [mail.waybillNumber, mail.recipientName, mail.recipientPhone || '', mail.deliveryAddress, getCourierName(mail)].join(' ').toLowerCase().includes(query);
-    });
-  }, [mails, filterStatus, searchQuery]);
 
-  const stats = { total: mails.length, delivered: mails.filter(m => m.status === 'delivered').length, notDelivered: mails.filter(m => m.status === 'not_delivered').length, failed: mails.filter(m => false).length };
-  const tabs: Array<{ id: TabId; label: string; icon: typeof Upload }> = [{ id: 'upload', label: 'Манифест', icon: Upload }, { id: 'reports', label: 'Отчёты', icon: FileText }];
+    return mails.filter(mail => {
+      if (!query) return true;
+
+      return [mail.waybillNumber, mail.recipientName, mail.recipientPhone || '', mail.deliveryAddress, getCourierName(mail)]
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [mails, searchQuery]);
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Почтовые отправления</p><h1 className="mt-1 text-xl font-semibold text-slate-950">Диспетчерская по манифестам</h1><p className="mt-1 text-sm text-slate-500">Загрузка, проверка, фильтрация и отчёты по доставке писем.</p></div>
-        <div className="inline-flex w-fit rounded-2xl border border-slate-200 bg-slate-50 p-1">
-          {tabs.map(tab => { const Icon = tab.icon; const isActive = activeTab === tab.id; return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${isActive ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}><Icon size={16} />{tab.label}</button>; })}
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <Stat label="Всего" value={stats.total} /><Stat label="Доставлено" value={stats.delivered} /><Stat label="В работе" value={stats.notDelivered} /><Stat label="Проблемы" value={stats.failed} />
+      <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Почтовые отправления</p>
+        <h1 className="mt-1 text-xl font-semibold text-slate-950">Письма</h1>
+        <p className="mt-1 text-sm text-slate-500">Загрузка манифеста и поиск по почтовым отправлениям.</p>
       </div>
 
       <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="grid flex-1 gap-3 md:grid-cols-3">
-            <FieldShell label="Статус"><select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as MailStatus)} className={inputClass}><option value="all">Все статусы</option><option value="delivered">Доставлено</option><option value="not_delivered">В работе</option><option value="failed">Проблема</option></select></FieldShell>
-            <FieldShell label="Дата"><input type="date" value={dateRange.from} onChange={(e) => setDateRange({ from: e.target.value, to: e.target.value })} className={inputClass} /></FieldShell>
-            <FieldShell label="Поиск"><input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Накладная, адрес, получатель" className={inputClass} /></FieldShell>
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full lg:max-w-xl">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по накладной, адресу, получателю или телефону..."
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white"
+            />
           </div>
-          <div className="flex flex-wrap gap-2"><button type="button" onClick={loadMails} disabled={loading} className={secondaryButtonClass}><Filter size={16} />{loading ? 'Обновление...' : 'Применить'}</button><button type="button" onClick={handleExportReport} className={secondaryButtonClass}><Download size={16} />Экспорт</button></div>
+
+          <input
+            ref={manifestInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            onClick={() => manifestInputRef.current?.click()}
+            className={primaryButtonClass}
+          >
+            <Upload size={16} />
+            Манифест загрузить
+          </button>
         </div>
 
-        {activeTab === 'upload' && <div className="p-4"><MailsTable mails={filteredMails.slice(0, 30)} loading={loading} compactTitle="Операционная очередь" /></div>}
-        {activeTab === 'reports' && <div className="p-4"><MailsTable mails={filteredMails} loading={loading} compactTitle="Отчёты доставки" showReportColumns /></div>}
+        <div className="p-4"><MailsTable mails={filteredMails.slice(0, 30)} loading={loading} compactTitle="Операционная очередь" /></div>
       </div>
 
       {showMappingForm && fileData.length > 0 && createPortal(
@@ -217,9 +212,6 @@ export default function MailsView() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) { return <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p></div>; }
-function FieldShell({ label, children }: { label: string; children: React.ReactNode }) { return <div><label className="mb-1 block text-xs font-semibold text-slate-500">{label}</label>{children}</div>; }
-function UploadPanel({ selectedFile, onFileSelect }: { selectedFile: File | null; onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void }) { return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><input type="file" accept=".xlsx,.xls,.csv" onChange={onFileSelect} className="hidden" id="file-input" /><div className="flex items-start gap-3"><div className="rounded-xl border border-slate-200 bg-white p-2 text-slate-700"><Upload size={18} /></div><div className="min-w-0 flex-1"><h2 className="text-sm font-semibold text-slate-950">Загрузить манифест</h2><p className="mt-1 text-xs leading-5 text-slate-500">Excel или CSV. После выбора откроется настройка столбцов.</p>{selectedFile && <p className="mt-3 truncate rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">{selectedFile.name}</p>}</div></div><label htmlFor="file-input" className="mt-4 inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"><Upload size={16} />Выбрать файл</label><div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-500"><p className="font-semibold text-slate-700">Workflow</p><p className="mt-1">Файл → предпросмотр → столбцы → загрузка писем.</p></div></div>; }
 
 function MappingField({ label, required, columns, value, onChange }: { label: string; required?: boolean; columns: string[]; value: CellRange; onChange: (value: CellRange) => void }) {
   return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">{label} {required && <span className="text-slate-400">*</span>}</label><select value={value.column} onChange={(e) => onChange({ ...value, column: e.target.value })} className={`${compactInputClass} mt-2`}>{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select><div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={value.startRow} onChange={(nextValue) => onChange({ ...value, startRow: nextValue })} /><RangeInput label="До строки" value={value.endRow} onChange={(nextValue) => onChange({ ...value, endRow: nextValue })} /></div></div>;
