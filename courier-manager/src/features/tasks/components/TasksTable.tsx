@@ -18,7 +18,55 @@ interface TasksTableProps {
   onDeleteRequest?: (request: Request, displayNumber: number) => void;
 }
 
+function CompletionProgress({
+  completed,
+  total,
+}: {
+  completed: number;
+  total: number;
+}) {
+  const size = 20;
+  const stroke = 2.5;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = total > 0 ? completed / total : 0;
+  const dashOffset = circumference * (1 - progress);
+  const isDone = total > 0 && completed === total;
+
+  return (
+    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="rgb(226 232 240)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={isDone ? 'rgb(16 185 129)' : 'rgb(100 116 139)'}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          className="transition-all duration-500 ease-out"
+        />
+      </svg>
+
+      <span className={isDone ? 'text-emerald-600' : 'text-slate-600'}>
+        {completed}/{total} выполнено
+      </span>
+    </div>
+  );
+}
+
 export function TasksTable({
+
   requests,
   couriers = [],
   isLoading,
@@ -28,6 +76,10 @@ export function TasksTable({
   onOpenRequest,
   onDeleteRequest,
 }: TasksTableProps) {
+  const totalRequests = requests.length;
+  const completedRequests = requests.filter((request) => request.status === 'completed').length;
+
+
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -67,7 +119,7 @@ export function TasksTable({
       <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-slate-950">Список заявок</h2>
-          <p className="mt-1 text-xs text-slate-500">{requests.length} в текущей выборке</p>
+          <CompletionProgress completed={completedRequests} total={totalRequests} />
         </div>
 
         <div className="hidden items-center gap-2 text-xs text-slate-400 sm:flex">
