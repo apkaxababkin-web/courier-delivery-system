@@ -84,6 +84,8 @@ export function useManagerRealtime(_intervalMs = 5000): ManagerRealtimeState {
         eventSource.addEventListener('tasks_changed', sync);
         eventSource.addEventListener('requests_changed', sync);
         eventSource.addEventListener('mails_changed', sync);
+        eventSource.addEventListener('hemotest_changed', sync);
+        eventSource.addEventListener('sberbank_changed', sync);
         eventSource.addEventListener('data_changed', sync);
 
         eventSource.onerror = () => {
