@@ -1,29 +1,7 @@
 import type { Express, Request, Response } from "express";
+import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
 
-type LiveClient = {
-  id: number;
-  res: Response;
-};
-
-const liveClients = new Map<number, LiveClient>();
-let liveClientSeq = 1;
-
-function sendLiveEvent(res: Response, type: string, payload: Record<string, unknown> = {}) {
-  res.write(`event: ${type}\n`);
-  res.write(`data: ${JSON.stringify({ type, at: new Date().toISOString(), ...payload })}\n\n`);
-}
-
-function broadcastLive(type = "data_changed", payload: Record<string, unknown> = {}) {
-  for (const [id, client] of liveClients) {
-    try {
-      sendLiveEvent(client.res, type, payload);
-    } catch {
-      liveClients.delete(id);
-    }
-  }
-}
-
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import {
   couriers,
   hemotestPickups,
@@ -366,8 +344,7 @@ export function registerCompatRoutes(app: Express) {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
 
-    const id = liveClientSeq++;
-    liveClients.set(id, { id, res });
+    const id = addLiveClient(res);
 
     sendLiveEvent(res, "connected", { clientId: id });
 
@@ -376,13 +353,13 @@ export function registerCompatRoutes(app: Express) {
         sendLiveEvent(res, "ping", { clientId: id });
       } catch {
         clearInterval(keepAlive);
-        liveClients.delete(id);
+        removeLiveClient(id);
       }
     }, 25000);
 
     req.on("close", () => {
       clearInterval(keepAlive);
-      liveClients.delete(id);
+      removeLiveClient(id);
     });
   });
 
@@ -567,13 +544,31 @@ export function registerCompatRoutes(app: Express) {
 
   app.post("/api/trpc/managerTasks.assignCourier", async (req, res) => {
     try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
       const input = inputFrom(req);
       const taskId = Number(input.taskId || input.id);
       const courierId = input.courierId == null ? null : Number(input.courierId);
       if (!taskId) throw new Error("taskId is required");
+
       await db.assignTaskToCourier(taskId, courierId, "assigned");
-      await updateRequestStatusFromTask(taskId, "assigned", courierId);
-      broadcastLive("tasks_changed");
+
+      const task = await db.getTaskById(taskId);
+      const requestId = Number(task?.comments?.match(/\[request:(\d+)\]/)?.[1] || 0);
+
+      if (requestId) {
+        await conn.update(requests)
+          .set({
+            courierId,
+            status: courierId ? "assigned" : "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(requests.id, requestId));
+      }
+
+      broadcastLive("tasks_changed", { taskId, requestId, courierId });
+      broadcastLive("requests_changed", { taskId, requestId, courierId });
       res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to assign manager task courier"); }
   });
@@ -657,8 +652,14 @@ export function registerCompatRoutes(app: Express) {
       if (!id) throw new Error("id is required");
       const updated = await conn.update(requests).set({ courierId, status: courierId ? "assigned" : "pending", updatedAt: new Date() }).where(eq(requests.id, id)).returning();
       if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
-      broadcastLive("requests_changed");
-      broadcastLive("tasks_changed");
+
+      // Hard-sync the linked mobile task too. The task is linked by [request:ID] in comments.
+      await conn.update(tasks)
+        .set({ courierId, status: "assigned", updatedAt: new Date() })
+        .where(sql`${tasks.comments} like ${`%[request:${id}]%`}`);
+
+      broadcastLive("requests_changed", { requestId: id, courierId });
+      broadcastLive("tasks_changed", { requestId: id, courierId });
       res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to assign request courier"); }
   });

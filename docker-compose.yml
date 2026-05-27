@@ -37,6 +37,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
       MANAGER_JWT_SECRET: ${MANAGER_JWT_SECRET:-change-me-manager-jwt-secret}
       COURIER_JWT_SECRET: ${COURIER_JWT_SECRET:-change-me-courier-jwt-secret}
     ports:

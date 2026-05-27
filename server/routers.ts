@@ -4,6 +4,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { syncTaskForRequestId } from "./_core/requestTaskSync";
+import { broadcastLive } from "./_core/liveEvents";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
@@ -954,6 +955,8 @@ export const appRouter = router({
         const createdByUserId = ctx.user?.id ?? 0;
         const id = await db.createRequest({ ...input, createdByUserId });
         await syncTaskForRequestId(id);
+        broadcastLive("requests_changed", { requestId: id });
+        broadcastLive("tasks_changed", { requestId: id });
         return { id, success: true };
       }),
 
@@ -976,17 +979,21 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await db.updateRequestStatus(input.id, input.status);
         await syncTaskForRequestId(input.id);
+        broadcastLive("requests_changed", { requestId: input.id });
+        broadcastLive("tasks_changed", { requestId: input.id });
         return { success: true };
       }),
 
     assignCourier: publicProcedure
       .input(z.object({
         id: z.number(),
-        courierId: z.number(),
+        courierId: z.number().nullable(),
       }))
       .mutation(async ({ input }) => {
         await db.assignRequestCourier(input.id, input.courierId);
         await syncTaskForRequestId(input.id);
+        broadcastLive("requests_changed", { requestId: input.id, courierId: input.courierId });
+        broadcastLive("tasks_changed", { requestId: input.id, courierId: input.courierId });
         return { success: true };
       }),
 
