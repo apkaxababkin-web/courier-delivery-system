@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { trpc } from "@/lib/trpc";
 import { NetworkBanner } from "@/components/network-banner";
@@ -41,7 +41,7 @@ import {
 export default function TaskListScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { token, courier } = useCourierAuth();
+  const { token, courier, loading: authLoading } = useCourierAuth();
   const { filterMode, setFilterMode } = useFilter();
   const { isOnline } = useNetworkStatus();
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -55,12 +55,16 @@ export default function TaskListScreen() {
     refetch,
     isRefetching: isRefetchingQuery,
   } = trpc.tasks.all.useQuery(
-    token ? { token, date: selectedDate.toISOString().slice(0, 10) } : skipToken,
     {
+      token: token!,
+      date: selectedDate.toISOString().slice(0, 10),
+    },
+    {
+      enabled: !authLoading && !!token,
       staleTime: 0,
       refetchOnMount: "always",
       refetchOnReconnect: true,
-      refetchInterval: 5_000,
+      refetchInterval: 60_000,
       placeholderData: (previousData) => previousData,
     },
   );
