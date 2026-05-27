@@ -67,6 +67,14 @@ export default function TaskListScreen() {
     },
   );
 
+  console.log("[Tasks] token changed", !!token);
+
+  console.log("[Tasks] query state", {
+    hasData: !!tasksDataRaw,
+    isLoading,
+    isRefetchingQuery,
+  });
+
   const tasksData = useMemo(() => {
     return Array.isArray(tasksDataRaw) ? (tasksDataRaw as any[]) : [];
   }, [tasksDataRaw]);
