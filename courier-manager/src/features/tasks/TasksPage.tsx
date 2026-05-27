@@ -40,12 +40,44 @@ type OperationPoint = {
   completedAt?: string;
 };
 type OperationList = { id: number; name: string; meta: string; status: string; items: OperationPoint[] };
-type PickupList = { id: number; name: string; status: string; date?: string; dayOfWeek?: number };
+type PickupList = { id: number; name: string; status: string; date?: string; dayOfWeek?: number; createdAt?: string; updatedAt?: string };
 type PickupListWithItems = { list?: PickupList; items?: OperationPoint[] };
 
 const API_BASE = '/api/trpc';
 const API_URL = import.meta.env.VITE_API_URL || '';
 const weekdayNames: Record<number, string> = { 1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг', 5: 'Пятница' };
+
+
+function getBusinessWeekdayFromDate(dateValue: string) {
+  if (!dateValue) return getTodayBusinessWeekday();
+
+  const [year, month, day] = dateValue.split('-').map(Number);
+  if (!year || !month || !day) return getTodayBusinessWeekday();
+
+  const jsDay = new Date(year, month - 1, day).getDay();
+
+  // Для Сбербанка шаблоны 1–5. Выходные показываем как пятницу.
+  if (jsDay === 0 || jsDay === 6) return 5;
+
+  return jsDay;
+}
+
+function isSameDateKey(value: string | undefined, dateKey: string) {
+  if (!value) return false;
+  return new Date(value).toISOString().slice(0, 10) === dateKey;
+}
+
+function formatArchiveDateLabel(dateKey: string) {
+  if (!dateKey) return '';
+  const [year, month, day] = dateKey.split('-').map(Number);
+  if (!year || !month || !day) return dateKey;
+
+  return new Date(year, month - 1, day).toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
 
 function getTodayDate() { return new Date().toISOString().slice(0, 10); }
 function getTodayBusinessWeekday() { const day = new Date().getDay(); return day === 0 || day > 5 ? 5 : day; }
@@ -86,9 +118,9 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [operationLists, setOperationLists] = useState<OperationList[]>([]);
   const [isOperationLoading, setIsOperationLoading] = useState(false);
   const [hemotestDate, setHemotestDate] = useState(getTodayDate());
-  const [sberbankDay, setSberbankDay] = useState(getTodayBusinessWeekday());
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const selectedDate = archiveDate || getTodayDate();
+  const sberbankDay = getBusinessWeekdayFromDate(selectedDate);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -110,7 +142,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   useEffect(() => {
     if (operationMode === 'hemotest') loadHemotestLists();
     if (operationMode === 'sberbank') loadSberbankLists();
-  }, [operationMode, hemotestDate, sberbankDay]);
+  }, [operationMode, selectedDate]);
 
   const loadData = async (showLoader = true) => {
     try {
@@ -134,10 +166,10 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const loadHemotestLists = async (showLoader = true) => {
     try {
       if (showLoader) setIsOperationLoading(true);
-      const lists = await trpcQuery<PickupList[]>('hemotest.listsForDate', { date: hemotestDate });
+      const lists = await trpcQuery<PickupList[]>('hemotest.listsForDate', { date: selectedDate });
       const detailed = await Promise.all(lists.map(async (list) => {
         const full = await trpcQuery<PickupListWithItems>('hemotest.getList', { listId: list.id });
-        return { id: list.id, name: list.name, meta: list.date ? new Date(list.date).toLocaleDateString('ru-RU') : hemotestDate, status: list.status, items: full.items || [] };
+        return { id: list.id, name: list.name, meta: list.date ? new Date(list.date).toLocaleDateString('ru-RU') : formatArchiveDateLabel(selectedDate), status: list.status, items: full.items || [] };
       }));
       setOperationLists(detailed);
     } catch (error) {
@@ -152,9 +184,20 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     try {
       if (showLoader) setIsOperationLoading(true);
       const lists = await trpcQuery<PickupList[]>('sberbank.listsForDay', { dayOfWeek: sberbankDay });
-      const detailed = await Promise.all(lists.map(async (list) => {
+      const listsForSelectedDate = lists.filter((list) => {
+        // Сбербанк-шаблон выбирается по дню недели, а архив показывает только списки,
+        // которые были созданы в выбранную дату верхнего календаря.
+        if (isSameDateKey(list.createdAt, selectedDate)) return true;
+
+        // Запасной вариант для старых записей: если дата хранится в поле date.
+        if (isSameDateKey(list.date, selectedDate)) return true;
+
+        return false;
+      });
+
+      const detailed = await Promise.all(listsForSelectedDate.map(async (list) => {
         const full = await trpcQuery<PickupListWithItems>('sberbank.getList', { listId: list.id });
-        return { id: list.id, name: list.name, meta: weekdayNames[list.dayOfWeek || sberbankDay] || `День ${list.dayOfWeek || sberbankDay}`, status: list.status, items: full.items || [] };
+        return { id: list.id, name: list.name, meta: formatArchiveDateLabel(selectedDate), status: list.status, items: full.items || [] };
       }));
       setOperationLists(detailed);
     } catch (error) {
@@ -343,16 +386,10 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                 <PackageCheck className="h-4 w-4 text-slate-400" />
                 {pickedCount}/{flattenedPoints.length} забрано
               </span>
-              {operationMode === 'hemotest' ? (
-                <label className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  <CalendarDays className="h-4 w-4 text-slate-400" />
-                  <input type="date" value={hemotestDate} onChange={(e) => setHemotestDate(e.target.value)} className="bg-transparent outline-none" />
-                </label>
-              ) : (
-                <select value={sberbankDay} onChange={(e) => setSberbankDay(Number(e.target.value))} className="h-10 w-fit rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none">
-                  {Object.entries(weekdayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              )}
+              <span className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">
+                <CalendarDays className="h-4 w-4 text-slate-400" />
+                Архив: <span className="capitalize">{formatArchiveDateLabel(selectedDate)}</span>
+              </span>
             </div>
           </div>
 
