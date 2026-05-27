@@ -78,8 +78,15 @@ export default function TaskListScreen() {
   });
 
   const tasksData = useMemo(() => {
-    return Array.isArray(tasksDataRaw) ? (tasksDataRaw as any[]) : [];
-  }, [tasksDataRaw]);
+    const next = Array.isArray(tasksDataRaw) ? (tasksDataRaw as any[]) : [];
+    console.log("[Tasks] raw count", next.length, {
+      authLoading,
+      hasToken: !!token,
+      isLoading,
+      isRefetchingQuery,
+    });
+    return next;
+  }, [tasksDataRaw, authLoading, token, isLoading, isRefetchingQuery]);
 
   useMobileLiveSync({
     enabled: !!token,
