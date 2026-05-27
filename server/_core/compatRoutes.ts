@@ -3,6 +3,8 @@ import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from ".
 
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import {
+  clientPoints,
+  clientRegularClients,
   couriers,
   hemotestPickups,
   hemotestPickupPoints,
@@ -424,6 +426,229 @@ export function registerCompatRoutes(app: Express) {
       res.json({ success: true });
     } catch (error) {
       sendError(res, error, "Failed to deactivate manager courier");
+    }
+  });
+
+
+  // ─── Client points and regular clients ─────────────────────────────────────
+
+  app.get("/api/manager/clients/:clientId/points", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.clientId);
+      if (!clientId) {
+        res.status(400).json({ error: "Некорректный ID клиента" });
+        return;
+      }
+
+      const rows = await conn
+        .select()
+        .from(clientPoints)
+        .where(eq(clientPoints.clientId, clientId))
+        .orderBy(clientPoints.sortOrder, clientPoints.id);
+
+      res.json(rows);
+    } catch (error) {
+      sendError(res, error, "Failed to load client points");
+    }
+  });
+
+  app.post("/api/manager/clients/:clientId/points", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.clientId);
+      const input = inputFrom(req);
+
+      const name = String(input.name || "").trim();
+      const address = String(input.address || "").trim();
+
+      if (!clientId || !name || !address) {
+        res.status(400).json({ error: "Укажите клиента, название и адрес точки" });
+        return;
+      }
+
+      const inserted = await conn
+        .insert(clientPoints)
+        .values({
+          clientId,
+          name,
+          address,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          sortOrder: Number(input.sortOrder || 0),
+        })
+        .returning();
+
+      res.json(inserted[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to create client point");
+    }
+  });
+
+  app.put("/api/manager/client-points/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      const input = inputFrom(req);
+
+      const name = String(input.name || "").trim();
+      const address = String(input.address || "").trim();
+
+      if (!id || !name || !address) {
+        res.status(400).json({ error: "Укажите название и адрес точки" });
+        return;
+      }
+
+      const updated = await conn
+        .update(clientPoints)
+        .set({
+          name,
+          address,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          sortOrder: Number(input.sortOrder || 0),
+          updatedAt: new Date(),
+        })
+        .where(eq(clientPoints.id, id))
+        .returning();
+
+      res.json(updated[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to update client point");
+    }
+  });
+
+  app.delete("/api/manager/client-points/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      if (!id) {
+        res.status(400).json({ error: "Некорректный ID точки" });
+        return;
+      }
+
+      await conn.delete(clientPoints).where(eq(clientPoints.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to delete client point");
+    }
+  });
+
+  app.get("/api/manager/clients/:clientId/regular-clients", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.clientId);
+      if (!clientId) {
+        res.status(400).json({ error: "Некорректный ID клиента" });
+        return;
+      }
+
+      const rows = await conn
+        .select()
+        .from(clientRegularClients)
+        .where(eq(clientRegularClients.clientId, clientId))
+        .orderBy(clientRegularClients.sortOrder, clientRegularClients.id);
+
+      res.json(rows);
+    } catch (error) {
+      sendError(res, error, "Failed to load regular clients");
+    }
+  });
+
+  app.post("/api/manager/clients/:clientId/regular-clients", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.clientId);
+      const input = inputFrom(req);
+
+      const name = String(input.name || "").trim();
+      const address = String(input.address || "").trim();
+
+      if (!clientId || !name || !address) {
+        res.status(400).json({ error: "Укажите клиента, название и адрес" });
+        return;
+      }
+
+      const inserted = await conn
+        .insert(clientRegularClients)
+        .values({
+          clientId,
+          name,
+          address,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          sortOrder: Number(input.sortOrder || 0),
+        })
+        .returning();
+
+      res.json(inserted[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to create regular client");
+    }
+  });
+
+  app.put("/api/manager/regular-clients/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      const input = inputFrom(req);
+
+      const name = String(input.name || "").trim();
+      const address = String(input.address || "").trim();
+
+      if (!id || !name || !address) {
+        res.status(400).json({ error: "Укажите название и адрес" });
+        return;
+      }
+
+      const updated = await conn
+        .update(clientRegularClients)
+        .set({
+          name,
+          address,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          sortOrder: Number(input.sortOrder || 0),
+          updatedAt: new Date(),
+        })
+        .where(eq(clientRegularClients.id, id))
+        .returning();
+
+      res.json(updated[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to update regular client");
+    }
+  });
+
+  app.delete("/api/manager/regular-clients/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      if (!id) {
+        res.status(400).json({ error: "Некорректный ID постоянного клиента" });
+        return;
+      }
+
+      await conn.delete(clientRegularClients).where(eq(clientRegularClients.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to delete regular client");
     }
   });
 

@@ -417,6 +417,41 @@ export const clients = pgTable("clients", {
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = typeof clients.$inferInsert;
 
+
+// ─── Client Points Table ─────────────────────────────────────────────────────
+
+export const clientPoints = pgTable("clientPoints", {
+  id: serial("id").primaryKey(),
+  clientId: integer("clientId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  phone: varchar("phone", { length: 20 }),
+  sortOrder: integer("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type ClientPoint = typeof clientPoints.$inferSelect;
+export type InsertClientPoint = typeof clientPoints.$inferInsert;
+
+// ─── Client Regular Clients Table ────────────────────────────────────────────
+
+export const clientRegularClients = pgTable("clientRegularClients", {
+  id: serial("id").primaryKey(),
+  clientId: integer("clientId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  phone: varchar("phone", { length: 20 }),
+  sortOrder: integer("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type ClientRegularClient = typeof clientRegularClients.$inferSelect;
+export type InsertClientRegularClient = typeof clientRegularClients.$inferInsert;
+
 // ─── Requests Table ──────────────────────────────────────────────────────────
 
 /**

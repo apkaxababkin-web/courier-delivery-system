@@ -113,6 +113,96 @@ export async function deleteClient(id: number): Promise<void> {
   await trpcPost('clients.delete', { id }, { success: true });
 }
 
+
+
+export interface ClientPoint {
+  id: number;
+  clientId: number;
+  name: string;
+  address: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ClientRegularClient {
+  id: number;
+  clientId: number;
+  name: string;
+  address: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+async function restJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
+    ...options,
+  });
+
+  const data = await readJson(response);
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || data?.error || `Request failed: ${url}`);
+  }
+
+  return data as T;
+}
+
+export async function getClientPoints(clientId: number): Promise<ClientPoint[]> {
+  return await restJson<ClientPoint[]>(`/api/manager/clients/${clientId}/points`);
+}
+
+export async function createClientPoint(clientId: number, point: Omit<ClientPoint, 'id' | 'clientId' | 'createdAt' | 'updatedAt'>): Promise<ClientPoint> {
+  return await restJson<ClientPoint>(`/api/manager/clients/${clientId}/points`, {
+    method: 'POST',
+    body: JSON.stringify(point),
+  });
+}
+
+export async function updateClientPoint(id: number, point: Partial<ClientPoint>): Promise<ClientPoint> {
+  return await restJson<ClientPoint>(`/api/manager/client-points/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(point),
+  });
+}
+
+export async function deleteClientPoint(id: number): Promise<void> {
+  await restJson<{ success: boolean }>(`/api/manager/client-points/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getClientRegularClients(clientId: number): Promise<ClientRegularClient[]> {
+  return await restJson<ClientRegularClient[]>(`/api/manager/clients/${clientId}/regular-clients`);
+}
+
+export async function createClientRegularClient(clientId: number, item: Omit<ClientRegularClient, 'id' | 'clientId' | 'createdAt' | 'updatedAt'>): Promise<ClientRegularClient> {
+  return await restJson<ClientRegularClient>(`/api/manager/clients/${clientId}/regular-clients`, {
+    method: 'POST',
+    body: JSON.stringify(item),
+  });
+}
+
+export async function updateClientRegularClient(id: number, item: Partial<ClientRegularClient>): Promise<ClientRegularClient> {
+  return await restJson<ClientRegularClient>(`/api/manager/regular-clients/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(item),
+  });
+}
+
+export async function deleteClientRegularClient(id: number): Promise<void> {
+  await restJson<{ success: boolean }>(`/api/manager/regular-clients/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // ─── Tasks API ──────────────────────────────────────────────────────────────
 
 export async function getAllTasks(): Promise<Task[]> {
