@@ -58,7 +58,7 @@ export default function TaskListScreen() {
       staleTime: 0,
       refetchOnMount: "always",
       refetchOnReconnect: true,
-      refetchInterval: 60_000,
+      refetchInterval: 15_000,
       placeholderData: (previousData) => previousData,
     },
   );
