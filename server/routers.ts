@@ -4,6 +4,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { syncTaskForRequestId } from "./_core/requestTaskSync";
+import { sendExpoPush } from "./_core/expoPush";
 import { broadcastLive } from "./_core/liveEvents";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -994,8 +995,37 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await db.assignRequestCourier(input.id, input.courierId);
         await syncTaskForRequestId(input.id);
+
+        if (input.courierId) {
+          try {
+            const request = await db.getRequestById(input.id);
+            const courier = await db.getCourierById(input.courierId);
+
+            if (request && courier?.pushToken) {
+              const address =
+                request.deliveryAddress ||
+                request.recipientAddress ||
+                request.senderAddress ||
+                "Адрес не указан";
+
+              await sendExpoPush(
+                courier.pushToken,
+                "Новая заявка",
+                `${request.recipientName || "Клиент"} • ${address}`,
+                {
+                  type: "new_request",
+                  requestId: request.id,
+                },
+              );
+            }
+          } catch (e) {
+            console.error("Failed to send request push", e);
+          }
+        }
+
         broadcastLive("requests_changed", { requestId: input.id, courierId: input.courierId });
         broadcastLive("tasks_changed", { requestId: input.id, courierId: input.courierId });
+
         return { success: true };
       }),
 
