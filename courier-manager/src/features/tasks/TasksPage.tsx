@@ -199,9 +199,18 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   useEffect(() => { loadData(); }, []);
   useEffect(() => {
     if (!realtimeSnapshot) return;
-    console.log('[TasksPage] realtime requests sync', realtimeSnapshot.requests.length, realtimeSnapshot.updatedAt);
+
+    console.log('[TasksPage] realtime sync', realtimeSnapshot.updatedAt);
     setRequests(realtimeSnapshot.requests);
-  }, [realtimeSnapshot]);
+
+    if (operationMode === 'hemotest') {
+      loadHemotestLists(false);
+    }
+
+    if (operationMode === 'sberbank') {
+      loadSberbankLists(false);
+    }
+  }, [realtimeSnapshot, operationMode, hemotestDate, sberbankDay]);
   useEffect(() => {
     if (operationMode === 'hemotest') loadHemotestLists();
     if (operationMode === 'sberbank') loadSberbankLists();
