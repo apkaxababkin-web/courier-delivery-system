@@ -77,7 +77,7 @@ async function fetchCouriers(): Promise<CourierOption[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export default function TasksPage() {
+export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [requests, setRequests] = useState<Request[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [couriers, setCouriers] = useState<CourierOption[]>([]);
@@ -88,7 +88,7 @@ export default function TasksPage() {
   const [hemotestDate, setHemotestDate] = useState(getTodayDate());
   const [sberbankDay, setSberbankDay] = useState(getTodayBusinessWeekday());
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
-  const [selectedDate, setSelectedDate] = useState(getTodayDate());
+  const selectedDate = archiveDate || getTodayDate();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -204,7 +204,6 @@ export default function TasksPage() {
       setShowCreateModal(false);
       setOperationMode('requests');
       setSelectedStatus('all');
-      setSelectedDate(getTodayDate());
       await loadData();
     } catch (error) {
       console.error('Failed to create task:', error);
@@ -329,7 +328,7 @@ export default function TasksPage() {
       {operationMode === 'requests' ? (
         <>
           <TasksStats stats={stats} selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} />
-          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={setSelectedDate} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
+          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} hideDatePicker />
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
       ) : (

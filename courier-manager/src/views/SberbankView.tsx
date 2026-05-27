@@ -23,6 +23,21 @@ const readHiddenPointIds = () => {
   }
 };
 
+
+function getBusinessWeekdayFromDate(dateValue?: string) {
+  if (!dateValue) return null;
+
+  const [year, month, day] = dateValue.split('-').map(Number);
+  if (!year || !month || !day) return null;
+
+  const jsDay = new Date(year, month - 1, day).getDay();
+
+  // Воскресенье и субботу привязываем к пятнице, потому что Сбербанк-шаблоны 1–5.
+  if (jsDay === 0 || jsDay === 6) return 5;
+
+  return jsDay;
+}
+
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
 
@@ -35,7 +50,7 @@ const secondaryButtonClass =
 const dangerButtonClass =
   'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950';
 
-export default function SberbankView() {
+export default function SberbankView({ archiveDate }: { archiveDate?: string }) {
   const [points, setPoints] = useState<api.SberbankPoint[]>([]);
   const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(readHiddenPointIds);
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
@@ -58,6 +73,13 @@ export default function SberbankView() {
   useEffect(() => {
     loadPoints();
   }, []);
+
+  useEffect(() => {
+    const day = getBusinessWeekdayFromDate(archiveDate);
+    if (day) {
+      handleSelectTemplate(day);
+    }
+  }, [archiveDate]);
 
   const loadPoints = async () => {
     try {

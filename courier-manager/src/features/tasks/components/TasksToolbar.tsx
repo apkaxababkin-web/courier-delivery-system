@@ -64,6 +64,7 @@ interface TasksToolbarProps {
   onSearchChange: (query: string) => void;
   onCreateClick: () => void;
   onAiCreateClick: () => void;
+  hideDatePicker?: boolean;
 }
 
 export function TasksToolbar({
@@ -73,6 +74,7 @@ export function TasksToolbar({
   onSearchChange,
   onCreateClick,
   onAiCreateClick,
+  hideDatePicker = false,
 }: TasksToolbarProps) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => {
@@ -136,6 +138,7 @@ export function TasksToolbar({
                 />
               </div>
 
+              {!hideDatePicker && (
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                   {isCalendarOpen ? (
@@ -241,6 +244,7 @@ export function TasksToolbar({
                   ) : null}
                 </div>
               </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">

@@ -20,12 +20,12 @@ const readHiddenPointIds = () => {
   }
 };
 
-export default function HemotestView() {
+export default function HemotestView({ archiveDate }: { archiveDate?: string }) {
   const [points, setPoints] = useState<api.HemotestPoint[]>([]);
   const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(readHiddenPointIds);
   const [lists, setLists] = useState<api.HemotestPickupList[]>([]);
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(archiveDate || new Date().toISOString().split('T')[0]);
   const [showForm, setShowForm] = useState(false);
   const [showListForm, setShowListForm] = useState(false);
   const [expandedListId, setExpandedListId] = useState<number | null>(null);
@@ -33,6 +33,10 @@ export default function HemotestView() {
   const [loading, setLoading] = useState(false);
 
   const visiblePoints = points.filter((point) => !hiddenPointIds.includes(point.id));
+
+  useEffect(() => {
+    if (archiveDate) setSelectedDate(archiveDate);
+  }, [archiveDate]);
 
   useEffect(() => {
     loadPoints();
@@ -151,8 +155,10 @@ export default function HemotestView() {
     <div className="space-y-5 p-4 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div>
-          <label className="mb-1 block text-xs font-semibold text-slate-500">Дата</label>
-          <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className={inputClass} />
+          <label className="mb-1 block text-xs font-semibold text-slate-500">Дата архива</label>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+            {new Date(selectedDate).toLocaleDateString('ru-RU')}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">

@@ -8,6 +8,7 @@ import {
   Users,
   LogOut,
   Menu,
+  CalendarDays,
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TasksView from './views/TasksView';
@@ -20,6 +21,27 @@ import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
 
 type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'couriers';
+
+
+function getTodayDate() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatArchiveDate(date: string) {
+  if (!date) return 'Сегодня';
+  const [year, month, day] = date.split('-').map(Number);
+  if (!year || !month || !day) return date;
+
+  return new Date(year, month - 1, day).toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
 
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
@@ -37,6 +59,7 @@ function App() {
   const [managerName, setManagerName] = useState('');
   const [managerRole, setManagerRole] = useState('Менеджер');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [archiveDate, setArchiveDate] = useState(getTodayDate());
 
   useEffect(() => {
     const token = localStorage.getItem('managerToken');
@@ -62,13 +85,13 @@ function App() {
   const renderView = () => {
     switch (activeView) {
       case 'tasks':
-        return <TasksView />;
+        return <TasksView archiveDate={archiveDate} />;
       case 'mails':
         return <MailsView />;
       case 'hemotest':
-        return <HemotestView />;
+        return <HemotestView archiveDate={archiveDate} />;
       case 'sberbank':
-        return <SberbankView />;
+        return <SberbankView archiveDate={archiveDate} />;
       case 'clients':
         return <ClientsView />;
       case 'reports':
@@ -76,7 +99,7 @@ function App() {
       case 'couriers':
         return <CouriersView />;
       default:
-        return <TasksView />;
+        return <TasksView archiveDate={archiveDate} />;
     }
   };
 
@@ -138,6 +161,17 @@ function App() {
               <div className="hidden min-w-0 flex-col md:flex"><h1 className="truncate text-lg font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="truncate text-xs text-slate-500">{getPageDescription()}</p></div>
             </div>
             <div className="flex items-center gap-3">
+              <label className="relative inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                <CalendarDays className="h-4 w-4 text-slate-400" />
+                <span className="whitespace-nowrap capitalize">{formatArchiveDate(archiveDate)}</span>
+                <input
+                  type="date"
+                  value={archiveDate}
+                  onChange={(event) => setArchiveDate(event.target.value || getTodayDate())}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  aria-label="Единый календарь архива"
+                />
+              </label>
               <div className="hidden text-right sm:block"><p className="text-sm font-medium text-slate-950">{managerName}</p><p className="text-xs text-slate-500">{managerRole}</p></div>
               <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">{(managerName || 'M').charAt(0).toUpperCase()}</div>
               <button onClick={handleLogout} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Выход</span></button>
