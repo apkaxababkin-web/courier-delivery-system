@@ -243,7 +243,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
   };
 
   return (
-    <div className="space-y-5 p-4 sm:p-6">
+    <div className="w-full space-y-5 p-4 sm:p-6">
       {showForm &&
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
@@ -329,7 +329,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
         )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -356,8 +356,8 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
           <div className="p-8 text-center text-sm text-slate-500">Нет сохранённых точек</div>
         ) : (
           <div className="overflow-x-auto">
-            <div className="min-w-[980px]">
-              <div className="grid grid-cols-[44px_44px_minmax(180px,0.8fr)_minmax(320px,1.4fr)_minmax(170px,0.7fr)_230px] items-center border-b border-slate-200 bg-slate-50/95 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            <div className="w-full min-w-[1180px]">
+              <div className="grid grid-cols-[44px_44px_minmax(220px,1.1fr)_minmax(420px,2.1fr)_minmax(220px,1fr)_240px] items-center border-b border-slate-200 bg-slate-50/95 px-5 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
                 <div />
                 <div />
                 <div>Точка</div>
@@ -375,7 +375,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={() => handleDropPoint(point.id)}
                     onDragEnd={() => setDraggedPointId(null)}
-                    className={`grid grid-cols-[44px_44px_minmax(180px,0.8fr)_minmax(320px,1.4fr)_minmax(170px,0.7fr)_230px] items-center gap-0 px-4 py-3 transition hover:bg-slate-50 ${
+                    className={`grid grid-cols-[44px_44px_minmax(220px,1.1fr)_minmax(420px,2.1fr)_minmax(220px,1fr)_240px] items-center gap-0 px-5 py-3 transition hover:bg-slate-50 ${
                       draggedPointId === point.id ? 'bg-slate-50 opacity-60' : ''
                     }`}
                   >
