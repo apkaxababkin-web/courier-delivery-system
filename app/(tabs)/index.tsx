@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Modal,
   Pressable,
@@ -58,7 +59,7 @@ export default function TaskListScreen() {
       staleTime: 0,
       refetchOnMount: "always",
       refetchOnReconnect: true,
-      refetchInterval: 15_000,
+      refetchInterval: 60_000,
       placeholderData: (previousData) => previousData,
     },
   );
@@ -81,6 +82,19 @@ export default function TaskListScreen() {
     console.log("[Tasks] force initial refetch");
     refetch();
   }, [token, selectedDate, refetch]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+
+      console.log("[Tasks] app active refetch");
+      refetch();
+    });
+
+    return () => subscription.remove();
+  }, [token, refetch]);
 
 
   const isToday = useMemo(() => {
