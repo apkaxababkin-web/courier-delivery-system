@@ -48,6 +48,16 @@ function inputFrom(req: Request): Record<string, unknown> {
   try { return unwrapBatchInput(JSON.parse(raw) as Record<string, unknown>); } catch { return {}; }
 }
 
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function dateFromReq(req: Request, fallback = todayKey()) {
+  const input = inputFrom(req);
+  const raw = input.date;
+  return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : fallback;
+}
+
 function normalizeTaskStatus(status: unknown): Task["status"] {
   if (status === "in_progress" || status === "completed" || status === "cancelled") return status;
   return "assigned";
@@ -304,14 +314,12 @@ async function managerSnapshot() {
   };
 }
 
-async function courierSnapshot(courierId: number) {
-  const [courier, activeTasks, completedTasks, mailList] = await Promise.all([
+async function courierSnapshot(courierId: number, date = todayKey()) {
+  const [courier, allTasks, mailList] = await Promise.all([
     db.getCourierById(courierId),
-    db.getAllTasksWithCourier(),
-    db.getCompletedTasksWithCourier(),
+    db.getTasksByDateWithCourier(date),
     db.getAllMails(),
   ]);
-  const allTasks = [...activeTasks, ...completedTasks];
   return {
     ok: true,
     updatedAt: new Date().toISOString(),
@@ -428,7 +436,7 @@ export function registerCompatRoutes(app: Express) {
     try {
       const courierId = await courierIdFromReq(req);
       if (!courierId) { res.status(401).json({ ok: false, error: "Invalid courier token" }); return; }
-      res.json(await courierSnapshot(courierId));
+      res.json(await courierSnapshot(courierId, dateFromReq(req)));
     } catch (error) { sendError(res, error, "Failed to load courier realtime snapshot"); }
   });
 
@@ -440,12 +448,9 @@ export function registerCompatRoutes(app: Express) {
         return;
       }
 
-      const [active, completed] = await Promise.all([
-        db.getAllTasksWithCourier(),
-        db.getCompletedTasksWithCourier(),
-      ]);
+      const taskList = await db.getTasksByDateWithCourier(dateFromReq(req));
 
-      res.json(trpcJson(await tasksWithRequestType([...active, ...completed])));
+      res.json(trpcJson(await tasksWithRequestType(taskList)));
     } catch (error) {
       sendError(res, error, "Failed to load tasks");
     }
