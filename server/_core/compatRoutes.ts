@@ -671,6 +671,42 @@ export function registerCompatRoutes(app: Express) {
     } catch (error) { sendError(res, error, "Failed to assign request courier"); }
   });
 
+
+  app.post("/api/trpc/hemotest.updatePoint", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const input = inputFrom(req);
+      const id = Number(input.id);
+      if (!id) throw new Error("id is required");
+
+      const name = String(input.name || "").trim();
+      const address = String(input.address || "").trim();
+
+      if (!name || !address) {
+        res.status(400).json({ error: { message: "Название и адрес обязательны" } });
+        return;
+      }
+
+      const updated = await conn.update(hemotestPickupPoints)
+        .set({
+          name,
+          address,
+          phone: input.phone ? String(input.phone).trim() : null,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(hemotestPickupPoints.id, id))
+        .returning();
+
+      broadcastLive("hemotest_changed", { id });
+      res.json(trpcBatchJson(updated[0] || { success: true }));
+    } catch (error) {
+      sendError(res, error, "Failed to update hemotest point");
+    }
+  });
+
   app.get("/api/trpc/managerMails.all", async (req, res) => {
     try {
       const input = inputFrom(req);

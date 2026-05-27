@@ -1,20 +1,21 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
 
 const HIDDEN_POINTS_STORAGE_KEY = 'courier-manager:hidden-hemotest-points';
+const POINT_ORDER_STORAGE_KEY = 'courier-manager:hemotest-point-order';
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
 const primaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50';
 const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50';
 const dangerButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950';
 
-const readHiddenPointIds = () => {
+const readNumberArray = (key: string) => {
   if (typeof window === 'undefined') return [] as number[];
 
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_POINTS_STORAGE_KEY) || '[]');
+    const parsed = JSON.parse(window.localStorage.getItem(key) || '[]');
     return Array.isArray(parsed)
       ? parsed.filter((id) => Number.isFinite(Number(id))).map(Number)
       : [];
@@ -23,13 +24,47 @@ const readHiddenPointIds = () => {
   }
 };
 
+const saveNumberArray = (key: string, value: number[]) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+};
+
+function sortPointsByOrder(points: api.HemotestPoint[], orderIds: number[]) {
+  const order = new Map(orderIds.map((id, index) => [id, index]));
+
+  return [...points].sort((a, b) => {
+    const aIndex = order.has(a.id) ? order.get(a.id)! : Number.MAX_SAFE_INTEGER;
+    const bIndex = order.has(b.id) ? order.get(b.id)! : Number.MAX_SAFE_INTEGER;
+
+    if (aIndex !== bIndex) return aIndex - bIndex;
+
+    return a.id - b.id;
+  });
+}
+
+function moveId(order: number[], id: number, targetId: number) {
+  const clean = order.filter((item) => item !== id);
+  const targetIndex = clean.indexOf(targetId);
+
+  if (targetIndex === -1) {
+    clean.push(id);
+    return clean;
+  }
+
+  clean.splice(targetIndex, 0, id);
+  return clean;
+}
+
 export default function HemotestView({ archiveDate }: { archiveDate?: string }) {
   const [points, setPoints] = useState<api.HemotestPoint[]>([]);
-  const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(readHiddenPointIds);
+  const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(() => readNumberArray(HIDDEN_POINTS_STORAGE_KEY));
+  const [pointOrderIds, setPointOrderIds] = useState<number[]>(() => readNumberArray(POINT_ORDER_STORAGE_KEY));
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState(archiveDate || new Date().toISOString().split('T')[0]);
   const [showForm, setShowForm] = useState(false);
   const [showListForm, setShowListForm] = useState(false);
+  const [editingPoint, setEditingPoint] = useState<api.HemotestPoint | null>(null);
+  const [draggedPointId, setDraggedPointId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -38,7 +73,10 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
   });
   const [loading, setLoading] = useState(false);
 
-  const visiblePoints = points.filter((point) => !hiddenPointIds.includes(point.id));
+  const visiblePoints = sortPointsByOrder(
+    points.filter((point) => !hiddenPointIds.includes(point.id)),
+    pointOrderIds
+  );
 
   useEffect(() => {
     if (archiveDate) setSelectedDate(archiveDate);
@@ -47,6 +85,21 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
   useEffect(() => {
     loadPoints();
   }, []);
+
+  useEffect(() => {
+    if (points.length === 0) return;
+
+    const existingIds = points.map((point) => point.id);
+    const nextOrder = [
+      ...pointOrderIds.filter((id) => existingIds.includes(id)),
+      ...existingIds.filter((id) => !pointOrderIds.includes(id)),
+    ];
+
+    if (JSON.stringify(nextOrder) !== JSON.stringify(pointOrderIds)) {
+      setPointOrderIds(nextOrder);
+      saveNumberArray(POINT_ORDER_STORAGE_KEY, nextOrder);
+    }
+  }, [points]);
 
   const loadPoints = async () => {
     try {
@@ -82,8 +135,31 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
     const nextHiddenIds = Array.from(new Set([...hiddenPointIds, point.id]));
     setHiddenPointIds(nextHiddenIds);
-    window.localStorage.setItem(HIDDEN_POINTS_STORAGE_KEY, JSON.stringify(nextHiddenIds));
+    saveNumberArray(HIDDEN_POINTS_STORAGE_KEY, nextHiddenIds);
     setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
+  };
+
+  const openCreateForm = () => {
+    setEditingPoint(null);
+    setFormData({ name: '', address: '', phone: '', contactPerson: '' });
+    setShowForm(true);
+  };
+
+  const openEditForm = (point: api.HemotestPoint) => {
+    setEditingPoint(point);
+    setFormData({
+      name: point.name || '',
+      address: point.address || '',
+      phone: point.phone || '',
+      contactPerson: point.contactPerson || '',
+    });
+    setShowForm(true);
+  };
+
+  const closePointForm = () => {
+    setShowForm(false);
+    setEditingPoint(null);
+    setFormData({ name: '', address: '', phone: '', contactPerson: '' });
   };
 
   const handleCreateList = async (event: React.FormEvent) => {
@@ -96,9 +172,15 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
     try {
       setLoading(true);
+
       const formattedDate = new Date(selectedDate).toLocaleDateString('ru-RU');
-      await api.createHemotestPickupList(selectedDate, formattedDate, selectedPoints);
-      alert(`Список создан (${selectedPoints.length} точек)`);
+      const orderedSelectedPointIds = visiblePoints
+        .filter((point) => selectedPoints.includes(point.id))
+        .map((point) => point.id);
+
+      await api.createHemotestPickupList(selectedDate, formattedDate, orderedSelectedPointIds);
+
+      alert(`Список создан (${orderedSelectedPointIds.length} точек)`);
       setSelectedPoints([]);
       setShowListForm(false);
     } catch (error) {
@@ -109,7 +191,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
     }
   };
 
-  const handleAddPoint = async (event: React.FormEvent) => {
+  const handleSubmitPoint = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (!formData.name.trim() || !formData.address.trim()) {
@@ -119,17 +201,45 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
     try {
       setLoading(true);
-      await api.createHemotestPoint(formData);
-      alert('Точка добавлена');
-      setFormData({ name: '', address: '', phone: '', contactPerson: '' });
-      setShowForm(false);
+
+      if (editingPoint) {
+        await api.post('/api/trpc/hemotest.updatePoint', {
+          id: editingPoint.id,
+          ...formData,
+        });
+      } else {
+        const created = await api.createHemotestPoint(formData);
+        const nextOrder = [...pointOrderIds, created.id];
+        setPointOrderIds(nextOrder);
+        saveNumberArray(POINT_ORDER_STORAGE_KEY, nextOrder);
+      }
+
+      closePointForm();
       await loadPoints();
     } catch (error) {
-      console.error('Error adding point:', error);
-      alert('Ошибка при добавлении точки');
+      console.error('Error saving point:', error);
+      alert('Ошибка при сохранении точки');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDropPoint = (targetPointId: number) => {
+    if (!draggedPointId || draggedPointId === targetPointId) {
+      setDraggedPointId(null);
+      return;
+    }
+
+    const baseOrder = [
+      ...pointOrderIds.filter((id) => visiblePoints.some((point) => point.id === id)),
+      ...visiblePoints.map((point) => point.id).filter((id) => !pointOrderIds.includes(id)),
+    ];
+
+    const nextOrder = moveId(baseOrder, draggedPointId, targetPointId);
+
+    setPointOrderIds(nextOrder);
+    saveNumberArray(POINT_ORDER_STORAGE_KEY, nextOrder);
+    setDraggedPointId(null);
   };
 
   return (
@@ -138,9 +248,11 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-              <h3 className="text-lg font-semibold text-slate-950">Добавить точку Гемотест</h3>
+              <h3 className="text-lg font-semibold text-slate-950">
+                {editingPoint ? 'Редактировать точку Гемотест' : 'Добавить точку Гемотест'}
+              </h3>
 
-              <form onSubmit={handleAddPoint} className="mt-4 space-y-3">
+              <form onSubmit={handleSubmitPoint} className="mt-4 space-y-3">
                 <input
                   type="text"
                   placeholder="Название точки *"
@@ -177,10 +289,10 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
                 <div className="flex gap-2 pt-2">
                   <button type="submit" disabled={loading} className={`flex-1 ${primaryButtonClass}`}>
-                    {loading ? 'Добавляем...' : 'Добавить'}
+                    {loading ? 'Сохраняем...' : editingPoint ? 'Сохранить' : 'Добавить'}
                   </button>
 
-                  <button type="button" onClick={() => setShowForm(false)} className={`flex-1 ${secondaryButtonClass}`}>
+                  <button type="button" onClick={closePointForm} className={`flex-1 ${secondaryButtonClass}`}>
                     Отмена
                   </button>
                 </div>
@@ -245,7 +357,25 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
         ) : (
           <div className="divide-y divide-slate-100">
             {visiblePoints.map((point) => (
-              <div key={point.id} className="flex items-start gap-4 p-4 hover:bg-slate-50">
+              <div
+                key={point.id}
+                draggable
+                onDragStart={() => setDraggedPointId(point.id)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => handleDropPoint(point.id)}
+                onDragEnd={() => setDraggedPointId(null)}
+                className={`flex items-start gap-4 p-4 transition hover:bg-slate-50 ${
+                  draggedPointId === point.id ? 'bg-slate-50 opacity-60' : ''
+                }`}
+              >
+                <button
+                  type="button"
+                  className="mt-1 cursor-grab rounded-lg p-1 text-slate-300 transition hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
+                  title="Перетащить точку"
+                >
+                  <GripVertical className="h-5 w-5" />
+                </button>
+
                 <input
                   type="checkbox"
                   checked={selectedPoints.includes(point.id)}
@@ -260,15 +390,27 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
                   {point.contactPerson && <p className="text-sm text-slate-500">Контакт: {point.contactPerson}</p>}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleHidePoint(point)}
-                  className={dangerButtonClass}
-                  title="Убрать точку из списка"
-                >
-                  <Trash2 size={16} />
-                  Удалить
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEditForm(point)}
+                    className={secondaryButtonClass}
+                    title="Редактировать точку"
+                  >
+                    <Pencil size={16} />
+                    Редактировать
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleHidePoint(point)}
+                    className={dangerButtonClass}
+                    title="Убрать точку из списка"
+                  >
+                    <Trash2 size={16} />
+                    Удалить
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -277,7 +419,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
       <button
         type="button"
-        onClick={() => setShowForm(true)}
+        onClick={openCreateForm}
         className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
         title="Добавить точку"
         aria-label="Добавить точку"
