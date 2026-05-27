@@ -2,6 +2,10 @@ import { useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from 'lucide-react';
 import type { StatusFilter } from '../model/types';
 
+type CalendarDay =
+  | { key: string; day: null; date: null }
+  | { key: string; day: number; date: Date };
+
 const MONTHS = [
   'Январь',
   'Февраль',
@@ -80,7 +84,7 @@ export function TasksToolbar({
   const selectedDateKey = selectedDate || getTodayDate();
   const todayKey = getTodayDate();
 
-  const calendarDays = useMemo(() => {
+  const calendarDays = useMemo<CalendarDay[]>(() => {
     const year = visibleMonth.getFullYear();
     const month = visibleMonth.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -88,8 +92,8 @@ export function TasksToolbar({
     const mondayFirstOffset = firstDay === 0 ? 6 : firstDay - 1;
 
     return [
-      ...Array.from({ length: mondayFirstOffset }, (_, index) => ({ key: `empty-${index}`, day: null })),
-      ...Array.from({ length: daysInMonth }, (_, index) => {
+      ...Array.from({ length: mondayFirstOffset }, (_, index): CalendarDay => ({ key: `empty-${index}`, day: null, date: null })),
+      ...Array.from({ length: daysInMonth }, (_, index): CalendarDay => {
         const day = index + 1;
         const date = new Date(year, month, day);
         return { key: toDateKey(date), day, date };
@@ -189,7 +193,7 @@ export function TasksToolbar({
 
                       <div className="grid grid-cols-7 gap-1">
                         {calendarDays.map((item) => {
-                          if (!item.day || !item.date) {
+                          if (!item.date) {
                             return <div key={item.key} className="h-9" />;
                           }
 
