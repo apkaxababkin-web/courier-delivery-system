@@ -4,14 +4,14 @@ import { createServer } from "http";
 import net from "net";
 import path from "path";
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
 import { createContext } from "./context";
-import { mails } from "../../drizzle/schema";
+import { mails, requests, tasks, taskStatusHistory } from "../../drizzle/schema";
 import * as db from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -38,6 +38,10 @@ function trpcJson(data: unknown) {
 }
 function trpcBatchJson(data: unknown) {
   return [trpcJson(data)];
+}
+
+function sendTrpcResponse(res: express.Response, isBatch: boolean, data: unknown) {
+  res.json(isBatch ? trpcBatchJson(data) : trpcJson(data));
 }
 
 function unwrapTrpcInput(item: any): Record<string, unknown> {
@@ -181,6 +185,131 @@ async function startServer() {
     } catch (error) {
       console.error("[manager.createCourier] failed", error);
       res.status(500).json({ error: { message: "Failed to create courier" } });
+    }
+  });
+
+
+  app.post("/api/trpc/requests.update", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const { input, isBatch } = inputFromBody(req.body);
+      const id = Number(input.id);
+      if (!id) throw new Error("id is required");
+
+      const allowedTextFields = [
+        "senderName",
+        "senderPhone",
+        "senderAddress",
+        "recipientName",
+        "recipientPhone",
+        "recipientAddress",
+        "deliveryAddress",
+        "deliveryCity",
+        "packageDescription",
+        "specialInstructions",
+        "comments",
+        "items",
+        "callReason",
+        "tcName",
+        "tcAddress",
+        "trackingNumber",
+        "description",
+        "deliveryTimeFrom",
+        "deliveryTimeTo",
+      ] as const;
+
+      const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+      for (const field of allowedTextFields) {
+        if (Object.prototype.hasOwnProperty.call(input, field)) {
+          const value = input[field];
+          updateData[field] = value == null ? null : String(value);
+        }
+      }
+
+      if (input.requestType) updateData.requestType = input.requestType;
+      if (input.packageType) updateData.packageType = input.packageType;
+      if (input.paymentMethod) updateData.paymentMethod = input.paymentMethod;
+
+      if (Object.prototype.hasOwnProperty.call(input, "paymentAmount")) {
+        updateData.paymentAmount = input.paymentAmount == null || input.paymentAmount === "" ? null : String(input.paymentAmount);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(input, "placesCount")) {
+        updateData.placesCount = input.placesCount == null || input.placesCount === "" ? null : Number(input.placesCount);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(input, "estimatedMinutes")) {
+        updateData.estimatedMinutes = input.estimatedMinutes == null || input.estimatedMinutes === "" ? null : Number(input.estimatedMinutes);
+      }
+
+      const updated = await conn.update(requests).set(updateData as any).where(eq(requests.id, id)).returning();
+      if (!updated[0]) throw new Error("Request not found");
+
+      const request = updated[0] as any;
+      const marker = `[request:${id}]`;
+
+      await conn.update(tasks)
+        .set({
+          recipientName: String(request.recipientName || request.senderName || "Получатель не указан"),
+          recipientPhone: String(request.recipientPhone || request.senderPhone || ""),
+          deliveryAddress: String(request.deliveryAddress || request.recipientAddress || request.senderAddress || request.tcAddress || "Адрес не указан"),
+          senderName: request.senderName || request.senderCompany || request.tcName || null,
+          senderAddress: request.senderAddress || request.tcAddress || null,
+          senderPhone: request.senderPhone || null,
+          packageDescription: request.packageDescription || request.description || request.callReason || null,
+          placesCount: request.placesCount ?? 1,
+          deliveryTimeFrom: request.deliveryTimeFrom || null,
+          deliveryTimeTo: request.deliveryTimeTo || null,
+          specialInstructions: request.specialInstructions || null,
+          comments: [marker, request.description, request.callReason, request.comments, request.specialInstructions].filter(Boolean).join("\\n"),
+          items: request.items || null,
+          updatedAt: new Date(),
+        })
+        .where(sql`${tasks.comments} like ${`%${marker}%`}`);
+
+      sendTrpcResponse(res, isBatch, { success: true, request });
+    } catch (error) {
+      console.error("[requests.update] failed", error);
+      const message = error instanceof Error ? error.message : "Failed to update request";
+      res.status(500).json({ error: { message } });
+    }
+  });
+
+  app.post("/api/trpc/requests.delete", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const { input, isBatch } = inputFromBody(req.body);
+      const id = Number(input.id);
+      if (!id) throw new Error("id is required");
+
+      const marker = `[request:${id}]`;
+
+      await conn.transaction(async (tx: any) => {
+        const linkedTasks = await tx
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(sql`${tasks.comments} like ${`%${marker}%`}`);
+
+        const taskIds = linkedTasks.map((task: { id: number }) => task.id);
+
+        if (taskIds.length > 0) {
+          await tx.delete(taskStatusHistory).where(inArray(taskStatusHistory.taskId, taskIds));
+          await tx.delete(tasks).where(inArray(tasks.id, taskIds));
+        }
+
+        await tx.delete(requests).where(eq(requests.id, id));
+      });
+
+      sendTrpcResponse(res, isBatch, { success: true });
+    } catch (error) {
+      console.error("[requests.delete] failed", error);
+      const message = error instanceof Error ? error.message : "Failed to delete request";
+      res.status(500).json({ error: { message } });
     }
   });
 

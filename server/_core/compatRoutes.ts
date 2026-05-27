@@ -104,7 +104,9 @@ async function tasksWithRequestType<T extends Pick<Task, "comments">>(
     .from(requests)
     .where(inArray(requests.id, requestIds));
 
-  const requestTypeMap = new Map(requestRows.map((request) => [request.id, request.requestType]));
+  const requestTypeMap = new Map<number, DeliveryRequest["requestType"]>(
+    requestRows.map((request: Pick<DeliveryRequest, "id" | "requestType">) => [request.id, request.requestType])
+  );
 
   return taskList.map((task) => {
     const requestId = requestIdFromTask(task);
@@ -201,8 +203,13 @@ async function pickupFeedbackSummary() {
     conn.select({ id: sberbankPickupPoints.id, name: sberbankPickupPoints.name, address: sberbankPickupPoints.address }).from(sberbankPickupPoints),
   ]);
 
-  const hemotestPointMap = new Map(hemotestPoints.map((point: { id: number; name: string; address: string }) => [point.id, point]));
-  const sberbankPointMap = new Map(sberbankPoints.map((point: { id: number; name: string; address: string }) => [point.id, point]));
+  type PickupPointSummary = { id: number; name: string; address: string };
+  const hemotestPointMap = new Map<number, PickupPointSummary>(
+    (hemotestPoints as PickupPointSummary[]).map((point) => [point.id, point])
+  );
+  const sberbankPointMap = new Map<number, PickupPointSummary>(
+    (sberbankPoints as PickupPointSummary[]).map((point) => [point.id, point])
+  );
 
   const hemotestItems = hemotestRows.map((row: any) => {
     const point = hemotestPointMap.get(row.pointId);
@@ -238,12 +245,12 @@ async function pickupFeedbackSummary() {
     date,
     hemotest: {
       total: hemotestItems.length,
-      picked: hemotestItems.filter((item) => item.isPicked).length,
+      picked: hemotestItems.filter((item: { isPicked: boolean }) => item.isPicked).length,
       items: hemotestItems,
     },
     sberbank: {
       total: sberbankItems.length,
-      picked: sberbankItems.filter((item) => item.isPicked).length,
+      picked: sberbankItems.filter((item: { isPicked: boolean }) => item.isPicked).length,
       items: sberbankItems,
     },
   };

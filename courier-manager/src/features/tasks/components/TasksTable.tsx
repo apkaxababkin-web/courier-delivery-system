@@ -1,4 +1,4 @@
-import { FileText, Loader2 } from 'lucide-react';
+import { FileText, Loader2, Trash2 } from 'lucide-react';
 import type { Request } from '../model/types';
 import { getStatusLabel, getStatusBadgeClass, getStatusIcon } from '../model/stats';
 
@@ -12,10 +12,22 @@ interface TasksTableProps {
   couriers?: CourierOption[];
   isLoading?: boolean;
   assigningRequestId?: number | null;
+  deletingRequestId?: number | null;
   onAssignCourier?: (requestId: number, courierId: number | null) => void;
+  onOpenRequest?: (request: Request, displayNumber: number) => void;
+  onDeleteRequest?: (request: Request, displayNumber: number) => void;
 }
 
-export function TasksTable({ requests, couriers = [], isLoading, assigningRequestId = null, onAssignCourier }: TasksTableProps) {
+export function TasksTable({
+  requests,
+  couriers = [],
+  isLoading,
+  assigningRequestId = null,
+  deletingRequestId = null,
+  onAssignCourier,
+  onOpenRequest,
+  onDeleteRequest,
+}: TasksTableProps) {
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -79,69 +91,84 @@ export function TasksTable({ requests, couriers = [], isLoading, assigningReques
           </thead>
 
           <tbody className="divide-y divide-slate-100">
-            {requests.map((request, index) => (
-              <tr key={request.id} className="group transition-colors hover:bg-slate-50/80">
-                <td className="whitespace-nowrap px-5 py-4 align-middle text-sm font-semibold text-slate-950">
-                  #{index + 1}
-                </td>
+            {requests.map((request, index) => {
+              const displayNumber = index + 1;
+              const isDeleting = deletingRequestId === request.id;
 
-                <td className="whitespace-nowrap px-5 py-4 align-middle">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusBadgeClass(
-                      request.status
-                    )}`}
-                  >
-                    {getStatusIcon(request.status)}
-                    {getStatusLabel(request.status)}
-                  </span>
-                </td>
+              return (
+                <tr
+                  key={request.id}
+                  onClick={() => onOpenRequest?.(request, displayNumber)}
+                  className="group cursor-pointer transition-colors hover:bg-slate-50/80"
+                >
+                  <td className="whitespace-nowrap px-5 py-4 align-middle text-sm font-semibold text-slate-950">
+                    #{displayNumber}
+                  </td>
 
-                <td className="px-5 py-4 align-middle">
-                  <div className="font-medium text-slate-800">{request.senderName || 'N/A'}</div>
-                  {request.recipientName && (
-                    <div className="mt-1 text-xs text-slate-500">Получатель: {request.recipientName}</div>
-                  )}
-                </td>
+                  <td className="whitespace-nowrap px-5 py-4 align-middle">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusBadgeClass(
+                        request.status
+                      )}`}
+                    >
+                      {getStatusIcon(request.status)}
+                      {getStatusLabel(request.status)}
+                    </span>
+                  </td>
 
-                <td className="px-5 py-4 align-middle">
-                  <div className="max-w-md truncate text-slate-600" title={request.deliveryAddress || 'N/A'}>
-                    {request.deliveryAddress || 'N/A'}
-                  </div>
-                </td>
+                  <td className="px-5 py-4 align-middle">
+                    <div className="font-medium text-slate-800">{request.senderName || 'N/A'}</div>
+                    {request.recipientName && (
+                      <div className="mt-1 text-xs text-slate-500">Получатель: {request.recipientName}</div>
+                    )}
+                  </td>
 
-                <td className="px-5 py-4 align-middle">
-                  <select
-                    value={request.courierId ?? ''}
-                    disabled={!onAssignCourier || assigningRequestId === request.id}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      onAssignCourier?.(request.id, value ? Number(value) : null);
-                    }}
-                    className="h-9 w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm outline-none transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <option value="">Не назначен</option>
-                    {couriers.map((courier) => (
-                      <option key={courier.id} value={courier.id}>
-                        {courier.name} #{courier.id}
-                      </option>
-                    ))}
-                  </select>
-                  {request.courierName && (
-                    <div className="mt-1 text-xs text-slate-400">Сейчас: {request.courierName}</div>
-                  )}
-                </td>
+                  <td className="px-5 py-4 align-middle">
+                    <div className="max-w-md truncate text-slate-600" title={request.deliveryAddress || 'N/A'}>
+                      {request.deliveryAddress || 'N/A'}
+                    </div>
+                  </td>
 
-                <td className="whitespace-nowrap px-5 py-4 align-middle text-slate-500">
-                  {request.createdAt ? new Date(request.createdAt).toLocaleDateString('ru-RU') : 'N/A'}
-                </td>
+                  <td className="px-5 py-4 align-middle" onClick={(event) => event.stopPropagation()}>
+                    <select
+                      value={request.courierId ?? ''}
+                      disabled={!onAssignCourier || assigningRequestId === request.id}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        onAssignCourier?.(request.id, value ? Number(value) : null);
+                      }}
+                      className="h-9 w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm outline-none transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <option value="">Не назначен</option>
+                      {couriers.map((courier) => (
+                        <option key={courier.id} value={courier.id}>
+                          {courier.name} #{courier.id}
+                        </option>
+                      ))}
+                    </select>
+                    {request.courierName && (
+                      <div className="mt-1 text-xs text-slate-400">Сейчас: {request.courierName}</div>
+                    )}
+                  </td>
 
-                <td className="whitespace-nowrap px-5 py-4 text-right align-middle">
-                  <button className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 opacity-100 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 sm:opacity-0 sm:group-hover:opacity-100">
-                    Открыть
-                  </button>
-                </td>
-              </tr>
-            ))}
+                  <td className="whitespace-nowrap px-5 py-4 align-middle text-slate-500">
+                    {request.createdAt ? new Date(request.createdAt).toLocaleDateString('ru-RU') : 'N/A'}
+                  </td>
+
+                  <td className="whitespace-nowrap px-5 py-4 text-right align-middle" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => onDeleteRequest?.(request, displayNumber)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 opacity-100 shadow-sm transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-60 sm:opacity-0 sm:group-hover:opacity-100"
+                    >
+                      {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      Удалить
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -6,6 +6,7 @@ import {
   createRequest,
   parseRequestWithAI,
   assignRequestCourier,
+  post,
 } from '../../lib/api';
 import { useManagerRealtime } from '../../lib/useManagerRealtime';
 import { TasksStats } from './components/TasksStats';
@@ -14,6 +15,7 @@ import { TasksTable } from './components/TasksTable';
 import { EmptyState } from './components/EmptyState';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { AiTaskModal } from './components/modals/AiTaskModal';
+import { EditRequestModal } from './components/modals/EditRequestModal';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
 import { getStatistics } from './model/stats';
 import { getFilteredRequests } from './model/filters';
@@ -86,7 +88,11 @@ export default function TasksPage() {
   const [showAiModal, setShowAiModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isParsingAi, setIsParsingAi] = useState(false);
+  const [isUpdatingRequest, setIsUpdatingRequest] = useState(false);
   const [assigningRequestId, setAssigningRequestId] = useState<number | null>(null);
+  const [deletingRequestId, setDeletingRequestId] = useState<number | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
+  const [selectedRequestNumber, setSelectedRequestNumber] = useState<number | null>(null);
   const { snapshot: realtimeSnapshot } = useManagerRealtime();
 
   useEffect(() => { loadData(); }, []);
@@ -195,6 +201,47 @@ export default function TasksPage() {
     }
   };
 
+
+  const handleOpenRequest = (request: Request, displayNumber: number) => {
+    setSelectedRequest(request);
+    setSelectedRequestNumber(displayNumber);
+  };
+
+  const handleUpdateRequest = async (requestId: number, data: Partial<Request>) => {
+    try {
+      setIsUpdatingRequest(true);
+      await post('/api/trpc/requests.update', { id: requestId, ...data });
+      setSelectedRequest(null);
+      setSelectedRequestNumber(null);
+      await loadData(false);
+    } catch (error) {
+      console.error('Failed to update request:', error);
+      alert(`Ошибка при сохранении заявки: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      setIsUpdatingRequest(false);
+    }
+  };
+
+  const handleDeleteRequest = async (request: Request, displayNumber: number) => {
+    const label = `#${displayNumber}${request.senderName ? ` от ${request.senderName}` : ''}`;
+    if (!window.confirm(`Удалить заявку ${label}? Она исчезнет и у назначенного курьера.`)) return;
+
+    try {
+      setDeletingRequestId(request.id);
+      await post('/api/trpc/requests.delete', { id: request.id });
+      if (selectedRequest?.id === request.id) {
+        setSelectedRequest(null);
+        setSelectedRequestNumber(null);
+      }
+      await loadData(false);
+    } catch (error) {
+      console.error('Failed to delete request:', error);
+      alert(`Ошибка при удалении заявки: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      setDeletingRequestId(null);
+    }
+  };
+
   const handleAiParse = async (text: string) => {
     try {
       setIsParsingAi(true);
@@ -236,7 +283,7 @@ export default function TasksPage() {
         <>
           <TasksStats stats={stats} selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} />
           <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={setSelectedDate} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
-          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} onAssignCourier={handleAssignCourier} />}
+          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
       ) : (
         <div className="max-w-6xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -302,6 +349,7 @@ export default function TasksPage() {
       )}
 
       <CreateTaskModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} />
+      <EditRequestModal request={selectedRequest} displayNumber={selectedRequestNumber} isOpen={Boolean(selectedRequest)} isSaving={isUpdatingRequest} isDeleting={Boolean(deletingRequestId)} onClose={() => { setSelectedRequest(null); setSelectedRequestNumber(null); }} onSave={handleUpdateRequest} onDelete={handleDeleteRequest} />
       <AiTaskModal isOpen={showAiModal} onClose={() => setShowAiModal(false)} onSubmit={handleAiParse} isLoading={isParsingAi} />
     </div>
   );

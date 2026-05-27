@@ -1453,12 +1453,12 @@ export async function updateRequestStatus(id: number, status: string): Promise<v
 /**
  * Assign courier to request
  */
-export async function assignRequestCourier(id: number, courierId: number): Promise<void> {
+export async function assignRequestCourier(id: number, courierId: number | null): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db
     .update(requests)
-    .set({ courierId, status: "assigned" as any })
+    .set({ courierId, status: courierId ? "assigned" as any : "pending" as any })
     .where(eq(requests.id, id));
 }
 
