@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, CalendarDays, CheckCircle2, Landmark, MapPin, PackageCheck } from 'lucide-react';
+import { Activity, CalendarDays, CheckCircle2, Landmark, MapPin } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -45,6 +45,54 @@ const API_BASE = '/api/trpc';
 const API_URL = import.meta.env.VITE_API_URL || '';
 const weekdayNames: Record<number, string> = { 1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг', 5: 'Пятница' };
 
+
+
+function OperationCompletionProgress({
+  completed,
+  total,
+}: {
+  completed: number;
+  total: number;
+}) {
+  const size = 20;
+  const stroke = 2.5;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = total > 0 ? completed / total : 0;
+  const dashOffset = circumference * (1 - progress);
+  const isDone = total > 0 && completed === total;
+
+  return (
+    <div className="inline-flex h-9 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600 shadow-sm">
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="rgb(226 232 240)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={isDone ? 'rgb(16 185 129)' : 'rgb(100 116 139)'}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          className="transition-all duration-500 ease-out"
+        />
+      </svg>
+
+      <span className={isDone ? 'text-emerald-600' : 'text-slate-600'}>
+        {completed}/{total} забрано
+      </span>
+    </div>
+  );
+}
 
 function getBusinessWeekdayFromDate(dateValue: string) {
   if (!dateValue) return getTodayBusinessWeekday();
@@ -371,10 +419,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
               <p className="mt-1 text-sm text-slate-500">Операционный список сборов: точка, адрес, курьер и факт забора.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <span className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">
-                <PackageCheck className="h-4 w-4 text-slate-400" />
-                {pickedCount}/{flattenedPoints.length} забрано
-              </span>
+              <OperationCompletionProgress completed={pickedCount} total={flattenedPoints.length} />
             </div>
           </div>
 
