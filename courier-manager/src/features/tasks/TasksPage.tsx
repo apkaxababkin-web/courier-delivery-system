@@ -80,8 +80,7 @@ export default function TasksPage() {
   const [hemotestDate, setHemotestDate] = useState(getTodayDate());
   const [sberbankDay, setSberbankDay] = useState(getTodayBusinessWeekday());
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -154,7 +153,7 @@ export default function TasksPage() {
     }
   };
 
-  const filteredRequests = getFilteredRequests(requests, selectedStatus, dateFrom, dateTo, searchQuery);
+  const filteredRequests = getFilteredRequests(requests, selectedStatus, selectedDate, searchQuery);
   const stats = getStatistics(requests);
   const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
@@ -186,8 +185,7 @@ export default function TasksPage() {
       setShowCreateModal(false);
       setOperationMode('requests');
       setSelectedStatus('all');
-      setDateFrom('');
-      setDateTo('');
+      setSelectedDate(getTodayDate());
       await loadData();
     } catch (error) {
       console.error('Failed to create task:', error);
@@ -237,7 +235,7 @@ export default function TasksPage() {
       {operationMode === 'requests' ? (
         <>
           <TasksStats stats={stats} selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} />
-          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} dateFrom={dateFrom} onDateFromChange={setDateFrom} dateTo={dateTo} onDateToChange={setDateTo} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
+          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={setSelectedDate} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} />
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateModal(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} onAssignCourier={handleAssignCourier} />}
         </>
       ) : (

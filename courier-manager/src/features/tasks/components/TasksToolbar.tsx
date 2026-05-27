@@ -1,13 +1,22 @@
-import { CalendarDays, Plus, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { CalendarDays, Plus, Search, Sparkles } from 'lucide-react';
 import type { StatusFilter } from '../model/types';
+
+
+function formatDateLabel(date: string) {
+  if (!date) return 'Выбрать дату';
+
+  return new Date(date).toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
 
 interface TasksToolbarProps {
   selectedStatus: StatusFilter;
   onStatusChange: (status: StatusFilter) => void;
-  dateFrom: string;
-  onDateFromChange: (date: string) => void;
-  dateTo: string;
-  onDateToChange: (date: string) => void;
+  selectedDate: string;
+  onDateChange: (date: string) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onCreateClick: () => void;
@@ -15,10 +24,8 @@ interface TasksToolbarProps {
 }
 
 export function TasksToolbar({
-  dateFrom,
-  onDateFromChange,
-  dateTo,
-  onDateToChange,
+  selectedDate,
+  onDateChange,
   searchQuery,
   onSearchChange,
   onCreateClick,
@@ -43,32 +50,16 @@ export function TasksToolbar({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
+                <label className="relative inline-flex h-11 cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white">
                   <CalendarDays className="h-4 w-4 text-slate-400" />
-
+                  <span>{formatDateLabel(selectedDate)}</span>
                   <input
                     type="date"
-                    value={dateFrom}
-                    onChange={(e) => onDateFromChange(e.target.value)}
-                    className="bg-transparent text-sm text-slate-600 outline-none"
+                    value={selectedDate}
+                    onChange={(e) => onDateChange(e.target.value)}
+                    className="absolute inset-0 cursor-pointer opacity-0"
                   />
-                </div>
-
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
-                  <CalendarDays className="h-4 w-4 text-slate-400" />
-
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => onDateToChange(e.target.value)}
-                    className="bg-transparent text-sm text-slate-600 outline-none"
-                  />
-                </div>
-
-                <button className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-950">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  Фильтры
-                </button>
+                </label>
               </div>
             </div>
 

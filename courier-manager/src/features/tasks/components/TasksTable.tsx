@@ -79,10 +79,10 @@ export function TasksTable({ requests, couriers = [], isLoading, assigningReques
           </thead>
 
           <tbody className="divide-y divide-slate-100">
-            {requests.map((request) => (
+            {requests.map((request, index) => (
               <tr key={request.id} className="group transition-colors hover:bg-slate-50/80">
                 <td className="whitespace-nowrap px-5 py-4 align-middle text-sm font-semibold text-slate-950">
-                  #{request.id}
+                  #{index + 1}
                 </td>
 
                 <td className="whitespace-nowrap px-5 py-4 align-middle">
