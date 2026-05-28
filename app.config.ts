@@ -118,7 +118,7 @@ const config: ExpoConfig = {
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://couriermig.ru",
     eas: {
-      projectId: "d1597d65-3e28-43bf-b893-7908cbf8d39c",
+      projectId: "10be0842-0c9b-4f06-a91a-2e39c1e0be3e",
     },
   },
 };
