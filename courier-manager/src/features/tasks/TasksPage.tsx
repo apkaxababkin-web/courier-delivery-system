@@ -32,6 +32,7 @@ type OperationPoint = {
   address: string;
   phone?: string;
   contactPerson?: string;
+  isPicked?: boolean;
   pickedAt?: string;
   pickedBy?: string;
   courierName?: string;
@@ -146,7 +147,7 @@ function getTodayBusinessWeekday() { const day = new Date().getDay(); return day
 function getPickupMeta(point: OperationPoint) {
   const pickedAt = point.pickedAt || point.completedAt;
   const pickedBy = point.pickedBy || point.courierName;
-  const isPicked = Boolean(pickedAt || pickedBy);
+  const isPicked = Boolean(point.isPicked || pickedAt || pickedBy);
   if (!isPicked) return { isPicked, label: 'Не забран', detail: '' };
   const time = pickedAt ? new Date(pickedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'время не указано';
   return { isPicked, label: 'Забран', detail: `${pickedBy || 'Курьер'} • ${time}` };
@@ -506,7 +507,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                         </td>
 
                         <td className="whitespace-nowrap px-5 py-4 align-middle">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${pickup.isPicked ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${pickup.isPicked ? 'border-emerald-500 bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' : 'border-slate-200 bg-white text-slate-600'}`}>
                             {pickup.isPicked && <CheckCircle2 className="h-3.5 w-3.5" />}
                             {pickup.label}
                           </span>

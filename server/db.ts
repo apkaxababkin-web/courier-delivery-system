@@ -1252,9 +1252,25 @@ export async function getHemotestPickupListWithItems(listId: number): Promise<{
     .innerJoin(hemotestPickupPoints, eq(hemotestListItems.pointId, hemotestPickupPoints.id))
     .where(eq(hemotestListItems.listId, listId));
 
+  const pickups = await db
+    .select()
+    .from(hemotestPickups)
+    .leftJoin(couriers, eq(hemotestPickups.courierId, couriers.id))
+    .where(eq(hemotestPickups.date, list[0].date));
+
   return {
     list: list[0],
-    items: items.map((i: { hemotestListItems: HemotestListItem; hemotestPickupPoints: HemotestPickupPoint }) => i.hemotestPickupPoints),
+    items: items.map((i: { hemotestListItems: HemotestListItem; hemotestPickupPoints: HemotestPickupPoint }) => {
+      const pickup = pickups.find((p) => p.hemotestPickups.pointId === i.hemotestPickupPoints.id);
+
+      return {
+        ...i.hemotestPickupPoints,
+        isPicked: pickup?.hemotestPickups.isPicked ?? false,
+        pickedAt: pickup?.hemotestPickups.pickedAt ?? null,
+        courierId: pickup?.hemotestPickups.courierId ?? null,
+        courierName: pickup?.couriers?.name ?? null,
+      };
+    }),
   };
 }
 
@@ -1363,9 +1379,25 @@ export async function getSberbankPickupListWithItems(listId: number): Promise<{
     .innerJoin(sberbankPickupPoints, eq(sberbankListItems.pointId, sberbankPickupPoints.id))
     .where(eq(sberbankListItems.listId, listId));
 
+  const pickups = await db
+    .select()
+    .from(sberbankPickups)
+    .leftJoin(couriers, eq(sberbankPickups.courierId, couriers.id))
+    .where(eq(sberbankPickups.date, list[0].date));
+
   return {
     list: list[0],
-    items: items.map((i: { sberbankListItems: SberbankListItem; sberbankPickupPoints: SberbankPickupPoint }) => i.sberbankPickupPoints),
+    items: items.map((i: { sberbankListItems: SberbankListItem; sberbankPickupPoints: SberbankPickupPoint }) => {
+      const pickup = pickups.find((p) => p.sberbankPickups.pointId === i.sberbankPickupPoints.id);
+
+      return {
+        ...i.sberbankPickupPoints,
+        isPicked: pickup?.sberbankPickups.isPicked ?? false,
+        pickedAt: pickup?.sberbankPickups.pickedAt ?? null,
+        courierId: pickup?.sberbankPickups.courierId ?? null,
+        courierName: pickup?.couriers?.name ?? null,
+      };
+    }),
   };
 }
 
