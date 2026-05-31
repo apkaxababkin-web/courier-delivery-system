@@ -10,6 +10,25 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
+
+async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
+  try {
+    const couriers = await db.getAllCouriers();
+    const targets = couriers.filter((courier) => courier.pushToken?.startsWith("ExponentPushToken"));
+
+    console.log("[PUSH_ALL] targets", targets.length, title);
+
+    const results = await Promise.allSettled(
+      targets.map((courier) => sendExpoPush(courier.pushToken, title, body, data)),
+    );
+
+    const failed = results.filter((result) => result.status === "rejected").length;
+    if (failed > 0) console.warn("[PUSH_ALL] failed", failed, "of", targets.length);
+  } catch (error) {
+    console.error("[PUSH_ALL] failed", error);
+  }
+}
+
 // ─── Manager JWT helpers ─────────────────────────────────────────────────────
 const MANAGER_JWT_SECRET = new TextEncoder().encode(
   process.env.MANAGER_JWT_SECRET ?? "manager-secret-key-change-in-production"
@@ -624,7 +643,12 @@ export const appRouter = router({
         contactPerson: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        return await db.createHemotestPoint(input);
+        const point = await db.createHemotestPoint(input);
+        await sendPushToAllCouriers("Гемотест", "Добавлена новая точка сбора", {
+          type: "hemotest_point_created",
+          pointId: point.id,
+        });
+        return point;
       }),
 
     createList: publicProcedure
@@ -634,7 +658,12 @@ export const appRouter = router({
         pointIds: z.array(z.number()),
       }))
       .mutation(async ({ input }) => {
-        return await db.createHemotestPickupList(input);
+        const list = await db.createHemotestPickupList(input);
+        await sendPushToAllCouriers("Гемотест", "Добавлен новый список сбора", {
+          type: "hemotest_list_created",
+          listId: list.id,
+        });
+        return list;
       }),
 
     listsForDate: publicProcedure
@@ -712,7 +741,12 @@ export const appRouter = router({
         contactPerson: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        return await db.createSberbankPoint(input);
+        const point = await db.createSberbankPoint(input);
+        await sendPushToAllCouriers("Сбербанк", "Добавлена новая точка сбора", {
+          type: "sberbank_point_created",
+          pointId: point.id,
+        });
+        return point;
       }),
 
     scheduleForDay: publicProcedure
@@ -738,7 +772,12 @@ export const appRouter = router({
         pointIds: z.array(z.number()),
       }))
       .mutation(async ({ input }) => {
-        return await db.createSberbankPickupList(input);
+        const list = await db.createSberbankPickupList(input);
+        await sendPushToAllCouriers("Сбербанк", "Добавлен новый список сбора", {
+          type: "sberbank_list_created",
+          listId: list.id,
+        });
+        return list;
       }),
 
     listsForDay: publicProcedure
@@ -958,6 +997,10 @@ export const appRouter = router({
         const createdByUserId = ctx.user?.id ?? 0;
         const id = await db.createRequest({ ...input, createdByUserId });
         await syncTaskForRequestId(id);
+        await sendPushToAllCouriers("Новая заявка", "Поступила новая заявка", {
+          type: "new_request_available",
+          requestId: id,
+        });
         broadcastLive("requests_changed", { requestId: id });
         broadcastLive("tasks_changed", { requestId: id });
         return { id, success: true };
