@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
+import { sendExpoPush } from "./expoPush";
 
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -884,6 +885,43 @@ export function registerCompatRoutes(app: Express) {
       if (!id) throw new Error("id is required");
       const updated = await conn.update(requests).set({ courierId, status: courierId ? "assigned" : "pending", updatedAt: new Date() }).where(eq(requests.id, id)).returning();
       if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
+
+      if (courierId && updated[0]) {
+        try {
+          const courier = await db.getCourierById(courierId);
+          const request = updated[0] as DeliveryRequest;
+
+          console.log("[PUSH] compat request", id);
+          console.log("[PUSH] compat courier", courier?.id);
+          console.log("[PUSH] compat token exists", !!courier?.pushToken);
+
+          if (courier?.pushToken) {
+            const address =
+              request.deliveryAddress ||
+              request.recipientAddress ||
+              request.senderAddress ||
+              "Адрес не указан";
+
+            console.log("[PUSH] compat sending to", courier.pushToken.slice(0, 25));
+
+            await sendExpoPush(
+              courier.pushToken,
+              "Новая заявка",
+              `${request.recipientName || "Клиент"} • ${address}`,
+              {
+                type: "new_request",
+                requestId: request.id,
+              },
+            );
+
+            console.log("[PUSH] compat sent successfully");
+          } else {
+            console.log("[PUSH] compat skipped no token");
+          }
+        } catch (e) {
+          console.error("[PUSH] compat failed", e);
+        }
+      }
 
       // Hard-sync the linked mobile task too. The task is linked by [request:ID] in comments.
       await conn.update(tasks)
