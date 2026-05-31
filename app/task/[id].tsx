@@ -408,8 +408,8 @@ export default function TaskDetailScreen() {
           </TouchableOpacity>
         </GlassCard>
 
-        <View style={{ gap: 8, marginTop: 2 }}>
-          <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ gap: 6, marginTop: 0 }}>
+          <View style={{ flexDirection: "row", gap: 6 }}>
             <ActionButton label="Отмена" onPress={() => handleSetStatus("cancelled")} disabled={isCompleted} muted active={isCancelled} />
             <ActionButton label="Перенос" onPress={() => setDatePickerVisible(true)} muted />
             <ActionButton label="В работе" onPress={() => handleSetStatus("in_progress")} disabled={isCompleted || isCancelled} muted active={isInProgress} />
@@ -533,12 +533,12 @@ function ActionButton({ label, onPress, disabled, muted, done, active }: { label
         borderColor,
         borderWidth: 1,
         borderRadius: 10,
-        paddingVertical: done ? 14 : 12,
+        paddingVertical: done ? 11 : 9,
         alignItems: "center" as const,
         opacity: disabled ? 0.45 : pressed ? 0.82 : 1,
       })}
     >
-      <Text style={{ color: textColor, fontWeight: "900", fontSize: done ? 15 : 13 }}>{label}</Text>
+      <Text style={{ color: textColor, fontWeight: "900", fontSize: done ? 13 : 12 }}>{label}</Text>
     </Pressable>
   );
 }
