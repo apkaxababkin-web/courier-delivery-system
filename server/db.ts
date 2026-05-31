@@ -1261,7 +1261,7 @@ export async function getHemotestPickupListWithItems(listId: number): Promise<{
   return {
     list: list[0],
     items: items.map((i: { hemotestListItems: HemotestListItem; hemotestPickupPoints: HemotestPickupPoint }) => {
-      const pickup = pickups.find((p) => p.hemotestPickups.pointId === i.hemotestPickupPoints.id);
+      const pickup = pickups.find((p: { hemotestPickups: HemotestPickup; couriers: Courier | null }) => p.hemotestPickups.pointId === i.hemotestPickupPoints.id);
 
       return {
         ...i.hemotestPickupPoints,
@@ -1388,7 +1388,7 @@ export async function getSberbankPickupListWithItems(listId: number): Promise<{
   return {
     list: list[0],
     items: items.map((i: { sberbankListItems: SberbankListItem; sberbankPickupPoints: SberbankPickupPoint }) => {
-      const pickup = pickups.find((p) => p.sberbankPickups.pointId === i.sberbankPickupPoints.id);
+      const pickup = pickups.find((p: { sberbankPickups: SberbankPickup; couriers: Courier | null }) => p.sberbankPickups.pointId === i.sberbankPickupPoints.id);
 
       return {
         ...i.sberbankPickupPoints,
