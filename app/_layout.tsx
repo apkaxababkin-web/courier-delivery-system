@@ -172,7 +172,7 @@ export default function RootLayout() {
 
     Notifications.setNotificationChannelAsync("default", {
       name: "МИГ Courier",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#0A7EA4",
       sound: "default",
