@@ -45,6 +45,59 @@ function formatCreatedAt(value?: string | Date | null) {
   return `Создана: ${date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}, ${date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+function formatPaymentValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    paid: "Оплачено",
+    transfer: "Перевод",
+    cash: "Наличные",
+    terminal: "Терминал",
+    qr: "QR-код",
+    unpaid: "Не оплачено",
+    not_paid: "Не оплачено",
+    pending: "Не оплачено",
+  };
+
+  return labels[normalized] || value.trim();
+}
+
+function splitTaskComment(comments?: string | null, specialInstructions?: string | null) {
+  const lines = (comments || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let paymentMethod = "";
+  let paymentAmount = "";
+  const visibleLines: string[] = [];
+
+  for (const line of lines) {
+    if (/^\[request:\d+\]$/i.test(line)) continue;
+    if (/^Тип заявки:/i.test(line)) continue;
+
+    const paymentMatch = line.match(/^Оплата:\s*(.+)$/i);
+    if (paymentMatch) {
+      paymentMethod = paymentMatch[1].trim();
+      continue;
+    }
+
+    const amountMatch = line.match(/^Сумма:\s*(.+)$/i);
+    if (amountMatch) {
+      paymentAmount = amountMatch[1].trim();
+      continue;
+    }
+
+    visibleLines.push(line);
+  }
+
+  const comment = visibleLines.join("\n").trim() || (specialInstructions || "").trim();
+  const paymentLabel = paymentMethod
+    ? [formatPaymentValue(paymentMethod), paymentAmount].filter(Boolean).join(" · ")
+    : "";
+
+  return { comment, paymentLabel };
+}
+
 function GlassCard({ children, palette, colors, style }: { children: ReactNode; palette: Palette; colors: ReturnType<typeof useColors>; style?: object }) {
   return (
     <View
@@ -260,7 +313,9 @@ export default function TaskDetailScreen() {
   const isCompleted = task.status === "completed";
   const isCancelled = task.status === "cancelled";
   const isInProgress = task.status === "in_progress";
-  const taskComment = task.comments || task.specialInstructions || "—";
+  const parsedTaskInfo = splitTaskComment(task.comments, task.specialInstructions);
+  const taskComment = parsedTaskInfo.comment || "—";
+  const paymentStatusLabel = parsedTaskInfo.paymentLabel;
   const courierComment = task.courierComments || "";
 
   return (
@@ -322,6 +377,13 @@ export default function TaskDetailScreen() {
           <SectionTitle colors={colors}>Комментарий заявки</SectionTitle>
           <Text style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "700" }}>{taskComment}</Text>
         </GlassCard>
+
+        {paymentStatusLabel ? (
+          <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
+            <SectionTitle colors={colors}>Статус оплаты</SectionTitle>
+            <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "800" }}>{paymentStatusLabel}</Text>
+          </GlassCard>
+        ) : null}
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
           <SectionTitle colors={colors}>Комментарий курьера</SectionTitle>
