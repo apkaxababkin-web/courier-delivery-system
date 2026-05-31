@@ -327,7 +327,6 @@ export default function TaskDetailScreen() {
           </TouchableOpacity>
           <View style={{ alignItems: "center" }}>
             <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>#{getDisplayRequestId(task)}</Text>
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2, fontWeight: "700" }}>{formatCreatedAt((task as any).createdAt)}</Text>
           </View>
           <StatusBadge status={task.status} />
         </View>
@@ -416,6 +415,9 @@ export default function TaskDetailScreen() {
             <ActionButton label="В работе" onPress={() => handleSetStatus("in_progress")} disabled={isCompleted || isCancelled} muted active={isInProgress} />
           </View>
           <ActionButton label="Выполнено" onPress={() => handleSetStatus("completed")} disabled={isCancelled} done active={isCompleted} />
+          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textAlign: "center", marginTop: 2 }}>
+            {formatCreatedAt((task as any).createdAt)}
+          </Text>
         </View>
       </ScrollView>
 
