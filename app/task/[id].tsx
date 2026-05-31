@@ -333,19 +333,19 @@ export default function TaskDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: 24, gap: 10, backgroundColor: colors.background }} showsVerticalScrollIndicator={false}>
-        <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
+        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
           <SectionTitle colors={colors}>Отправитель</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.senderName || "—"}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 3 }}>{task.senderName || "—"}</Text>
           <ClickableLine value={task.senderAddress} onPress={() => handleOpenMap(task.senderAddress)} />
-          <View style={{ height: 5 }} />
+          <View style={{ height: 3 }} />
           <ClickableLine value={task.senderPhone} onPress={() => handleCallPhone(task.senderPhone)} muted />
         </GlassCard>
 
-        <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
+        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
           <SectionTitle colors={colors}>Получатель</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.recipientName || "—"}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 3 }}>{task.recipientName || "—"}</Text>
           <ClickableLine value={task.deliveryAddress} onPress={() => handleOpenMap(task.deliveryAddress)} />
-          <View style={{ height: 5 }} />
+          <View style={{ height: 3 }} />
           <ClickableLine value={task.recipientPhone} onPress={() => handleCallPhone(task.recipientPhone)} muted />
         </GlassCard>
 
