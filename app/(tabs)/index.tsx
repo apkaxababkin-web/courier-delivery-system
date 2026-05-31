@@ -525,7 +525,7 @@ export default function TaskListScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             return (
             <TouchableOpacity
               activeOpacity={0.75}
@@ -543,7 +543,7 @@ export default function TaskListScreen() {
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <View style={{ flex: 1, paddingRight: 12, flexDirection: "row", alignItems: "center" }}>
                   <Text style={{ color: "#0F172A", fontSize: 14, fontWeight: "900" }}>
-                    {getDisplayRequestId(item)}
+                    {index + 1}
                   </Text>
                   {(() => {
                     const Icon = getTaskTypeIcon(item);
