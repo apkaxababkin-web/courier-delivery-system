@@ -43,6 +43,24 @@ function unwrapBatchInput(obj: Record<string, unknown>): Record<string, unknown>
   return obj;
 }
 
+async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
+  try {
+    const allCouriers = await db.getAllCouriers();
+    const targets = allCouriers.filter((courier) => courier.pushToken?.startsWith("ExponentPushToken"));
+
+    console.log("[PUSH_ALL] targets", targets.length, title);
+
+    await Promise.allSettled(
+      targets.map((courier) =>
+        sendExpoPush(courier.pushToken, title, body, data),
+      ),
+    );
+  } catch (e) {
+    console.error("[PUSH_ALL] failed", e);
+  }
+}
+
+
 function inputFrom(req: Request): Record<string, unknown> {
   const body = (req.body?.json ?? req.body ?? {}) as Record<string, unknown>;
   if (Object.keys(body).length > 0) return unwrapBatchInput(body);
@@ -853,6 +871,16 @@ export function registerCompatRoutes(app: Express) {
       const inserted = await conn.insert(requests).values(payload).returning();
       const request = inserted[0] as DeliveryRequest;
       const taskId = await syncTaskForRequest(request);
+
+      await sendPushToAllCouriers(
+        "Новая заявка",
+        "Появилась новая заявка",
+        {
+          type: "new_request_available",
+          requestId: request.id,
+        },
+      );
+
       broadcastLive("requests_changed");
       broadcastLive("tasks_changed");
       res.json(trpcBatchJson({ id: request.id, taskId, success: true }));
