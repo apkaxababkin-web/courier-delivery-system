@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import "@/global.css";
 import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
 import { Stack } from "expo-router";
@@ -77,8 +78,8 @@ function SessionValidator() {
         if (permission.status !== "granted") return;
 
         const projectId =
-          (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
-          undefined;
+          Constants.easConfig?.projectId ??
+          Constants.expoConfig?.extra?.eas?.projectId;
 
         if (!projectId) {
           console.log("[Session] Push token skipped: no projectId configured");
@@ -216,8 +217,8 @@ export default function RootLayout() {
         if (status !== "granted") return;
 
         const projectId =
-          (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
-          undefined;
+          Constants.easConfig?.projectId ??
+          Constants.expoConfig?.extra?.eas?.projectId;
         if (!projectId) {
           console.log("[App] Push token skipped: no projectId configured");
           return;

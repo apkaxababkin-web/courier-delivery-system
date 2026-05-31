@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
@@ -94,8 +95,8 @@ export default function ProfileModal() {
         if (permission.status !== "granted") return;
 
         const projectId =
-          (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_APP_ID) ||
-          undefined;
+          Constants.easConfig?.projectId ??
+          Constants.expoConfig?.extra?.eas?.projectId;
 
         if (!projectId) {
           console.log("[Profile] Push token skipped: no projectId configured");
