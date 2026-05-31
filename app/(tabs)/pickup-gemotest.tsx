@@ -89,9 +89,7 @@ export default function HemotestScreen() {
     const picked = item.isPicked;
     const pickedMeta = picked
       ? `${formatTime(item.pickedAt)}${item.courierName ? ` • ${item.courierName}` : ""}`
-      : selected
-        ? "ещё тап"
-        : "";
+      : "";
 
     return (
       <Pressable
@@ -115,9 +113,10 @@ export default function HemotestScreen() {
           <Text
             numberOfLines={1}
             ellipsizeMode="tail"
-            style={{ flex: 1, color: colors.foreground, fontSize: 13, lineHeight: 18, fontWeight: "800" }}
+            style={{ flex: 1, color: colors.foreground, fontSize: 13, lineHeight: 17 }}
           >
-            {item.name} • {item.address}
+            <Text style={{ fontWeight: "900" }}>{item.name}</Text>
+            <Text style={{ fontWeight: "500", color: colors.muted }}> • {item.address}</Text>
           </Text>
 
           {!!pickedMeta && (
@@ -146,11 +145,10 @@ export default function HemotestScreen() {
 
       <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, backgroundColor: colors.background }}>
         <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 12 }}>
-          <View>
-            <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Гемотест</Text>
-            <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4, fontWeight: "700" }}>Двойной тап по строке — отметить забор</Text>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>Гемотест</Text>
           </View>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: border, alignItems: "flex-end" }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, borderWidth: 1, borderColor: border, alignItems: "flex-end" }}>
             <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>Забрано</Text>
             <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900" }}>{pickedCount} из {pickupPoints.length}</Text>
           </View>
