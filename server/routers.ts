@@ -1001,12 +1001,18 @@ export const appRouter = router({
             const request = await db.getRequestById(input.id);
             const courier = await db.getCourierById(input.courierId);
 
+            console.log("[PUSH] request", input.id);
+            console.log("[PUSH] courier", courier?.id);
+            console.log("[PUSH] token exists", !!courier?.pushToken);
+
             if (request && courier?.pushToken) {
               const address =
                 request.deliveryAddress ||
                 request.recipientAddress ||
                 request.senderAddress ||
                 "Адрес не указан";
+
+              console.log("[PUSH] sending to", courier.pushToken.slice(0, 25));
 
               await sendExpoPush(
                 courier.pushToken,
@@ -1017,9 +1023,17 @@ export const appRouter = router({
                   requestId: request.id,
                 },
               );
+
+              console.log("[PUSH] sent successfully");
+            } else {
+              console.log("[PUSH] skipped", {
+                hasRequest: !!request,
+                hasCourier: !!courier,
+                hasToken: !!courier?.pushToken,
+              });
             }
           } catch (e) {
-            console.error("Failed to send request push", e);
+            console.error("[PUSH] failed", e);
           }
         }
 
