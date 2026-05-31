@@ -322,8 +322,8 @@ export default function TaskDetailScreen() {
     <ScreenContainer className="p-0">
       <View style={{ backgroundColor: colors.background, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <TouchableOpacity onPress={() => router.back()} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "800" }}>←</Text>
+          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={{ width: 54, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
+            <Text style={{ color: colors.foreground, fontSize: 26, fontWeight: "900" }}>←</Text>
           </TouchableOpacity>
           <View style={{ alignItems: "center" }}>
             <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>#{getDisplayRequestId(task)}</Text>
