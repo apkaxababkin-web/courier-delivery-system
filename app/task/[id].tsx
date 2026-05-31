@@ -350,27 +350,30 @@ export default function TaskDetailScreen() {
           <ClickableLine value={task.recipientPhone} onPress={() => handleCallPhone(task.recipientPhone)} muted />
         </GlassCard>
 
-        <GlassCard palette={palette} colors={colors}>
-          <TouchableOpacity
-            onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
-            activeOpacity={0.75}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: palette.border }}
-          >
-            <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "800" }}>Количество мест</Text>
-            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900" }}>{task.placesCount || 0}  ›</Text>
-          </TouchableOpacity>
+        <GlassCard palette={palette} colors={colors} style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <TouchableOpacity
+              onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
+              activeOpacity={0.75}
+              style={{ flex: 0.82 }}
+            >
+              <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, fontWeight: "900" }}>
+                📦 Мест: {task.placesCount || 0} ›
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setCourierPickerVisible(true)}
-            activeOpacity={0.75}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 13 }}
-          >
-            <View>
-              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "800", marginBottom: 4 }}>Курьер</Text>
-              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900" }}>{task.courierName || "Не назначен"}</Text>
-            </View>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>›</Text>
-          </TouchableOpacity>
+            <View style={{ width: 1, height: 20, backgroundColor: palette.border }} />
+
+            <TouchableOpacity
+              onPress={() => setCourierPickerVisible(true)}
+              activeOpacity={0.75}
+              style={{ flex: 1.18 }}
+            >
+              <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", textAlign: "right" }}>
+                👤 Курьер: {task.courierName || "Не назначен"} ›
+              </Text>
+            </TouchableOpacity>
+          </View>
         </GlassCard>
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
