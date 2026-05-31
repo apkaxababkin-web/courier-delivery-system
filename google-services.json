@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "711931789436",
+    "project_id": "mig-courier",
+    "storage_bucket": "mig-courier.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:711931789436:android:1f1a89cc1280a6a36f49f9",
+        "android_client_info": {
+          "package_name": "space.manus.courier.app.t20260415204516"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAeXCxKXxj8l4XmLNvWfE0i4fvxF3LO_LM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

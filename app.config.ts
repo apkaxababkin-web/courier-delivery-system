@@ -52,6 +52,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
+    googleServicesFile: "./google-services.json",
     permissions: ["POST_NOTIFICATIONS", "INTERNET", "ACCESS_NETWORK_STATE", "VIBRATE"],
     intentFilters: [
       {
