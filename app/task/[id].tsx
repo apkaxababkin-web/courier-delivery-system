@@ -375,26 +375,26 @@ export default function TaskDetailScreen() {
           </View>
         </GlassCard>
 
-        <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
+        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
           <SectionTitle colors={colors}>Комментарий заявки</SectionTitle>
-          <Text style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "700" }}>{taskComment}</Text>
+          <Text numberOfLines={3} style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 12, lineHeight: 16, fontWeight: "700" }}>{taskComment}</Text>
         </GlassCard>
 
         {paymentStatusLabel ? (
-          <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
+          <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
             <SectionTitle colors={colors}>Статус оплаты</SectionTitle>
-            <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "800" }}>{paymentStatusLabel}</Text>
+            <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 16, fontWeight: "800" }}>{paymentStatusLabel}</Text>
           </GlassCard>
         ) : null}
 
-        <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
+        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
           <SectionTitle colors={colors}>Комментарий курьера</SectionTitle>
           {courierComment ? (
             <View style={{ gap: 8, marginBottom: 12 }}>
               {courierComment.split("\n").filter(Boolean).map((line, index) => (
                 <View key={`${line}-${index}`} style={{ borderLeftWidth: 2, borderLeftColor: colors.primary, paddingLeft: 10 }}>
                   <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginBottom: 3 }}>Курьер</Text>
-                  <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "700" }}>{line}</Text>
+                  <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 16, fontWeight: "700" }}>{line}</Text>
                 </View>
               ))}
             </View>
@@ -402,7 +402,7 @@ export default function TaskDetailScreen() {
           <TouchableOpacity
             activeOpacity={0.75}
             onPress={() => { setCommentsInput(courierComment); setCommentsModalVisible(true); }}
-            style={{ backgroundColor: palette.soft, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingVertical: 12, paddingHorizontal: 12 }}
+            style={{ backgroundColor: palette.soft, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingVertical: 9, paddingHorizontal: 10 }}
           >
             <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>Добавить свой комментарий курьеру</Text>
           </TouchableOpacity>
