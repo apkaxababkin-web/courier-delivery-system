@@ -1,3 +1,5 @@
+import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +15,36 @@ import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 
+async function getMobilePushToken(): Promise<string | null> {
+  if (Platform.OS === "web") return null;
+
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "МИГ Courier",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#0A7EA4",
+      sound: "default",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  }
+
+  const permission = await Notifications.requestPermissionsAsync();
+  console.log("[CourierLogin] push permission", permission.status);
+  if (permission.status !== "granted") return null;
+
+  const projectId =
+    Constants.easConfig?.projectId ??
+    Constants.expoConfig?.extra?.eas?.projectId;
+
+  console.log("[CourierLogin] push projectId", projectId ? "present" : "missing");
+  if (!projectId) return null;
+
+  const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
+  console.log("[CourierLogin] Expo push token received");
+  return pushToken.data;
+}
+
 export default function LoginScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -22,6 +54,7 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
 
   const loginMutation = trpc.courierAuth.login.useMutation();
+  const registerPushTokenMutation = trpc.couriers.registerPushToken.useMutation();
 
   const handleLogin = async () => {
     setError("");
@@ -36,6 +69,19 @@ export default function LoginScreen() {
         console.log("[CourierLogin] success", !!result.token, result.courier?.id);
         await setSession(result.token, result.courier);
         console.log("[CourierLogin] session saved");
+
+        try {
+          const pushToken = await getMobilePushToken();
+          if (pushToken) {
+            await registerPushTokenMutation.mutateAsync({ token: result.token, pushToken });
+            console.log("[CourierLogin] push token registered");
+          } else {
+            console.log("[CourierLogin] push token skipped");
+          }
+        } catch (pushError) {
+          console.warn("[CourierLogin] failed to register push token", pushError);
+        }
+
         router.replace("/(tabs)" as never);
       } else {
         setError("Неверный логин или пароль");
@@ -109,18 +155,18 @@ export default function LoginScreen() {
 
         <Pressable
           onPress={handleLogin}
-          disabled={loginMutation.isPending}
+          disabled={loginMutation.isPending || registerPushTokenMutation.isPending}
           style={({ pressed }) => ({
             height: 52,
             borderRadius: 10,
             backgroundColor: colors.primary,
             alignItems: "center",
             justifyContent: "center",
-            opacity: loginMutation.isPending || pressed ? 0.75 : 1,
+            opacity: loginMutation.isPending || registerPushTokenMutation.isPending || pressed ? 0.75 : 1,
             marginTop: 4,
           })}
         >
-          {loginMutation.isPending ? (
+          {loginMutation.isPending || registerPushTokenMutation.isPending ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={{ color: "white", fontSize: 17, fontWeight: "700" }}>Войти</Text>
