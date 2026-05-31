@@ -19,6 +19,7 @@ import * as Notifications from "expo-notifications";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
+import { isVibrationEnabled, setVibrationEnabled as saveVibrationEnabled } from "@/lib/vibration-preference";
 import { trpc } from "@/lib/trpc";
 
 function isDarkBackground(background: string) {
@@ -36,6 +37,7 @@ export default function ProfileModal() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [notificationTypes, setNotificationTypes] = useState({
     newTasks: true,
@@ -64,7 +66,12 @@ export default function ProfileModal() {
 
   useEffect(() => {
     const loadSettings = async () => {
-      const saved = await AsyncStorage.getItem("notificationSettings");
+      const [saved, savedVibrationEnabled] = await Promise.all([
+        AsyncStorage.getItem("notificationSettings"),
+        isVibrationEnabled(),
+      ]);
+
+      setVibrationEnabled(savedVibrationEnabled);
       if (!saved) return;
 
       const parsed = JSON.parse(saved);
@@ -132,6 +139,11 @@ export default function ProfileModal() {
       console.error(error);
       setLoginError("Неверный логин или пароль");
     }
+  };
+
+  const handleVibrationChange = async (enabled: boolean) => {
+    setVibrationEnabled(enabled);
+    await saveVibrationEnabled(enabled);
   };
 
   const handleLogout = () => {
@@ -254,13 +266,25 @@ export default function ProfileModal() {
           <Text style={{ fontSize: 12, fontWeight: "900", color: colors.muted, letterSpacing: 0.6 }}>ПАРАМЕТРЫ</Text>
 
           <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View>
+            <View style={{ flex: 1, paddingRight: 12 }}>
               <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Тёмный режим</Text>
               <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Переключение темы приложения</Text>
             </View>
             <Switch
               value={isDarkMode}
               onValueChange={() => setColorScheme(isDarkMode ? "light" : "dark")}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+
+          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Вибрация</Text>
+              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Отклик при действиях в приложении</Text>
+            </View>
+            <Switch
+              value={vibrationEnabled}
+              onValueChange={handleVibrationChange}
               trackColor={{ false: colors.border, true: colors.primary }}
             />
           </View>

@@ -531,18 +531,18 @@ export default function TaskListScreen() {
               activeOpacity={0.75}
               onPress={() => router.push(`/task/${item.id}` as never)}
               style={{
-                backgroundColor: "#FFFFFF",
+                backgroundColor: colors.surface,
                 borderRadius: 10,
                 padding: 10,
                 marginBottom: 10,
                 borderWidth: 1,
-                borderColor: "#E5E7EB",
+                borderColor: colors.border,
                 minHeight: 104,
               }}
             >
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <View style={{ flex: 1, paddingRight: 12, flexDirection: "row", alignItems: "center" }}>
-                  <Text style={{ color: "#0F172A", fontSize: 14, fontWeight: "900" }}>
+                  <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "900" }}>
                     {index + 1}
                   </Text>
                   {(() => {
@@ -570,7 +570,7 @@ export default function TaskListScreen() {
               <View
                 style={{
                   height: 1,
-                  backgroundColor: "#E2E8F0",
+                  backgroundColor: colors.border,
                   marginTop: 8,
                   marginHorizontal: -12,
                 }}
@@ -588,41 +588,41 @@ export default function TaskListScreen() {
                   return (
                     <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
                       <View style={{ flex: 32, paddingRight: 7, alignItems: "center" }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>Получатель</Text>
-                        <Text numberOfLines={1} style={{ color: "#0F172A", fontSize: 13, fontWeight: "900", marginTop: 2 }}>
+                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>Получатель</Text>
+                        <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginTop: 2 }}>
                           {item.recipientName || "—"}
                         </Text>
                         {!!item.recipientPhone && (
-                          <Text numberOfLines={1} style={{ color: "#64748B", fontSize: 10, fontWeight: "700", marginTop: 2 }}>
+                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10, fontWeight: "700", marginTop: 2 }}>
                             {item.recipientPhone}
                           </Text>
                         )}
                       </View>
 
                       <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: "#E2E8F0" }} />
+                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: colors.border }} />
                       </View>
 
                       <View style={{ flex: 40, paddingHorizontal: 7, alignItems: "center" }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>Заказ</Text>
+                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>Заказ</Text>
                         <View style={{ marginTop: 2 }}>
                           {orderLines.length ? orderLines.map((line, index) => (
-                            <Text key={`${line}-${index}`} numberOfLines={1} style={{ color: "#0F172A", fontSize: 11.5, fontWeight: "800", marginTop: index === 0 ? 0 : 2 }}>
+                            <Text key={`${line}-${index}`} numberOfLines={1} style={{ color: colors.foreground, fontSize: 11.5, fontWeight: "800", marginTop: index === 0 ? 0 : 2 }}>
                               {line}
                             </Text>
                           )) : (
-                            <Text style={{ color: "#0F172A", fontSize: 11.5, fontWeight: "800" }}>—</Text>
+                            <Text style={{ color: colors.foreground, fontSize: 11.5, fontWeight: "800" }}>—</Text>
                           )}
                         </View>
                       </View>
 
                       <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: "#E2E8F0" }} />
+                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: colors.border }} />
                       </View>
 
                       <View style={{ flex: 24, alignItems: "flex-start", paddingLeft: 7 }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>Сумма</Text>
-                        <Text numberOfLines={2} style={{ color: "#0F172A", fontSize: 11.5, fontWeight: "900", marginTop: 2 }}>
+                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>Сумма</Text>
+                        <Text numberOfLines={2} style={{ color: colors.foreground, fontSize: 11.5, fontWeight: "900", marginTop: 2 }}>
                           {sumLabel || "—"}
                         </Text>
                       </View>
@@ -633,14 +633,14 @@ export default function TaskListScreen() {
                 return (
                   <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
                     <View style={{ flex: timeLabel ? 35 : 49, paddingRight: 7, alignItems: "center" }}>
-                      <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>{info.leftTitle}</Text>
-                      <Text numberOfLines={1} style={{ color: "#0F172A", fontSize: 13, fontWeight: "900", marginTop: 2 }}>
+                      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>{info.leftTitle}</Text>
+                      <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginTop: 2 }}>
                         {info.leftName}
                       </Text>
                       {!!info.leftAddress && (
                         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                           <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                          <Text numberOfLines={1} style={{ color: "#64748B", fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
+                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
                             {info.leftAddress}
                           </Text>
                         </View>
@@ -648,18 +648,18 @@ export default function TaskListScreen() {
                     </View>
 
                     <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                      <View style={{ width: 1, height: 36, backgroundColor: "#E2E8F0" }} />
+                      <View style={{ width: 1, height: 36, backgroundColor: colors.border }} />
                     </View>
 
                     <View style={{ flex: timeLabel ? 35 : 49, paddingHorizontal: 7, alignItems: "center" }}>
-                      <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>{info.rightTitle}</Text>
-                      <Text numberOfLines={1} style={{ color: "#0F172A", fontSize: 13, fontWeight: "900", marginTop: 2 }}>
+                      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>{info.rightTitle}</Text>
+                      <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginTop: 2 }}>
                         {info.rightName}
                       </Text>
                       {!!info.rightAddress && (
                         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                           <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                          <Text numberOfLines={1} style={{ color: "#64748B", fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
+                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
                             {info.rightAddress}
                           </Text>
                         </View>
@@ -668,13 +668,13 @@ export default function TaskListScreen() {
 
                     {timeLabel && (
                       <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: 36, backgroundColor: "#E2E8F0" }} />
+                        <View style={{ width: 1, height: 36, backgroundColor: colors.border }} />
                       </View>
                     )}
 
                     {timeLabel && (
                       <View style={{ flex: 26, alignItems: "center", paddingLeft: 7 }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400", textAlign: "center" }}>Время</Text>
+                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400", textAlign: "center" }}>Время</Text>
                         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                           <Clock size={11} color="#64748B" strokeWidth={2.3} />
                           <Text numberOfLines={1} style={{ color: "#475569", fontSize: 10, fontWeight: "400", marginLeft: 3, textAlign: "center" }}>
@@ -690,7 +690,7 @@ export default function TaskListScreen() {
               <View
                 style={{
                   height: 1,
-                  backgroundColor: "#E2E8F0",
+                  backgroundColor: colors.border,
                   marginTop: 8,
                   marginHorizontal: -12,
                 }}
@@ -706,7 +706,7 @@ export default function TaskListScreen() {
               >
                 <Text
                   style={{
-                    color: "#64748B",
+                    color: colors.muted,
                     fontSize: 11,
                     fontWeight: "700",
                   }}
@@ -714,7 +714,7 @@ export default function TaskListScreen() {
                   {getPlacesLabel(item) ? (
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <Package size={13} color="#64748B" strokeWidth={2.2} />
-                      <Text style={{ color: "#64748B", fontSize: 11, fontWeight: "800", marginLeft: 5 }}>
+                      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginLeft: 5 }}>
                         {getPlacesLabel(item)}
                       </Text>
                     </View>
