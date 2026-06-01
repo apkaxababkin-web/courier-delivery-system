@@ -60,6 +60,61 @@ async function sendPushToAllCouriers(title: string, body: string, data?: Record<
   }
 }
 
+function compactText(value: unknown, fallback = "Не указано") {
+  const text = String(value ?? "").trim();
+  return text.length > 0 ? text : fallback;
+}
+
+function truncatePushText(value: string, max = 90) {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function getRequestTypeLabel(type: unknown) {
+  if (type === "delivery") return "Доставка";
+  if (type === "movement") return "Перемещение";
+  if (type === "nuts") return "Орехи";
+  if (type === "courier_call") return "Вызов курьера";
+  if (type === "pickup_from_tc") return "ТК";
+  return "Заявка";
+}
+
+function getPaymentLabel(method: unknown) {
+  if (method === "paid") return "оплачено";
+  if (method === "transfer") return "перевод";
+  if (method === "cash") return "наличные";
+  if (method === "terminal") return "терминал";
+  if (method === "qr") return "QR";
+  return "";
+}
+
+function getPlacesLabel(count: unknown) {
+  const places = Number(count || 1);
+  if (places === 1) return "1 место";
+  if (places >= 2 && places <= 4) return `${places} места`;
+  return `${places} мест`;
+}
+
+function buildNewRequestPush(input: {
+  id: number;
+  requestType?: unknown;
+  deliveryAddress?: unknown;
+  recipientAddress?: unknown;
+  senderAddress?: unknown;
+  placesCount?: unknown;
+  paymentMethod?: unknown;
+}) {
+  const title = `Новая заявка #${input.id}`;
+  const type = getRequestTypeLabel(input.requestType);
+  const address = compactText(input.deliveryAddress || input.recipientAddress || input.senderAddress, "Адрес не указан");
+  const places = getPlacesLabel(input.placesCount);
+  const payment = getPaymentLabel(input.paymentMethod);
+
+  return {
+    title,
+    body: truncatePushText([type, address, places, payment].filter(Boolean).join(" • ")),
+  };
+}
+
 
 function inputFrom(req: Request): Record<string, unknown> {
   const body = (req.body?.json ?? req.body ?? {}) as Record<string, unknown>;
@@ -872,12 +927,23 @@ export function registerCompatRoutes(app: Express) {
       const request = inserted[0] as DeliveryRequest;
       const taskId = await syncTaskForRequest(request);
 
+      const push = buildNewRequestPush({
+        id: request.id,
+        requestType: request.requestType,
+        deliveryAddress: request.deliveryAddress,
+        recipientAddress: request.recipientAddress,
+        senderAddress: request.senderAddress,
+        placesCount: request.placesCount,
+        paymentMethod: request.paymentMethod,
+      });
+
       await sendPushToAllCouriers(
-        "Новая заявка",
-        "Появилась новая заявка",
+        push.title,
+        push.body,
         {
           type: "new_request_available",
           requestId: request.id,
+          requestType: request.requestType,
         },
       );
 
@@ -934,8 +1000,8 @@ export function registerCompatRoutes(app: Express) {
 
             await sendExpoPush(
               courier.pushToken,
-              "Новая заявка",
-              `${request.recipientName || "Клиент"} • ${address}`,
+              `Назначена заявка #${request.id}`,
+              truncatePushText(`${request.recipientName || "Клиент"} • ${address}`, 90),
               {
                 type: "new_request",
                 requestId: request.id,
