@@ -310,6 +310,7 @@ export async function addPointToHemotestList(listId: number, pointId: number): P
 export interface SberbankPickupList {
   id: number;
   dayOfWeek: number;
+  date: string | null;
   name: string;
   status: string;
   createdAt: string;
@@ -321,8 +322,12 @@ export interface SberbankListWithItems {
   items: SberbankPoint[];
 }
 
-export async function createSberbankPickupList(dayOfWeek: number, name: string, pointIds: number[]): Promise<SberbankPickupList> {
-  return await trpcPost('sberbank.createList', { dayOfWeek, name, pointIds }, {} as SberbankPickupList);
+export async function createSberbankPickupList(dayOfWeek: number, date: string, name: string, pointIds: number[]): Promise<SberbankPickupList> {
+  return await trpcPost('sberbank.createList', { dayOfWeek, date, name, pointIds }, {} as SberbankPickupList);
+}
+
+export async function getSberbankListsForDate(date: string): Promise<SberbankPickupList[]> {
+  return asArray<SberbankPickupList>(await trpcGet('sberbank.listsForDate', { date }, []));
 }
 
 export async function getSberbankListsForDay(dayOfWeek: number): Promise<SberbankPickupList[]> {

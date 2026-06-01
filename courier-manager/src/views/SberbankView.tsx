@@ -57,6 +57,21 @@ function getBusinessWeekdayFromDate(dateValue?: string) {
   return jsDay;
 }
 
+function getTodayDateKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateLabel(dateValue: string) {
+  const [year, month, day] = dateValue.split('-').map(Number);
+  if (!year || !month || !day) return dateValue;
+
+  return new Date(year, month - 1, day).toLocaleDateString('ru-RU');
+}
+
 function sortPointsByOrder(points: api.SberbankPoint[], orderIds: number[]) {
   const order = new Map(orderIds.map((id, index) => [id, index]));
 
@@ -204,7 +219,8 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
     try {
       setLoading(true);
 
-      const dayId = selectedTemplateDay || getBusinessWeekdayFromDate(archiveDate) || 1;
+      const listDate = archiveDate || getTodayDateKey();
+      const dayId = selectedTemplateDay || getBusinessWeekdayFromDate(listDate) || 1;
       const title = DAYS_OF_WEEK.find((day) => day.id === dayId)?.name || 'Список';
 
       const orderedSelectedPointIds = visiblePoints
@@ -213,7 +229,8 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
 
       await api.createSberbankPickupList(
         dayId,
-        `${title} ${new Date().toLocaleDateString('ru-RU')}`,
+        listDate,
+        `${title} ${formatDateLabel(listDate)}`,
         orderedSelectedPointIds
       );
 

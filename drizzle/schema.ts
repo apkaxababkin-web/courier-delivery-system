@@ -313,8 +313,10 @@ export const sberbankPickupLists = pgTable("sberbankPickupLists", {
   id: serial("id").primaryKey(),
   /** Manager who created the list */
   createdByUserId: integer("createdByUserId"),
-  /** Day of week for which the list was created (1-5 for Mon-Fri) */
+  /** Template day of week used by manager quick selection (1-5 for Mon-Fri) */
   dayOfWeek: integer("dayOfWeek").notNull(),
+  /** Date for which the list was created */
+  date: varchar("date", { length: 10 }), // YYYY-MM-DD format
   /** List name/description */
   name: varchar("name", { length: 255 }).notNull(),
   /** Status: active, completed, cancelled */
