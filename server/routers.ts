@@ -748,7 +748,7 @@ export const appRouter = router({
     pickupPoints: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -759,7 +759,7 @@ export const appRouter = router({
     pickedCount: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -771,7 +771,7 @@ export const appRouter = router({
       .input(z.object({
         token: z.string(),
         pointId: z.number(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -864,7 +864,7 @@ export const appRouter = router({
     pickupPoints: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -875,7 +875,7 @@ export const appRouter = router({
     pickedCount: publicProcedure
       .input(z.object({
         token: z.string(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
@@ -887,7 +887,7 @@ export const appRouter = router({
       .input(z.object({
         token: z.string(),
         pointId: z.number(),
-        date: z.date(),
+        date: z.coerce.date(),
       }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
