@@ -1,30 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Pencil, Plus, Save, Trash2 } from 'lucide-react';
+import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
 
-const DAYS_OF_WEEK = [
-  { id: 1, shortName: 'Пн', name: 'Понедельник' },
-  { id: 2, shortName: 'Вт', name: 'Вторник' },
-  { id: 3, shortName: 'Ср', name: 'Среда' },
-  { id: 4, shortName: 'Чт', name: 'Четверг' },
-  { id: 5, shortName: 'Пт', name: 'Пятница' },
-];
+const HIDDEN_POINTS_STORAGE_KEY = 'courier-manager:hidden-sberbank-points';
+const POINT_ORDER_STORAGE_KEY = 'courier-manager:sberbank-point-order';
 
-const HIDDEN_SBERBANK_POINTS_STORAGE_KEY = 'courier-manager:hidden-sberbank-points';
-const SBERBANK_POINT_ORDER_STORAGE_KEY = 'courier-manager:sberbank-point-order';
-
-const inputClass =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
-
-const primaryButtonClass =
-  'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50';
-
-const secondaryButtonClass =
-  'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100';
-
-const dangerButtonClass =
-  'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950';
+const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
+const primaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50';
+const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50';
+const dangerButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950';
 
 const readNumberArray = (key: string) => {
   if (typeof window === 'undefined') return [] as number[];
@@ -43,34 +28,6 @@ const saveNumberArray = (key: string, value: number[]) => {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(key, JSON.stringify(value));
 };
-
-function getBusinessWeekdayFromDate(dateValue?: string) {
-  if (!dateValue) return null;
-
-  const [year, month, day] = dateValue.split('-').map(Number);
-  if (!year || !month || !day) return null;
-
-  const jsDay = new Date(year, month - 1, day).getDay();
-
-  if (jsDay === 0 || jsDay === 6) return 5;
-
-  return jsDay;
-}
-
-function getTodayDateKey() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function formatDateLabel(dateValue: string) {
-  const [year, month, day] = dateValue.split('-').map(Number);
-  if (!year || !month || !day) return dateValue;
-
-  return new Date(year, month - 1, day).toLocaleDateString('ru-RU');
-}
 
 function sortPointsByOrder(points: api.SberbankPoint[], orderIds: number[]) {
   const order = new Map(orderIds.map((id, index) => [id, index]));
@@ -100,23 +57,21 @@ function moveId(order: number[], id: number, targetId: number) {
 
 export default function SberbankView({ archiveDate }: { archiveDate?: string }) {
   const [points, setPoints] = useState<api.SberbankPoint[]>([]);
-  const [lists, setLists] = useState<api.SberbankPickupList[]>([]);
-  const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(() => readNumberArray(HIDDEN_SBERBANK_POINTS_STORAGE_KEY));
-  const [pointOrderIds, setPointOrderIds] = useState<number[]>(() => readNumberArray(SBERBANK_POINT_ORDER_STORAGE_KEY));
+  const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(() => readNumberArray(HIDDEN_POINTS_STORAGE_KEY));
+  const [pointOrderIds, setPointOrderIds] = useState<number[]>(() => readNumberArray(POINT_ORDER_STORAGE_KEY));
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
-  const [selectedTemplateDay, setSelectedTemplateDay] = useState<number | null>(null);
+  const [selectedDate, setSelectedDate] = useState(archiveDate || new Date().toISOString().split('T')[0]);
   const [showForm, setShowForm] = useState(false);
-  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [showListForm, setShowListForm] = useState(false);
   const [editingPoint, setEditingPoint] = useState<api.SberbankPoint | null>(null);
   const [draggedPointId, setDraggedPointId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-
   const [formData, setFormData] = useState({
     name: '',
     address: '',
     phone: '',
     contactPerson: '',
   });
+  const [loading, setLoading] = useState(false);
 
   const visiblePoints = sortPointsByOrder(
     points.filter((point) => !hiddenPointIds.includes(point.id)),
@@ -124,19 +79,12 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
   );
 
   useEffect(() => {
+    if (archiveDate) setSelectedDate(archiveDate);
+  }, [archiveDate]);
+
+  useEffect(() => {
     loadPoints();
   }, []);
-
-  useEffect(() => {
-    loadLists();
-  }, [archiveDate]);
-
-  useEffect(() => {
-    const day = getBusinessWeekdayFromDate(archiveDate);
-    if (day) {
-      handleSelectTemplate(day);
-    }
-  }, [archiveDate]);
 
   useEffect(() => {
     if (points.length === 0) return;
@@ -149,7 +97,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
 
     if (JSON.stringify(nextOrder) !== JSON.stringify(pointOrderIds)) {
       setPointOrderIds(nextOrder);
-      saveNumberArray(SBERBANK_POINT_ORDER_STORAGE_KEY, nextOrder);
+      saveNumberArray(POINT_ORDER_STORAGE_KEY, nextOrder);
     }
   }, [points]);
 
@@ -159,21 +107,10 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
       const data = await api.getAllSberbankPoints();
       setPoints(data);
     } catch (error) {
-      console.error(error);
+      console.error('Error loading points:', error);
       setPoints([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadLists = async () => {
-    try {
-      const listDate = archiveDate || getTodayDateKey();
-      const data = await api.getSberbankListsForDate(listDate);
-      setLists(data);
-    } catch (error) {
-      console.error(error);
-      setLists([]);
     }
   };
 
@@ -198,93 +135,8 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
 
     const nextHiddenIds = Array.from(new Set([...hiddenPointIds, point.id]));
     setHiddenPointIds(nextHiddenIds);
-    saveNumberArray(HIDDEN_SBERBANK_POINTS_STORAGE_KEY, nextHiddenIds);
+    saveNumberArray(HIDDEN_POINTS_STORAGE_KEY, nextHiddenIds);
     setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
-  };
-
-  const handleSelectTemplate = async (dayId: number) => {
-    try {
-      const templatePoints = await api.getSberbankScheduleForDay(dayId);
-      const templatePointIds = templatePoints.map((point) => point.id);
-
-      setSelectedTemplateDay(dayId);
-      setSelectedPoints(templatePointIds);
-
-      if (templatePointIds.length > 0) {
-        const allVisibleIds = visiblePoints.map((point) => point.id);
-        const nextOrder = [
-          ...templatePointIds,
-          ...allVisibleIds.filter((id) => !templatePointIds.includes(id)),
-        ];
-
-        setPointOrderIds(nextOrder);
-        saveNumberArray(SBERBANK_POINT_ORDER_STORAGE_KEY, nextOrder);
-      }
-    } catch (error) {
-      console.error(error);
-      alert('Ошибка загрузки шаблона');
-    }
-  };
-
-  const handleCreateList = async () => {
-    if (selectedPoints.length === 0) {
-      alert('Выберите точки');
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const listDate = archiveDate || getTodayDateKey();
-      const dayId = selectedTemplateDay || getBusinessWeekdayFromDate(listDate) || 1;
-      const title = DAYS_OF_WEEK.find((day) => day.id === dayId)?.name || 'Список';
-
-      const orderedSelectedPointIds = visiblePoints
-        .filter((point) => selectedPoints.includes(point.id))
-        .map((point) => point.id);
-
-      await api.createSberbankPickupList(
-        dayId,
-        listDate,
-        `${title} ${formatDateLabel(listDate)}`,
-        orderedSelectedPointIds
-      );
-
-      await loadLists();
-      alert(`Список создан (${orderedSelectedPointIds.length} точек)`);
-    } catch (error) {
-      console.error(error);
-      alert('Ошибка создания списка');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveTemplate = async (dayId: number) => {
-    if (selectedPoints.length === 0) {
-      alert('Выберите точки для шаблона');
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const orderedSelectedPointIds = visiblePoints
-        .filter((point) => selectedPoints.includes(point.id))
-        .map((point) => point.id);
-
-      await api.setSberbankScheduleForDay(dayId, orderedSelectedPointIds);
-
-      setSelectedTemplateDay(dayId);
-      setShowSaveTemplateModal(false);
-
-      alert('Шаблон сохранён');
-    } catch (error) {
-      console.error(error);
-      alert('Ошибка сохранения шаблона');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const openCreateForm = () => {
@@ -310,6 +162,42 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
     setFormData({ name: '', address: '', phone: '', contactPerson: '' });
   };
 
+  const handleCreateList = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (selectedPoints.length === 0) {
+      alert('Выберите хотя бы одну точку');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const formattedDate = new Date(selectedDate).toLocaleDateString('ru-RU');
+      const orderedSelectedPointIds = visiblePoints
+        .filter((point) => selectedPoints.includes(point.id))
+        .map((point) => point.id);
+
+      const dayOfWeek = (() => {
+        const [year, month, day] = selectedDate.split('-').map(Number);
+        const jsDay = new Date(year, month - 1, day).getDay();
+        if (jsDay === 0 || jsDay === 6) return 5;
+        return jsDay;
+      })();
+
+      await api.createSberbankPickupList(dayOfWeek, selectedDate, formattedDate, orderedSelectedPointIds);
+
+      alert(`Список создан (${orderedSelectedPointIds.length} точек)`);
+      setSelectedPoints([]);
+      setShowListForm(false);
+    } catch (error) {
+      console.error('Error creating list:', error);
+      alert('Ошибка при создании списка');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmitPoint = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -330,14 +218,14 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
         const created = await api.createSberbankPoint(formData);
         const nextOrder = [...pointOrderIds, created.id];
         setPointOrderIds(nextOrder);
-        saveNumberArray(SBERBANK_POINT_ORDER_STORAGE_KEY, nextOrder);
+        saveNumberArray(POINT_ORDER_STORAGE_KEY, nextOrder);
       }
 
       closePointForm();
       await loadPoints();
     } catch (error) {
-      console.error(error);
-      alert('Ошибка сохранения точки');
+      console.error('Error saving point:', error);
+      alert('Ошибка при сохранении точки');
     } finally {
       setLoading(false);
     }
@@ -357,61 +245,24 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
     const nextOrder = moveId(baseOrder, draggedPointId, targetPointId);
 
     setPointOrderIds(nextOrder);
-    saveNumberArray(SBERBANK_POINT_ORDER_STORAGE_KEY, nextOrder);
+    saveNumberArray(POINT_ORDER_STORAGE_KEY, nextOrder);
     setDraggedPointId(null);
   };
 
   return (
     <div className="w-full space-y-5 p-4 sm:p-6">
-      {showSaveTemplateModal &&
-        createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-              <h3 className="text-lg font-semibold text-slate-950">Сохранить шаблон</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Выбранные точки сохранятся в выбранный день недели.
-              </p>
-
-              <div className="mt-4 space-y-2">
-                {DAYS_OF_WEEK.map((day) => (
-                  <button
-                    key={day.id}
-                    type="button"
-                    onClick={() => handleSaveTemplate(day.id)}
-                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left transition hover:bg-slate-50"
-                  >
-                    <span className="font-medium text-slate-900">{day.name}</span>
-                    <span className="text-xs text-slate-400">{selectedPoints.length} точек</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowSaveTemplateModal(false)}
-                  className={`w-full ${secondaryButtonClass}`}
-                >
-                  Отмена
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
-
       {showForm &&
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
               <h3 className="text-lg font-semibold text-slate-950">
-                {editingPoint ? 'Редактировать точку Сбербанка' : 'Добавить точку Сбербанка'}
+                {editingPoint ? 'Редактировать точку Сбербанк' : 'Добавить точку Сбербанк'}
               </h3>
 
               <form onSubmit={handleSubmitPoint} className="mt-4 space-y-3">
                 <input
                   type="text"
-                  placeholder="Название / номер отделения *"
+                  placeholder="Название точки *"
                   value={formData.name}
                   onChange={(event) => setFormData({ ...formData, name: event.target.value })}
                   className={inputClass}
@@ -428,7 +279,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
                 />
 
                 <input
-                  type="text"
+                  type="tel"
                   placeholder="Телефон"
                   value={formData.phone}
                   onChange={(event) => setFormData({ ...formData, phone: event.target.value })}
@@ -437,7 +288,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
 
                 <input
                   type="text"
-                  placeholder="Контакт / примечание"
+                  placeholder="Контактное лицо"
                   value={formData.contactPerson}
                   onChange={(event) => setFormData({ ...formData, contactPerson: event.target.value })}
                   className={inputClass}
@@ -458,41 +309,35 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
           document.body
         )}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-950">Созданные списки на дату</h3>
-              <p className="mt-1 text-xs text-slate-500">{archiveDate || getTodayDateKey()}</p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {lists.length}
-            </span>
-          </div>
+      {showListForm &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+              <h3 className="text-lg font-semibold text-slate-950">Создать список сбора</h3>
 
-          {lists.length > 0 ? (
-            <div className="mt-3 space-y-2">
-              {lists.map((list) => (
-                <div key={list.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-900">{list.name}</div>
-                    <div className="text-xs text-slate-500">#{list.id} • {list.date || archiveDate || getTodayDateKey()}</div>
-                  </div>
-                  <div className="text-xs font-semibold text-slate-500">{list.status}</div>
+              <form onSubmit={handleCreateList} className="mt-4 space-y-4">
+                <p className="text-sm text-slate-500">
+                  Выбрано точек: <span className="font-semibold text-slate-950">{selectedPoints.length}</span>
+                </p>
+
+                <div className="flex gap-2">
+                  <button type="submit" disabled={loading} className={`flex-1 ${primaryButtonClass}`}>
+                    {loading ? 'Создаём...' : 'Создать'}
+                  </button>
+
+                  <button type="button" onClick={() => setShowListForm(false)} className={`flex-1 ${secondaryButtonClass}`}>
+                    Отмена
+                  </button>
                 </div>
-              ))}
+              </form>
             </div>
-          ) : (
-            <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
-              На эту дату списков нет
-            </div>
-          )}
-        </div>
-      </div>
+          </div>,
+          document.body
+        )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div className="flex items-center gap-3">
             <input
               type="checkbox"
               checked={selectedPoints.length === visiblePoints.length && visiblePoints.length > 0}
@@ -503,49 +348,19 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
             <span className="inline-flex h-9 items-center rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
               Выбрано: {selectedPoints.length} из {visiblePoints.length}
             </span>
-
-            <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-              {DAYS_OF_WEEK.map((day) => (
-                <button
-                  key={day.id}
-                  type="button"
-                  onClick={() => handleSelectTemplate(day.id)}
-                  className={`h-8 rounded-xl px-3 text-xs font-semibold transition ${
-                    selectedTemplateDay === day.id
-                      ? 'bg-slate-950 text-white shadow-sm'
-                      : 'text-slate-600 hover:bg-white'
-                  }`}
-                  title={day.name}
-                >
-                  {day.shortName}
-                </button>
-              ))}
-            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSaveTemplateModal(true)}
-              disabled={selectedPoints.length === 0}
-              className={secondaryButtonClass}
-            >
-              <Save size={16} />
-              Сохранить шаблон
+          {selectedPoints.length > 0 && (
+            <button type="button" onClick={() => setShowListForm(true)} className={primaryButtonClass}>
+              Создать список
             </button>
-
-            {selectedPoints.length > 0 && (
-              <button type="button" onClick={handleCreateList} disabled={loading} className={primaryButtonClass}>
-                Создать список
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-500">Загрузка...</div>
         ) : visiblePoints.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">Нет точек Сбербанка</div>
+          <div className="p-8 text-center text-sm text-slate-500">Нет сохранённых точек</div>
         ) : (
           <div className="overflow-x-auto">
             <div className="w-full min-w-[1180px]">
