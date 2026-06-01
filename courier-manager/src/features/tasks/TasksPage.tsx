@@ -182,7 +182,6 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [hemotestDate, setHemotestDate] = useState(getTodayDate());
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const selectedDate = archiveDate || getTodayDate();
-  const sberbankDay = getBusinessWeekdayFromDate(selectedDate);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -211,7 +210,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     if (operationMode === 'sberbank') {
       loadSberbankLists(true);
     }
-  }, [realtimeSnapshot, operationMode, hemotestDate, sberbankDay]);
+  }, [realtimeSnapshot, operationMode, hemotestDate, selectedDate]);
   useEffect(() => {
     if (operationMode === 'hemotest') loadHemotestLists();
     if (operationMode === 'sberbank') loadSberbankLists();
@@ -256,22 +255,20 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const loadSberbankLists = async (showLoader = true) => {
     try {
       if (showLoader) setIsOperationLoading(true);
-      const lists = await trpcQuery<PickupList[]>('sberbank.listsForDay', { dayOfWeek: sberbankDay });
-      const listsForSelectedDate = lists.filter((list) => {
-        // Сбербанк-шаблон выбирается по дню недели, а архив показывает только списки,
-        // которые были созданы в выбранную дату верхнего календаря.
-        if (isSameDateKey(list.createdAt, selectedDate)) return true;
 
-        // Запасной вариант для старых записей: если дата хранится в поле date.
-        if (isSameDateKey(list.date, selectedDate)) return true;
+      const lists = await trpcQuery<PickupList[]>('sberbank.listsForDate', { date: selectedDate });
 
-        return false;
-      });
-
-      const detailed = await Promise.all(listsForSelectedDate.map(async (list) => {
+      const detailed = await Promise.all(lists.map(async (list) => {
         const full = await trpcQuery<PickupListWithItems>('sberbank.getList', { listId: list.id });
-        return { id: list.id, name: list.name, meta: formatArchiveDateLabel(selectedDate), status: list.status, items: full.items || [] };
+        return {
+          id: list.id,
+          name: list.name,
+          meta: list.date ? formatArchiveDateLabel(list.date) : formatArchiveDateLabel(selectedDate),
+          status: list.status,
+          items: full.items || [],
+        };
       }));
+
       setOperationLists(detailed);
     } catch (error) {
       console.error('Failed to load sberbank lists:', error);
