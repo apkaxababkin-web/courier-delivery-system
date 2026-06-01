@@ -838,6 +838,12 @@ export const appRouter = router({
         return list;
       }),
 
+    listsForDate: publicProcedure
+      .input(z.object({ date: z.string() }))
+      .query(async ({ input }) => {
+        return await db.getSberbankPickupListsForDate(input.date);
+      }),
+
     listsForDay: publicProcedure
       .input(z.object({ dayOfWeek: z.number().min(1).max(5) }))
       .query(async ({ input }) => {
