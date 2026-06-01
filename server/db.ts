@@ -766,7 +766,6 @@ export async function toggleHemotestPickup(
     .select()
     .from(hemotestPickups)
     .where(and(
-      eq(hemotestPickups.courierId, courierId),
       eq(hemotestPickups.pointId, pointId),
       eq(hemotestPickups.date, dateStr)
     ))
@@ -778,6 +777,7 @@ export async function toggleHemotestPickup(
     await db
       .update(hemotestPickups)
       .set({
+        courierId: !pickup.isPicked ? courierId : null,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
         updatedAt: new Date(),
@@ -884,7 +884,6 @@ export async function toggleSberbankPickup(
     .select()
     .from(sberbankPickups)
     .where(and(
-      eq(sberbankPickups.courierId, courierId),
       eq(sberbankPickups.pointId, pointId),
       eq(sberbankPickups.date, dateStr)
     ))
@@ -896,6 +895,7 @@ export async function toggleSberbankPickup(
     await db
       .update(sberbankPickups)
       .set({
+        courierId: !pickup.isPicked ? courierId : null,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
         updatedAt: new Date(),
