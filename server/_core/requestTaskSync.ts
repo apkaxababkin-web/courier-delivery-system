@@ -2,6 +2,25 @@ import { asc, eq, sql } from "drizzle-orm";
 import { requests, tasks, type InsertTask, type Request as DeliveryRequest, type Task } from "../../drizzle/schema";
 import * as db from "../db";
 
+const COURIER_TIME_ZONE = "Asia/Irkutsk";
+
+function getCourierBusinessNoon(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: COURIER_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+
+  // Store noon of the courier business day. This avoids Moscow/UTC date drift
+  // while keeping the value inside the selected day for the existing task filter.
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+}
+
 export function normalizeTaskStatus(status: unknown): Task["status"] {
   if (status === "in_progress" || status === "completed" || status === "cancelled") return status;
   return "assigned";
@@ -66,7 +85,7 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
     specialInstructions: request.specialInstructions ?? null,
     comments,
     items: request.items ?? null,
-    scheduledAt: request.scheduledAt ?? null,
+    scheduledAt: request.scheduledAt ?? getCourierBusinessNoon(request.createdAt ?? new Date()),
     acceptedAt: request.acceptedAt ?? null,
     completedAt: request.completedAt ?? null,
   };
