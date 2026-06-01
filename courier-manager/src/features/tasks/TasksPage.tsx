@@ -147,7 +147,7 @@ function getTodayBusinessWeekday() { const day = new Date().getDay(); return day
 function getPickupMeta(point: OperationPoint) {
   const pickedAt = point.pickedAt || point.completedAt;
   const pickedBy = point.pickedBy || point.courierName;
-  const isPicked = Boolean(point.isPicked || pickedAt || pickedBy);
+  const isPicked = point.isPicked === true;
   if (!isPicked) return { isPicked, label: 'Не забран', detail: '' };
   const time = pickedAt ? new Date(pickedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'время не указано';
   return { isPicked, label: 'Забран', detail: `${pickedBy || 'Курьер'} • ${time}` };
