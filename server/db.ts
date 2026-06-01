@@ -817,14 +817,12 @@ export async function getSberbankPickupPointsForDate(
   if (!db) return [];
 
   const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  const dayOfWeek = getBusinessDayOfWeek(targetDate);
-  if (dayOfWeek < 1 || dayOfWeek > 5) return [];
 
-  // APK must see the same Sberbank lists that manager creates for this weekday.
+  // APK must see the same Sberbank lists that manager creates for this exact date.
   const lists = await db
     .select({ id: sberbankPickupLists.id })
     .from(sberbankPickupLists)
-    .where(eq(sberbankPickupLists.dayOfWeek, dayOfWeek));
+    .where(eq(sberbankPickupLists.date, dateStr));
 
   const listIds = lists.map((list: { id: number }) => list.id);
   if (listIds.length === 0) return [];
@@ -1306,6 +1304,7 @@ export async function addPointToHemotestList(listId: number, pointId: number): P
  */
 export async function createSberbankPickupList(data: {
   dayOfWeek: number;
+  date: string;
   name: string;
   pointIds: number[];
 }): Promise<SberbankPickupList> {
@@ -1314,6 +1313,7 @@ export async function createSberbankPickupList(data: {
 
   const result = await db.insert(sberbankPickupLists).values({
     dayOfWeek: data.dayOfWeek,
+    date: data.date,
     name: data.name,
     status: "active",
   }).returning({ id: sberbankPickupLists.id });
@@ -1339,6 +1339,20 @@ export async function createSberbankPickupList(data: {
     .limit(1);
 
   return list[0]!;
+}
+
+/**
+ * Get all Sberbank pickup lists for an exact date
+ */
+export async function getSberbankPickupListsForDate(date: string): Promise<SberbankPickupList[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select()
+    .from(sberbankPickupLists)
+    .where(eq(sberbankPickupLists.date, date))
+    .orderBy(desc(sberbankPickupLists.createdAt));
 }
 
 /**
@@ -1379,11 +1393,13 @@ export async function getSberbankPickupListWithItems(listId: number): Promise<{
     .innerJoin(sberbankPickupPoints, eq(sberbankListItems.pointId, sberbankPickupPoints.id))
     .where(eq(sberbankListItems.listId, listId));
 
+  const listDate = list[0].date ?? list[0].createdAt.toISOString().split("T")[0];
+
   const pickups = await db
     .select()
     .from(sberbankPickups)
     .leftJoin(couriers, eq(sberbankPickups.courierId, couriers.id))
-    .where(eq(sberbankPickups.date, list[0].date));
+    .where(eq(sberbankPickups.date, listDate));
 
   return {
     list: list[0],

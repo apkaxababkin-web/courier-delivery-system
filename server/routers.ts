@@ -825,6 +825,7 @@ export const appRouter = router({
     createList: publicProcedure
       .input(z.object({
         dayOfWeek: z.number().min(1).max(5),
+        date: z.string(),
         name: z.string(),
         pointIds: z.array(z.number()),
       }))
