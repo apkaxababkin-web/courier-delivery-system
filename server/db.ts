@@ -1183,33 +1183,54 @@ export async function createHemotestPickupList(data: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(hemotestPickupLists).values({
-    date: data.date,
-    name: data.name,
-    status: "active",
-  }).returning({ id: hemotestPickupLists.id });
-
-  const listId = result[0]?.id;
-  if (!listId) throw new Error("Failed to create list");
-
-  // Add items to the list (with deduplication)
-  if (data.pointIds.length > 0) {
-    const uniquePointIds = [...new Set(data.pointIds)];
-    await db.insert(hemotestListItems).values(
-      uniquePointIds.map(pointId => ({
-        listId,
-        pointId,
-      }))
-    );
-  }
-
-  const list = await db
+  const existingList = await db
     .select()
     .from(hemotestPickupLists)
-    .where(eq(hemotestPickupLists.id, listId))
+    .where(eq(hemotestPickupLists.date, data.date))
+    .orderBy(desc(hemotestPickupLists.createdAt))
     .limit(1);
 
-  return list[0]!;
+  let list = existingList[0];
+
+  if (!list) {
+    const result = await db.insert(hemotestPickupLists).values({
+      date: data.date,
+      name: data.name,
+      status: "active",
+    }).returning({ id: hemotestPickupLists.id });
+
+    const listId = result[0]?.id;
+    if (!listId) throw new Error("Failed to create list");
+
+    const created = await db
+      .select()
+      .from(hemotestPickupLists)
+      .where(eq(hemotestPickupLists.id, listId))
+      .limit(1);
+
+    list = created[0]!;
+  }
+
+  const uniquePointIds = [...new Set(data.pointIds)];
+  for (const pointId of uniquePointIds) {
+    const existingItem = await db
+      .select()
+      .from(hemotestListItems)
+      .where(and(
+        eq(hemotestListItems.listId, list.id),
+        eq(hemotestListItems.pointId, pointId)
+      ))
+      .limit(1);
+
+    if (existingItem.length === 0) {
+      await db.insert(hemotestListItems).values({
+        listId: list.id,
+        pointId,
+      });
+    }
+  }
+
+  return list;
 }
 
 /**
@@ -1311,34 +1332,55 @@ export async function createSberbankPickupList(data: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(sberbankPickupLists).values({
-    dayOfWeek: data.dayOfWeek,
-    date: data.date,
-    name: data.name,
-    status: "active",
-  }).returning({ id: sberbankPickupLists.id });
-
-  const listId = result[0]?.id;
-  if (!listId) throw new Error("Failed to create list");
-
-  // Add items to the list (with deduplication)
-  if (data.pointIds.length > 0) {
-    const uniquePointIds = [...new Set(data.pointIds)];
-    await db.insert(sberbankListItems).values(
-      uniquePointIds.map(pointId => ({
-        listId,
-        pointId,
-      }))
-    );
-  }
-
-  const list = await db
+  const existingList = await db
     .select()
     .from(sberbankPickupLists)
-    .where(eq(sberbankPickupLists.id, listId))
+    .where(eq(sberbankPickupLists.date, data.date))
+    .orderBy(desc(sberbankPickupLists.createdAt))
     .limit(1);
 
-  return list[0]!;
+  let list = existingList[0];
+
+  if (!list) {
+    const result = await db.insert(sberbankPickupLists).values({
+      dayOfWeek: data.dayOfWeek,
+      date: data.date,
+      name: data.name,
+      status: "active",
+    }).returning({ id: sberbankPickupLists.id });
+
+    const listId = result[0]?.id;
+    if (!listId) throw new Error("Failed to create list");
+
+    const created = await db
+      .select()
+      .from(sberbankPickupLists)
+      .where(eq(sberbankPickupLists.id, listId))
+      .limit(1);
+
+    list = created[0]!;
+  }
+
+  const uniquePointIds = [...new Set(data.pointIds)];
+  for (const pointId of uniquePointIds) {
+    const existingItem = await db
+      .select()
+      .from(sberbankListItems)
+      .where(and(
+        eq(sberbankListItems.listId, list.id),
+        eq(sberbankListItems.pointId, pointId)
+      ))
+      .limit(1);
+
+    if (existingItem.length === 0) {
+      await db.insert(sberbankListItems).values({
+        listId: list.id,
+        pointId,
+      });
+    }
+  }
+
+  return list;
 }
 
 /**
