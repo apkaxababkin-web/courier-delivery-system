@@ -130,6 +130,27 @@ function inputFrom(req: Request): Record<string, unknown> {
   try { return unwrapBatchInput(JSON.parse(raw) as Record<string, unknown>); } catch { return {}; }
 }
 
+const COURIER_TIME_ZONE = "Asia/Irkutsk";
+
+function getCourierBusinessNoon(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: COURIER_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+}
+
 function normalizeTaskStatus(status: unknown): Task["status"] {
   if (status === "in_progress" || status === "completed" || status === "cancelled") return status;
   return "assigned";
@@ -234,7 +255,7 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
     specialInstructions: request.specialInstructions ?? null,
     comments,
     items: request.items ?? null,
-    scheduledAt: request.scheduledAt ?? null,
+    scheduledAt: request.scheduledAt ?? getCourierBusinessNoon(request.createdAt ?? new Date()),
     acceptedAt: request.acceptedAt ?? null,
     completedAt: request.completedAt ?? null,
   };
