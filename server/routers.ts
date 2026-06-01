@@ -701,10 +701,6 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const point = await db.createHemotestPoint(input);
-        await sendPushToAllCouriers("Гемотест", `Новая точка: ${truncatePushText(point.name || point.address || "адрес не указан", 70)}`, {
-          type: "hemotest_point_created",
-          pointId: point.id,
-        });
         return point;
       }),
 
@@ -799,10 +795,6 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const point = await db.createSberbankPoint(input);
-        await sendPushToAllCouriers("Сбербанк", `Новая точка: ${truncatePushText(point.name || point.address || "адрес не указан", 70)}`, {
-          type: "sberbank_point_created",
-          pointId: point.id,
-        });
         return point;
       }),
 
