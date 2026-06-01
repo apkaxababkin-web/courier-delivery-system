@@ -322,7 +322,40 @@ export interface SberbankListWithItems {
   items: SberbankPoint[];
 }
 
-export async function createSberbankPickupList(dayOfWeek: number, date: string, name: string, pointIds: number[]): Promise<SberbankPickupList> {
+function getSberbankBusinessDay(dateValue: string) {
+  const [year, month, day] = dateValue.split('-').map(Number);
+  if (!year || !month || !day) return 1;
+
+  const jsDay = new Date(year, month - 1, day).getDay();
+  if (jsDay === 0 || jsDay === 6) return 5;
+
+  return jsDay;
+}
+
+export async function createSberbankPickupList(
+  dayOfWeekOrDate: number | string,
+  dateOrName: string,
+  nameOrPointIds: string | number[],
+  pointIdsArg?: number[],
+): Promise<SberbankPickupList> {
+  const isNewSignature = typeof dayOfWeekOrDate === 'number';
+
+  const dayOfWeek = isNewSignature
+    ? dayOfWeekOrDate
+    : getSberbankBusinessDay(dayOfWeekOrDate);
+
+  const date = isNewSignature
+    ? dateOrName
+    : dayOfWeekOrDate;
+
+  const name = isNewSignature
+    ? String(nameOrPointIds)
+    : dateOrName;
+
+  const pointIds = isNewSignature
+    ? (pointIdsArg || [])
+    : (Array.isArray(nameOrPointIds) ? nameOrPointIds : []);
+
   return await trpcPost('sberbank.createList', { dayOfWeek, date, name, pointIds }, {} as SberbankPickupList);
 }
 
