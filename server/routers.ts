@@ -69,20 +69,20 @@ function buildNewRequestPush(input: {
   deliveryAddress?: unknown;
   recipientAddress?: unknown;
   senderAddress?: unknown;
+  senderName?: unknown;
   recipientName?: unknown;
   placesCount?: unknown;
   paymentMethod?: unknown;
 }) {
   const title = `Новая заявка #${input.id}`;
-  const type = getRequestTypeLabel(input.requestType);
-  const address = compactText(input.deliveryAddress || input.recipientAddress || input.senderAddress, "Адрес не указан");
-  const places = getPlacesLabel(input.placesCount);
-  const payment = getPaymentLabel(input.paymentMethod);
+  const senderName = compactText(input.senderName, "Отправитель");
+  const fromAddress = compactText(input.senderAddress, "");
+  const toAddress = compactText(input.deliveryAddress || input.recipientAddress, "Адрес не указан");
 
-  const parts = [type, address, places, payment].filter(Boolean);
+  const route = fromAddress ? `${senderName}, ${fromAddress} → ${toAddress}` : `${senderName} → ${toAddress}`;
   return {
     title,
-    body: truncatePushText(parts.join(" • ")),
+    body: truncatePushText(route, 150),
   };
 }
 
