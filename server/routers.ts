@@ -29,6 +29,63 @@ async function sendPushToAllCouriers(title: string, body: string, data?: Record<
   }
 }
 
+function compactText(value: unknown, fallback = "Не указано") {
+  const text = String(value ?? "").trim();
+  return text.length > 0 ? text : fallback;
+}
+
+function truncatePushText(value: string, max = 90) {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function getRequestTypeLabel(type: unknown) {
+  if (type === "delivery") return "Доставка";
+  if (type === "movement") return "Перемещение";
+  if (type === "nuts") return "Орехи";
+  if (type === "courier_call") return "Вызов курьера";
+  if (type === "pickup_from_tc") return "ТК";
+  return "Заявка";
+}
+
+function getPaymentLabel(method: unknown) {
+  if (method === "paid") return "оплачено";
+  if (method === "transfer") return "перевод";
+  if (method === "cash") return "наличные";
+  if (method === "terminal") return "терминал";
+  if (method === "qr") return "QR";
+  return "";
+}
+
+function getPlacesLabel(count: unknown) {
+  const places = Number(count || 1);
+  if (places === 1) return "1 место";
+  if (places >= 2 && places <= 4) return `${places} места`;
+  return `${places} мест`;
+}
+
+function buildNewRequestPush(input: {
+  id: number;
+  requestType?: unknown;
+  deliveryAddress?: unknown;
+  recipientAddress?: unknown;
+  senderAddress?: unknown;
+  recipientName?: unknown;
+  placesCount?: unknown;
+  paymentMethod?: unknown;
+}) {
+  const title = `Новая заявка #${input.id}`;
+  const type = getRequestTypeLabel(input.requestType);
+  const address = compactText(input.deliveryAddress || input.recipientAddress || input.senderAddress, "Адрес не указан");
+  const places = getPlacesLabel(input.placesCount);
+  const payment = getPaymentLabel(input.paymentMethod);
+
+  const parts = [type, address, places, payment].filter(Boolean);
+  return {
+    title,
+    body: truncatePushText(parts.join(" • ")),
+  };
+}
+
 // ─── Manager JWT helpers ─────────────────────────────────────────────────────
 const MANAGER_JWT_SECRET = new TextEncoder().encode(
   process.env.MANAGER_JWT_SECRET ?? "manager-secret-key-change-in-production"
@@ -644,7 +701,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const point = await db.createHemotestPoint(input);
-        await sendPushToAllCouriers("Гемотест", "Добавлена новая точка сбора", {
+        await sendPushToAllCouriers("Гемотест", `Новая точка: ${truncatePushText(point.name || point.address || "адрес не указан", 70)}`, {
           type: "hemotest_point_created",
           pointId: point.id,
         });
@@ -659,7 +716,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const list = await db.createHemotestPickupList(input);
-        await sendPushToAllCouriers("Гемотест", "Добавлен новый список сбора", {
+        await sendPushToAllCouriers("Гемотест", `Новый список: ${input.pointIds.length} точек`, {
           type: "hemotest_list_created",
           listId: list.id,
         });
@@ -742,7 +799,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const point = await db.createSberbankPoint(input);
-        await sendPushToAllCouriers("Сбербанк", "Добавлена новая точка сбора", {
+        await sendPushToAllCouriers("Сбербанк", `Новая точка: ${truncatePushText(point.name || point.address || "адрес не указан", 70)}`, {
           type: "sberbank_point_created",
           pointId: point.id,
         });
@@ -773,7 +830,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const list = await db.createSberbankPickupList(input);
-        await sendPushToAllCouriers("Сбербанк", "Добавлен новый список сбора", {
+        await sendPushToAllCouriers("Сбербанк", `Новый список: ${input.pointIds.length} точек`, {
           type: "sberbank_list_created",
           listId: list.id,
         });
@@ -997,9 +1054,11 @@ export const appRouter = router({
         const createdByUserId = ctx.user?.id ?? 0;
         const id = await db.createRequest({ ...input, createdByUserId });
         await syncTaskForRequestId(id);
-        await sendPushToAllCouriers("Новая заявка", "Поступила новая заявка", {
+        const push = buildNewRequestPush({ id, ...input });
+        await sendPushToAllCouriers(push.title, push.body, {
           type: "new_request_available",
           requestId: id,
+          requestType: input.requestType,
         });
         broadcastLive("requests_changed", { requestId: id });
         broadcastLive("tasks_changed", { requestId: id });
@@ -1059,8 +1118,8 @@ export const appRouter = router({
 
               await sendExpoPush(
                 courier.pushToken,
-                "Новая заявка",
-                `${request.recipientName || "Клиент"} • ${address}`,
+                `Назначена заявка #${request.id}`,
+                truncatePushText(`${request.recipientName || "Клиент"} • ${address}`, 90),
                 {
                   type: "new_request",
                   requestId: request.id,
