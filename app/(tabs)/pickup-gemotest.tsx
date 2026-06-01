@@ -1,4 +1,4 @@
-import { FlatList, Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { skipToken } from "@tanstack/react-query";
 import { ScreenContainer } from "@/components/screen-container";
@@ -160,8 +160,9 @@ export default function HemotestScreen() {
           data={pickupPoints}
           renderItem={renderPickupPoint}
           keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: Math.max(insets.bottom + 190, 220), backgroundColor: colors.background }}
-          showsVerticalScrollIndicator={false}
+          style={Platform.OS === "web" ? ({ flex: 1, height: "calc(100vh - 145px)", maxHeight: "calc(100vh - 145px)", overflowY: "scroll" } as any) : { flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: Math.max(insets.bottom + 190, 220), backgroundColor: colors.background, flexGrow: 1 }}
+          showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
           ListFooterComponent={<View style={{ height: 180 }} />}
         />
       ) : isLoading ? (
