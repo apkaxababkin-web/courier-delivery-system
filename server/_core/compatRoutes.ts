@@ -9,10 +9,14 @@ import {
   couriers,
   hemotestPickups,
   hemotestPickupPoints,
+  hemotestPickupLists,
+  hemotestListItems,
   mails,
   requests,
   sberbankPickups,
   sberbankPickupPoints,
+  sberbankPickupLists,
+  sberbankListItems,
   tasks,
   type InsertMail,
   type InsertRequest,
@@ -265,6 +269,7 @@ async function mailsWithCourierName(mailList: Mail[]) {
 async function pickupFeedbackSummary() {
   const conn = await db.getDb();
   const date = new Date().toISOString().split("T")[0];
+
   if (!conn) {
     return {
       date,
@@ -273,49 +278,89 @@ async function pickupFeedbackSummary() {
     };
   }
 
-  const [courierMap, hemotestRows, hemotestPoints, sberbankRows, sberbankPoints] = await Promise.all([
-    courierNameMap(),
-    conn.select().from(hemotestPickups).where(eq(hemotestPickups.date, date)),
-    conn.select({ id: hemotestPickupPoints.id, name: hemotestPickupPoints.name, address: hemotestPickupPoints.address }).from(hemotestPickupPoints),
-    conn.select().from(sberbankPickups).where(eq(sberbankPickups.date, date)),
-    conn.select({ id: sberbankPickupPoints.id, name: sberbankPickupPoints.name, address: sberbankPickupPoints.address }).from(sberbankPickupPoints),
-  ]);
+  const courierMap = await courierNameMap();
 
-  type PickupPointSummary = { id: number; name: string; address: string };
-  const hemotestPointMap = new Map<number, PickupPointSummary>(
-    (hemotestPoints as PickupPointSummary[]).map((point) => [point.id, point])
-  );
-  const sberbankPointMap = new Map<number, PickupPointSummary>(
-    (sberbankPoints as PickupPointSummary[]).map((point) => [point.id, point])
-  );
+  const hemotestLists = await conn
+    .select({ id: hemotestPickupLists.id })
+    .from(hemotestPickupLists)
+    .where(eq(hemotestPickupLists.date, date));
 
-  const hemotestItems = hemotestRows.map((row: any) => {
-    const point = hemotestPointMap.get(row.pointId);
+  const hemotestListIds = hemotestLists.map((list: { id: number }) => list.id);
+
+  const hemotestListRows = hemotestListIds.length
+    ? await conn
+        .select()
+        .from(hemotestListItems)
+        .innerJoin(hemotestPickupPoints, eq(hemotestListItems.pointId, hemotestPickupPoints.id))
+        .where(inArray(hemotestListItems.listId, hemotestListIds))
+    : [];
+
+  const hemotestPickupRows = await conn
+    .select()
+    .from(hemotestPickups)
+    .where(eq(hemotestPickups.date, date));
+
+  const hemotestPickupMap = new Map<number, any>(hemotestPickupRows.map((row: any) => [row.pointId, row]));
+  const hemotestPointMap = new Map<number, any>();
+
+  for (const row of hemotestListRows as Array<{ hemotestPickupPoints: any }>) {
+    hemotestPointMap.set(row.hemotestPickupPoints.id, row.hemotestPickupPoints);
+  }
+
+  const hemotestItems = Array.from(hemotestPointMap.values()).map((point: any) => {
+    const pickup = hemotestPickupMap.get(point.id);
     return {
-      id: row.id,
-      pointId: row.pointId,
-      pointName: point?.name ?? null,
-      address: point?.address ?? null,
-      courierId: row.courierId,
-      courierName: courierMap.get(row.courierId) ?? null,
-      date: row.date,
-      isPicked: row.isPicked,
-      pickedAt: row.pickedAt,
+      id: pickup?.id ?? point.id,
+      pointId: point.id,
+      pointName: point.name,
+      address: point.address,
+      courierId: pickup?.courierId ?? null,
+      courierName: pickup?.courierId ? courierMap.get(pickup.courierId) ?? null : null,
+      date,
+      isPicked: pickup?.isPicked ?? false,
+      pickedAt: pickup?.pickedAt ?? null,
     };
   });
 
-  const sberbankItems = sberbankRows.map((row: any) => {
-    const point = sberbankPointMap.get(row.pointId);
+  const sberbankLists = await conn
+    .select({ id: sberbankPickupLists.id })
+    .from(sberbankPickupLists)
+    .where(eq(sberbankPickupLists.date, date));
+
+  const sberbankListIds = sberbankLists.map((list: { id: number }) => list.id);
+
+  const sberbankListRows = sberbankListIds.length
+    ? await conn
+        .select()
+        .from(sberbankListItems)
+        .innerJoin(sberbankPickupPoints, eq(sberbankListItems.pointId, sberbankPickupPoints.id))
+        .where(inArray(sberbankListItems.listId, sberbankListIds))
+    : [];
+
+  const sberbankPickupRows = await conn
+    .select()
+    .from(sberbankPickups)
+    .where(eq(sberbankPickups.date, date));
+
+  const sberbankPickupMap = new Map<number, any>(sberbankPickupRows.map((row: any) => [row.pointId, row]));
+  const sberbankPointMap = new Map<number, any>();
+
+  for (const row of sberbankListRows as Array<{ sberbankPickupPoints: any }>) {
+    sberbankPointMap.set(row.sberbankPickupPoints.id, row.sberbankPickupPoints);
+  }
+
+  const sberbankItems = Array.from(sberbankPointMap.values()).map((point: any) => {
+    const pickup = sberbankPickupMap.get(point.id);
     return {
-      id: row.id,
-      pointId: row.pointId,
-      pointName: point?.name ?? null,
-      address: point?.address ?? null,
-      courierId: row.courierId,
-      courierName: courierMap.get(row.courierId) ?? null,
-      date: row.date,
-      isPicked: row.isPicked,
-      pickedAt: row.pickedAt,
+      id: pickup?.id ?? point.id,
+      pointId: point.id,
+      pointName: point.name,
+      address: point.address,
+      courierId: pickup?.courierId ?? null,
+      courierName: pickup?.courierId ? courierMap.get(pickup.courierId) ?? null : null,
+      date,
+      isPicked: pickup?.isPicked ?? false,
+      pickedAt: pickup?.pickedAt ?? null,
     };
   });
 
