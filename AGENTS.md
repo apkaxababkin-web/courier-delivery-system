@@ -211,3 +211,35 @@ grep -R "themePreference\\|AsyncStorage\\|colors.surface\\|colors.foreground" -n
 
 Haptics:
 grep -R "Haptics\\.notificationAsync\\|Haptics\\.impactAsync" -n app
+
+## Whole project development mode
+When user asks to continue development, audit or fix the project, treat the repository as one full product:
+- Manager web app
+- Courier mobile app
+- Courier web app
+- API server
+- PostgreSQL database
+- Docker deployment
+- Nginx deployment
+- Expo/Android build
+- Push notifications
+- Hemotest and Sberbank pickup flows
+
+Do not check only one file.
+Always consider cross-effects between:
+- requests and tasks
+- manager site and courier app
+- mobile app and web app
+- API code and compatibility routes
+- database schema and Drizzle types
+- Docker build and deployed server state
+
+Before saying a bug is fixed, verify the real flow end-to-end:
+1. Create data from manager site or API.
+2. Check DB rows.
+3. Check courier API response.
+4. Check courier web/mobile display.
+5. Check logs.
+6. Run pnpm check.
+7. Run pnpm build for larger changes.
+8. For server changes, rebuild and restart Docker API.
