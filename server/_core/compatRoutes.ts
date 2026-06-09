@@ -167,8 +167,8 @@ function taskTypeFromRequest(type: unknown): InsertTask["taskType"] {
   return "regular";
 }
 
-function requestStatusFromTask(status: Task["status"]): DeliveryRequest["status"] {
-  if (status === "assigned") return "assigned";
+function requestStatusFromTask(status: Task["status"], courierId?: number | null): DeliveryRequest["status"] {
+  if (status === "assigned") return courierId ? "assigned" : "pending";
   return status;
 }
 
@@ -428,9 +428,10 @@ async function updateRequestStatusFromTask(taskId: number, status: Task["status"
   if (!marker) return;
   const requestId = Number(marker);
   if (!requestId) return;
+  const nextCourierId = courierId ?? task?.courierId ?? null;
   await conn.update(requests).set({
-    status: requestStatusFromTask(status),
-    courierId: courierId ?? task?.courierId ?? null,
+    status: requestStatusFromTask(status, nextCourierId),
+    courierId: nextCourierId,
     acceptedAt: status === "in_progress" ? new Date() : task?.acceptedAt ?? null,
     completedAt: status === "completed" ? new Date() : null,
     updatedAt: new Date(),

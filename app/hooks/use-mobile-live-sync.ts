@@ -54,6 +54,8 @@ export function useMobileLiveSync({ enabled, onSync }: UseMobileLiveSyncOptions)
       eventSource.addEventListener("tasks_changed", () => runSync("tasks_changed"));
       eventSource.addEventListener("requests_changed", () => runSync("requests_changed"));
       eventSource.addEventListener("mails_changed", () => runSync("mails_changed"));
+      eventSource.addEventListener("hemotest_changed", () => runSync("hemotest_changed"));
+      eventSource.addEventListener("sberbank_changed", () => runSync("sberbank_changed"));
       eventSource.addEventListener("data_changed", () => runSync("data_changed"));
 
       eventSource.addEventListener("error", (error: unknown) => {

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
@@ -13,9 +14,11 @@ interface Task {
   senderName?: string;
 }
 
+type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'mails' | 'profile';
+
 interface TaskListScreenProps {
   onTaskSelect: (taskId: number) => void;
-  onNavigate: (screen: string) => void;
+  onNavigate: (screen: Screen) => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -32,18 +35,15 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Отменено',
 };
 
-export function TaskListScreen({ onTaskSelect, onNavigate }: TaskListScreenProps) {
+export function TaskListScreen({ onTaskSelect, onNavigate: _onNavigate }: TaskListScreenProps) {
+  void _onNavigate;
   const { token, courier } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
 
-  useEffect(() => {
-    loadTasks();
-  }, [selectedDate, filterMode, token]);
-
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     if (!token) return;
     try {
       setLoading(true);
@@ -66,7 +66,26 @@ export function TaskListScreen({ onTaskSelect, onNavigate }: TaskListScreenProps
     } finally {
       setLoading(false);
     }
-  };
+  }, [courier, filterMode, selectedDate, token]);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const eventSource = new EventSource('/api/live');
+    const refresh = () => {
+      loadTasks();
+    };
+
+    eventSource.addEventListener('tasks_changed', refresh);
+    eventSource.addEventListener('requests_changed', refresh);
+    eventSource.addEventListener('data_changed', refresh);
+
+    return () => eventSource.close();
+  }, [loadTasks, token]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + 'T00:00:00');

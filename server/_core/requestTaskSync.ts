@@ -37,9 +37,9 @@ function taskTypeFromRequest(type: unknown): InsertTask["taskType"] {
   return "regular";
 }
 
-function requestStatusFromTask(status: Task["status"]): DeliveryRequest["status"] {
-  if (status === "assigned") return "pending";
-  if (status === "in_progress") return "accepted" as DeliveryRequest["status"];
+function requestStatusFromTask(status: Task["status"], courierId?: number | null): DeliveryRequest["status"] {
+  if (status === "assigned") return courierId ? "assigned" : "pending";
+  if (status === "in_progress") return "in_progress";
   if (status === "completed") return "completed";
   if (status === "cancelled") return "cancelled";
   return "pending";
@@ -135,9 +135,10 @@ export async function updateRequestStatusFromTask(taskId: number, status: Task["
   const requestId = Number(marker);
   if (!requestId) return;
 
+  const nextCourierId = courierId ?? task?.courierId ?? null;
   const updateData: Partial<DeliveryRequest> = {
-    status: requestStatusFromTask(status),
-    courierId: courierId ?? task?.courierId ?? null,
+    status: requestStatusFromTask(status, nextCourierId),
+    courierId: nextCourierId,
     updatedAt: new Date(),
   };
 

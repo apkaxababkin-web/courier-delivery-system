@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
@@ -43,11 +44,7 @@ export function TaskDetailScreen({ taskId, onBack }: TaskDetailScreenProps) {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
-  useEffect(() => {
-    loadTask();
-  }, [taskId, token]);
-
-  const loadTask = async () => {
+  const loadTask = useCallback(async () => {
     if (!token) return;
     try {
       setLoading(true);
@@ -63,15 +60,32 @@ export function TaskDetailScreen({ taskId, onBack }: TaskDetailScreenProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [taskId, token]);
+
+  useEffect(() => {
+    loadTask();
+  }, [loadTask]);
+
+  useEffect(() => {
+    const eventSource = new EventSource('/api/live');
+    const refresh = () => {
+      loadTask();
+    };
+
+    eventSource.addEventListener('tasks_changed', refresh);
+    eventSource.addEventListener('requests_changed', refresh);
+    eventSource.addEventListener('data_changed', refresh);
+
+    return () => eventSource.close();
+  }, [loadTask]);
 
   const updateStatus = async (newStatus: string) => {
     if (!token) return;
     try {
       setUpdating(true);
       await axios.post(
-        '/api/trpc/tasks.update',
-        { json: { id: taskId, status: newStatus, token } },
+        '/api/trpc/tasks.setStatus',
+        { json: { taskId, status: newStatus, token } },
         { withCredentials: true }
       );
       await loadTask();

@@ -3,7 +3,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { syncTaskForRequestId } from "./_core/requestTaskSync";
+import { syncTaskForRequestId, updateRequestStatusFromTask } from "./_core/requestTaskSync";
 import { sendExpoPush } from "./_core/expoPush";
 import { broadcastLive } from "./_core/liveEvents";
 import { systemRouter } from "./_core/systemRouter";
@@ -350,6 +350,9 @@ export const appRouter = router({
         const newStatus = input.courierId ? "assigned" : task.status;
 
         await db.assignTaskToCourier(input.taskId, input.courierId, newStatus);
+        await updateRequestStatusFromTask(input.taskId, newStatus, input.courierId);
+        broadcastLive("tasks_changed", { taskId: input.taskId, courierId: input.courierId });
+        broadcastLive("requests_changed", { taskId: input.taskId, courierId: input.courierId });
         return { success: true };
       }),
 
@@ -403,6 +406,7 @@ export const appRouter = router({
         }
 
         await db.updateTaskStatus(input.taskId, input.status, extra);
+        await updateRequestStatusFromTask(input.taskId, input.status, courierId);
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: input.status,
@@ -414,6 +418,8 @@ export const appRouter = router({
             ? "Доставка выполнена"
             : "Задание отменено",
         });
+        broadcastLive("tasks_changed", { taskId: input.taskId, courierId });
+        broadcastLive("requests_changed", { taskId: input.taskId, courierId });
         return { success: true };
       }),
 
@@ -701,6 +707,11 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const point = await db.createHemotestPoint(input);
+        await sendPushToAllCouriers("Р“РµРјРѕС‚РµСЃС‚", `РќРѕРІР°СЏ С‚РѕС‡РєР°: ${input.name}`, {
+          type: "hemotest_point_created",
+          pointId: point.id,
+        });
+        broadcastLive("hemotest_changed", { pointId: point.id });
         return point;
       }),
 
@@ -795,6 +806,11 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const point = await db.createSberbankPoint(input);
+        await sendPushToAllCouriers("РЎР±РµСЂР±Р°РЅРє", `РќРѕРІР°СЏ С‚РѕС‡РєР°: ${input.name}`, {
+          type: "sberbank_point_created",
+          pointId: point.id,
+        });
+        broadcastLive("sberbank_changed", { pointId: point.id });
         return point;
       }),
 
@@ -903,7 +919,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
-        return await db.getNotDeliveredMails();
+        return await db.getAllMailsWithCourier();
       }),
 
     getByWaybill: publicProcedure
@@ -927,6 +943,7 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
         await db.updateMailDelivery(input.waybillNumber, input.recipientSignature, payload.courierId);
+        broadcastLive("mails_changed", { waybillNumber: input.waybillNumber, courierId: payload.courierId });
         return { success: true };
       }),
   }),
@@ -940,7 +957,7 @@ export const appRouter = router({
         dateTo: z.string().optional(),
       }))
       .query(async ({ input }) => {
-        return await db.getMailsByFilter(input.status === 'all' ? undefined : input.status, input.dateFrom, input.dateTo);
+        return await db.getMailsByFilterWithCourier(input.status === 'all' ? undefined : input.status, input.dateFrom, input.dateTo);
       }),
     
     create: publicProcedure
@@ -952,6 +969,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const id = await db.createMail(input);
+        broadcastLive("mails_changed", { mailId: id });
         return { id, success: true };
       }),
   }),

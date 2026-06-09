@@ -9,6 +9,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
+import { broadcastLive } from "./liveEvents";
 import { appRouter, verifyCourierToken } from "../routers";
 import { createContext } from "./context";
 import { mails, requests, tasks, taskStatusHistory } from "../../drizzle/schema";
@@ -126,6 +127,7 @@ async function startServer() {
       if (!updated[0]) throw new Error("Mail not found");
 
       const response = { success: true, mail: updated[0] };
+      broadcastLive("mails_changed", { mailId: updated[0].id });
       res.json(isBatch ? trpcBatchJson(response) : trpcJson(response));
     } catch (error) {
       console.error("Failed to deliver mail", error);
@@ -270,6 +272,8 @@ async function startServer() {
         })
         .where(sql`${tasks.comments} like ${`%${marker}%`}`);
 
+      broadcastLive("requests_changed", { requestId: id });
+      broadcastLive("tasks_changed", { requestId: id });
       sendTrpcResponse(res, isBatch, { success: true, request });
     } catch (error) {
       console.error("[requests.update] failed", error);
@@ -305,6 +309,8 @@ async function startServer() {
         await tx.delete(requests).where(eq(requests.id, id));
       });
 
+      broadcastLive("requests_changed", { requestId: id });
+      broadcastLive("tasks_changed", { requestId: id });
       sendTrpcResponse(res, isBatch, { success: true });
     } catch (error) {
       console.error("[requests.delete] failed", error);

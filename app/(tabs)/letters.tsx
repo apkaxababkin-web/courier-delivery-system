@@ -203,6 +203,9 @@ export default function LettersScreen() {
                   <View style={{ backgroundColor: delivered ? "rgba(34,197,94,0.16)" : "rgba(59,130,246,0.14)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 }}>
                     <Text style={{ color: delivered ? "#22C55E" : colors.primary, fontSize: 11, fontWeight: "900" }}>{delivered ? "Получено" : "В пути"}</Text>
                   </View>
+                  {delivered && mail.courierName ? (
+                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", maxWidth: 120 }} numberOfLines={1}>{mail.courierName}</Text>
+                  ) : null}
                   <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>{shortTime(mail.deliveredAt || mail.createdAt)}</Text>
                 </View>
               </View>

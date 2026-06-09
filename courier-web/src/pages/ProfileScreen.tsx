@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+type Screen = 'tasks' | 'task-detail' | 'pickup-gemotest' | 'pickup-sberbank' | 'mails' | 'profile';
 
 interface ProfileScreenProps {
-  onNavigate: (screen: string) => void;
+  onNavigate: (screen: Screen) => void;
 }
 
 export function ProfileScreen({ onNavigate }: ProfileScreenProps) {
@@ -16,11 +18,7 @@ export function ProfileScreen({ onNavigate }: ProfileScreenProps) {
     messages: true,
   });
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const saved = localStorage.getItem('notificationSettings');
       if (saved) {
@@ -31,7 +29,11 @@ export function ProfileScreen({ onNavigate }: ProfileScreenProps) {
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const saveSettings = (newNotifications: typeof notifications) => {
     localStorage.setItem('notificationSettings', JSON.stringify(newNotifications));

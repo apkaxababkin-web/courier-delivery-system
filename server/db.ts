@@ -63,6 +63,23 @@ export async function getAllMails(): Promise<Mail[]> {
   return await db.select().from(mails).orderBy(desc(mails.createdAt));
 }
 
+export type MailWithCourier = Mail & { courierName: string | null };
+
+export async function getAllMailsWithCourier(): Promise<MailWithCourier[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(mails)
+    .leftJoin(couriers, eq(mails.courierId, couriers.id))
+    .orderBy(desc(mails.createdAt));
+
+  return rows.map((row: { mails: Mail; couriers: Courier | null }) => ({
+    ...row.mails,
+    courierName: row.couriers?.name ?? null,
+  }));
+}
+
 export async function getMailByWaybill(waybillNumber: string): Promise<Mail | undefined> {
   const db = await getDb();
   if (!db) return undefined;
@@ -137,6 +154,43 @@ export async function getMailsByFilter(
   }
   
   return await db.select().from(mails).orderBy(desc(mails.createdAt));
+}
+
+export async function getMailsByFilterWithCourier(
+  status?: 'not_delivered' | 'delivered',
+  dateFrom?: string,
+  dateTo?: string
+): Promise<MailWithCourier[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions = [];
+
+  if (status) {
+    conditions.push(eq(mails.status, status));
+  }
+
+  if (dateFrom) {
+    conditions.push(gte(mails.createdAt, new Date(dateFrom)));
+  }
+
+  if (dateTo) {
+    conditions.push(lte(mails.createdAt, new Date(dateTo)));
+  }
+
+  const baseQuery = db
+    .select()
+    .from(mails)
+    .leftJoin(couriers, eq(mails.courierId, couriers.id));
+
+  const rows = conditions.length > 0
+    ? await baseQuery.where(and(...conditions)).orderBy(desc(mails.createdAt))
+    : await baseQuery.orderBy(desc(mails.createdAt));
+
+  return rows.map((row: { mails: Mail; couriers: Courier | null }) => ({
+    ...row.mails,
+    courierName: row.couriers?.name ?? null,
+  }));
 }
 
 // ─── DB connection ─────────────────────────────────────────────────────────────
@@ -692,7 +746,12 @@ export async function updateCourierUrgencyThresholds(
 
 // ─── Hemotest Pickup Points ────────────────────────────────────────────────────
 
-export type HemotestPickupWithStatus = HemotestPickupPoint & { isPicked: boolean; pickedAt: Date | null };
+export type HemotestPickupWithStatus = HemotestPickupPoint & {
+  isPicked: boolean;
+  pickedAt: Date | null;
+  courierId?: number | null;
+  courierName?: string;
+};
 
 export async function getHemotestPickupPointsForDate(
   courierId: number,
@@ -724,29 +783,27 @@ export async function getHemotestPickupPointsForDate(
   }
   const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
-  // Get pickups for this courier and date
+  // Pickups are shared operational state: every courier must see who picked each point.
   const pickups = await db
     .select()
     .from(hemotestPickups)
-    .where(and(
-      eq(hemotestPickups.courierId, courierId),
-      eq(hemotestPickups.date, dateStr)
-    ));
+    .leftJoin(couriers, eq(hemotestPickups.courierId, couriers.id))
+    .where(eq(hemotestPickups.date, dateStr));
   
-  const pickupMap = new Map<number, HemotestPickup>(pickups.map((p: HemotestPickup) => [p.pointId, p]));
-  
-  // Get courier name
-  const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
-  const courierName = courierData[0]?.name ?? "Unknown";
+  const pickupMap = new Map<
+    number,
+    { hemotestPickups: HemotestPickup; couriers: Courier | null }
+  >(pickups.map((p: { hemotestPickups: HemotestPickup; couriers: Courier | null }) => [p.hemotestPickups.pointId, p]));
   
   // Combine and sort: unpicked first, then picked
   const result = points.map((point: HemotestPickupPoint) => {
-    const pickup: HemotestPickup | undefined = pickupMap.get(point.id);
+    const pickup = pickupMap.get(point.id);
     return {
       ...point,
-      isPicked: pickup?.isPicked ?? false,
-      pickedAt: pickup?.pickedAt ?? null,
-      courierName: pickup?.isPicked ? courierName : undefined,
+      isPicked: pickup?.hemotestPickups.isPicked ?? false,
+      pickedAt: pickup?.hemotestPickups.pickedAt ?? null,
+      courierId: pickup?.hemotestPickups.courierId ?? null,
+      courierName: pickup?.hemotestPickups.isPicked ? pickup.couriers?.name ?? undefined : undefined,
     };
   });
   
@@ -780,7 +837,7 @@ export async function toggleHemotestPickup(
     await db
       .update(hemotestPickups)
       .set({
-        courierId: !pickup.isPicked ? courierId : null,
+        courierId,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
         updatedAt: new Date(),
@@ -805,7 +862,12 @@ export async function getHemotestPickedCount(courierId: number, targetDate: Date
 
 // ─── Sberbank Pickup Points ────────────────────────────────────────────────────
 
-export type SberbankPickupWithStatus = SberbankPickupPoint & { isPicked: boolean; pickedAt: Date | null };
+export type SberbankPickupWithStatus = SberbankPickupPoint & {
+  isPicked: boolean;
+  pickedAt: Date | null;
+  courierId?: number | null;
+  courierName?: string;
+};
 
 function getBusinessDayOfWeek(targetDate: Date): number {
   const day = targetDate.getDay();
@@ -842,29 +904,27 @@ export async function getSberbankPickupPointsForDate(
   }
   const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
-  // Get pickups for this courier and date
+  // Pickups are shared operational state: every courier must see who picked each point.
   const pickups = await db
     .select()
     .from(sberbankPickups)
-    .where(and(
-      eq(sberbankPickups.courierId, courierId),
-      eq(sberbankPickups.date, dateStr)
-    ));
+    .leftJoin(couriers, eq(sberbankPickups.courierId, couriers.id))
+    .where(eq(sberbankPickups.date, dateStr));
   
-  const pickupMap = new Map<number, SberbankPickup>(pickups.map((p: SberbankPickup) => [p.pointId, p]));
-  
-  // Get courier name
-  const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
-  const courierName = courierData[0]?.name ?? "Unknown";
+  const pickupMap = new Map<
+    number,
+    { sberbankPickups: SberbankPickup; couriers: Courier | null }
+  >(pickups.map((p: { sberbankPickups: SberbankPickup; couriers: Courier | null }) => [p.sberbankPickups.pointId, p]));
   
   // Combine and sort: unpicked first, then picked
   const result = points.map((point: SberbankPickupPoint) => {
-    const pickup: SberbankPickup | undefined = pickupMap.get(point.id);
+    const pickup = pickupMap.get(point.id);
     return {
       ...point,
-      isPicked: pickup?.isPicked ?? false,
-      pickedAt: pickup?.pickedAt ?? null,
-      courierName: pickup?.isPicked ? courierName : undefined,
+      isPicked: pickup?.sberbankPickups.isPicked ?? false,
+      pickedAt: pickup?.sberbankPickups.pickedAt ?? null,
+      courierId: pickup?.sberbankPickups.courierId ?? null,
+      courierName: pickup?.sberbankPickups.isPicked ? pickup.couriers?.name ?? undefined : undefined,
     };
   });
   
@@ -898,7 +958,7 @@ export async function toggleSberbankPickup(
     await db
       .update(sberbankPickups)
       .set({
-        courierId: !pickup.isPicked ? courierId : null,
+        courierId,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
         updatedAt: new Date(),
