@@ -304,9 +304,12 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
   const db = await getDb();
   if (!db) return [];
 
-  // Create Date objects for the start and end of the given date string in UTC
-  const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
-  const endOfDay = new Date(`${dateStr}T23:59:59.999Z`);
+  // Treat selected date as local courier day in Ulan-Ude / Irkutsk time (UTC+8).
+  // Example: 2026-06-02 local starts at 2026-06-01T16:00:00.000Z.
+  const localUtcOffsetHours = 8;
+  const localStart = new Date(`${dateStr}T00:00:00.000Z`);
+  const startOfDay = new Date(localStart.getTime() - localUtcOffsetHours * 60 * 60 * 1000);
+  const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
   
   const allTasks = await db
     .select()

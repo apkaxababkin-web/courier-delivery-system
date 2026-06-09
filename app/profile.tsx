@@ -146,16 +146,25 @@ export default function ProfileModal() {
     await saveVibrationEnabled(enabled);
   };
 
+  const performLogout = async () => {
+    await AsyncStorage.removeItem("pushToken");
+    await logout();
+    router.replace("/");
+  };
+
   const handleLogout = () => {
+    if (Platform.OS === "web") {
+      performLogout().catch((error) => console.warn("Failed to logout", error));
+      return;
+    }
+
     Alert.alert("Выход", "Выйти из аккаунта курьера?", [
       { text: "Отмена", style: "cancel" },
       {
         text: "Выйти",
         style: "destructive",
-        onPress: async () => {
-          await AsyncStorage.removeItem("pushToken");
-          await logout();
-          router.replace("/");
+        onPress: () => {
+          performLogout().catch((error) => console.warn("Failed to logout", error));
         },
       },
     ]);
