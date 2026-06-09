@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
-import { sendExpoPush } from "./expoPush";
+import { isExpoPushToken, sendExpoPush } from "./expoPush";
 
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -50,7 +50,7 @@ function unwrapBatchInput(obj: Record<string, unknown>): Record<string, unknown>
 async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
   try {
     const allCouriers = await db.getAllCouriers();
-    const targets = allCouriers.filter((courier) => courier.pushToken?.startsWith("ExponentPushToken"));
+    const targets = allCouriers.filter((courier) => isExpoPushToken(courier.pushToken));
 
     console.log("[PUSH_ALL] targets", targets.length, title);
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { syncTaskForRequestId, updateRequestStatusFromTask } from "./_core/requestTaskSync";
-import { sendExpoPush } from "./_core/expoPush";
+import { isExpoPushToken, sendExpoPush } from "./_core/expoPush";
 import { broadcastLive } from "./_core/liveEvents";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -14,7 +14,7 @@ import * as db from "./db";
 async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
   try {
     const couriers = await db.getAllCouriers();
-    const targets = couriers.filter((courier) => courier.pushToken?.startsWith("ExponentPushToken"));
+    const targets = couriers.filter((courier) => isExpoPushToken(courier.pushToken));
 
     console.log("[PUSH_ALL] targets", targets.length, title);
 

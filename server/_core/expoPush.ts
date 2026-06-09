@@ -1,10 +1,17 @@
+export function isExpoPushToken(pushToken: string | null | undefined): pushToken is string {
+  return Boolean(
+    pushToken &&
+    (pushToken.startsWith("ExponentPushToken") || pushToken.startsWith("ExpoPushToken")),
+  );
+}
+
 export async function sendExpoPush(
   pushToken: string | null | undefined,
   title: string,
   body: string,
   data?: Record<string, unknown>,
 ) {
-  if (!pushToken || !pushToken.startsWith("ExponentPushToken")) {
+  if (!isExpoPushToken(pushToken)) {
     console.log("[PUSH] invalid token", pushToken);
     return false;
   }
