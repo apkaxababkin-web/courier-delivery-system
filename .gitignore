@@ -74,3 +74,6 @@ postgres_data/
 
 # Firebase service account keys
 *firebase-adminsdk*.json
+dist-courier-app/
+courier-manager/dist/
+android/app/build/
