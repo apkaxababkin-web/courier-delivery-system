@@ -243,3 +243,18 @@ Before saying a bug is fixed, verify the real flow end-to-end:
 6. Run pnpm check.
 7. Run pnpm build for larger changes.
 8. For server changes, rebuild and restart Docker API.
+
+## Core product principle: shared operations board
+The main business logic of courier-delivery-system is that all participants see all operational movements.
+
+This is not a private per-courier task system. Couriers and managers must share one operational board:
+- all active requests/tasks are visible to all couriers and managers;
+- assigned courier is shown as task metadata, but the task must not disappear from other couriers;
+- status changes by a courier must be visible to manager and all other couriers;
+- places pickup updates must be visible to manager and all couriers;
+- Hemotest/Sberbank pickup point changes must be visible to manager and all couriers;
+- realtime/live events should notify all connected clients;
+- push notifications for new requests/lists/points should go to all active couriers;
+- assigned-courier push may exist, but must not replace all-courier visibility.
+
+When auditing code, treat filters by courierId on shared active lists as suspicious unless the screen is explicitly "my tasks".
