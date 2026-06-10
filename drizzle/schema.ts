@@ -102,7 +102,7 @@ export const couriers = pgTable("couriers", {
   username: varchar("username", { length: 100 }).notNull().unique(),
   /** Bcrypt hashed password */
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
-  phone: varchar("phone", { length: 20 }),
+  phone: varchar("phone", { length: 50 }),
   vehicleType: courierVehicleTypeEnum("vehicleType").default("scooter").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   totalDeliveries: integer("totalDeliveries").default(0).notNull(),
@@ -135,7 +135,7 @@ export const tasks = pgTable("tasks", {
   taskType: taskTypeEnum("taskType").default("regular").notNull(),
   /** Recipient information */
   recipientName: varchar("recipientName", { length: 255 }).notNull(),
-  recipientPhone: varchar("recipientPhone", { length: 20 }),
+  recipientPhone: varchar("recipientPhone", { length: 50 }),
   /** Delivery address */
   deliveryAddress: text("deliveryAddress").notNull(),
   deliveryCity: varchar("deliveryCity", { length: 100 }),
@@ -158,7 +158,7 @@ export const tasks = pgTable("tasks", {
   /** Sender address (where to pick up the package) */
   senderAddress: text("senderAddress"),
   /** Sender phone number */
-  senderPhone: varchar("senderPhone", { length: 20 }),
+  senderPhone: varchar("senderPhone", { length: 50 }),
   /** Comments from manager with delivery instructions */
   comments: text("comments"),
   /** Comments from courier during delivery */
@@ -173,6 +173,10 @@ export const tasks = pgTable("tasks", {
   completedAt: timestamp("completedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  /** Legacy link to request */
+  requestId: integer("requestId"),
+  /** Legacy source request link */
+  sourceRequestId: integer("sourceRequestId"),
 });
 
 export type Task = typeof tasks.$inferSelect;
@@ -357,11 +361,13 @@ export const mails = pgTable("mails", {
   /** Recipient name */
   recipientName: varchar("recipientName", { length: 255 }),
   /** Recipient phone number */
-  recipientPhone: varchar("recipientPhone", { length: 20 }).notNull(),
+  recipientPhone: varchar("recipientPhone", { length: 50 }).notNull(),
   /** Delivery address */
   deliveryAddress: text("deliveryAddress").notNull(),
   /** Status: not_delivered or delivered */
   status: mailStatusEnum("status").default("not_delivered").notNull(),
+  /** Legacy mail status column kept for existing database compatibility */
+  mailStatus: mailStatusEnum("mailStatus").default("not_delivered").notNull(),
   /** Recipient signature (text input by courier) */
   recipientSignature: text("recipientSignature"),
   /** Delivery date/time */
@@ -409,7 +415,7 @@ export const clients = pgTable("clients", {
   /** Contact person name (optional) */
   contactPerson: varchar("contactPerson", { length: 255 }),
   /** Phone number (optional) */
-  phone: varchar("phone", { length: 20 }),
+  phone: varchar("phone", { length: 50 }),
   /** Email (optional) */
   email: varchar("email", { length: 320 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -428,7 +434,7 @@ export const clientPoints = pgTable("clientPoints", {
   name: varchar("name", { length: 255 }).notNull(),
   address: text("address").notNull(),
   contactPerson: varchar("contactPerson", { length: 255 }),
-  phone: varchar("phone", { length: 20 }),
+  phone: varchar("phone", { length: 50 }),
   sortOrder: integer("sortOrder").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -445,7 +451,7 @@ export const clientRegularClients = pgTable("clientRegularClients", {
   name: varchar("name", { length: 255 }).notNull(),
   address: text("address").notNull(),
   contactPerson: varchar("contactPerson", { length: 255 }),
-  phone: varchar("phone", { length: 20 }),
+  phone: varchar("phone", { length: 50 }),
   sortOrder: integer("sortOrder").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -469,6 +475,8 @@ export const requests = pgTable("requests", {
 
   /** Status: pending, assigned, in_progress, completed, cancelled */
   status: requestStatusEnum("status").default("pending").notNull(),
+  /** Legacy request status column kept for existing database compatibility */
+  requestStatus: requestStatusEnum("requestStatus").default("pending").notNull(),
 
   /** Assigned courier ID (null = unassigned) */
   courierId: integer("courierId"),
@@ -479,7 +487,7 @@ export const requests = pgTable("requests", {
   /** Recipient name */
   recipientName: varchar("recipientName", { length: 255 }),
   /** Recipient phone */
-  recipientPhone: varchar("recipientPhone", { length: 20 }),
+  recipientPhone: varchar("recipientPhone", { length: 50 }),
   /** Recipient address (for courier_call apartment/office) */
   recipientAddress: text("recipientAddress"),
   /** Delivery address */
@@ -505,7 +513,7 @@ export const requests = pgTable("requests", {
   /** Sender address (for movement) */
   senderAddress: text("senderAddress"),
   /** Sender phone (for movement) */
-  senderPhone: varchar("senderPhone", { length: 20 }),
+  senderPhone: varchar("senderPhone", { length: 50 }),
   /** Recipient company (for courier_call) */
   recipientCompany: varchar("recipientCompany", { length: 255 }),
   /** Recipient city (for courier_call) */
@@ -597,10 +605,14 @@ export const managers = pgTable("managers", {
   username: varchar("username", { length: 100 }).notNull().unique(),
   /** Email address */
   email: varchar("email", { length: 320 }).notNull().unique(),
+  /** Legacy password column kept for existing database compatibility */
+  password: varchar("password", { length: 255 }).notNull(),
   /** Bcrypt hashed password */
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  /** Legacy role column kept for existing database compatibility */
+  role: text("role").default("manager"),
   /** Phone number */
-  phone: varchar("phone", { length: 20 }),
+  phone: varchar("phone", { length: 50 }),
   /** Account active status */
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
