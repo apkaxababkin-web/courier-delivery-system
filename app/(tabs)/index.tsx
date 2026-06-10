@@ -79,8 +79,24 @@ export default function TaskListScreen() {
     enabled: !authLoading && !!token,
     queryFn: async () => {
       if (!token) return [];
-      const snapshot = await mobileClient.realtime(token);
-      return snapshot.tasks;
+      const dateKey = toLocalDateKey(selectedDate);
+      console.log("[TasksScreen] token present", !!token);
+
+      try {
+        const snapshot = await mobileClient.realtime(token);
+        const realtimeTasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+        console.log("[TasksScreen] realtime response ok/error", snapshot.ok ? "ok" : "error");
+        console.log("[TasksScreen] realtime tasks count", realtimeTasks.length);
+
+        if (realtimeTasks.length > 0) return realtimeTasks;
+      } catch (error) {
+        console.log("[TasksScreen] realtime response ok/error", error instanceof Error ? error.message : "error");
+        console.log("[TasksScreen] realtime tasks count", 0);
+      }
+
+      const fallbackTasks = await mobileClient.tasksAll(token, dateKey);
+      console.log("[TasksScreen] fallback tasks count", fallbackTasks.length);
+      return fallbackTasks;
     },
     staleTime: 0,
     refetchOnMount: "always",
