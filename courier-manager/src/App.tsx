@@ -11,6 +11,10 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
+  MoreVertical,
+  Search,
+  Send,
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TasksView from './views/TasksView';
@@ -21,6 +25,7 @@ import MailsView from './views/MailsView';
 import ReportsView from './views/ReportsView';
 import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
+import { type ChatMessage, getChatMessages, sendChatMessage } from './lib/api';
 
 type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'couriers';
 
@@ -109,6 +114,167 @@ function formatArchiveDate(date: string) {
     year: 'numeric',
   });
 }
+
+
+
+function formatChatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function ManagerChatPanel() {
+  const [draft, setDraft] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isChatLoading, setIsChatLoading] = useState(true);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatError, setChatError] = useState('');
+
+  const managerName = localStorage.getItem('managerName') || 'Менеджер';
+
+  const loadChatMessages = async () => {
+    try {
+      setChatError('');
+      const data = await getChatMessages(120);
+      setMessages(data);
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'Не удалось загрузить чат');
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadChatMessages();
+    const timer = window.setInterval(loadChatMessages, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const handleSendMessage = async () => {
+    const text = draft.trim();
+    if (!text || isSendingMessage) return;
+
+    setIsSendingMessage(true);
+    setChatError('');
+
+    try {
+      const message = await sendChatMessage({
+        text,
+        senderName: managerName,
+        senderRole: 'manager',
+      });
+
+      setMessages((current) => [...current, message]);
+      setDraft('');
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'Не удалось отправить сообщение');
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  return (
+    <aside className="hidden h-[calc(100vh-4rem)] w-[380px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:flex-col 2xl:w-[420px]">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-5 w-5 text-slate-900" />
+            <h2 className="text-lg font-bold tracking-tight text-slate-950">Чат МИГ</h2>
+          </div>
+          <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Общий рабочий чат
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={loadChatMessages} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950">
+            <Search className="h-4 w-4" />
+          </button>
+          <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950">
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {chatError ? (
+        <div className="mx-5 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+          {chatError}
+        </div>
+      ) : null}
+
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        {isChatLoading ? (
+          <div className="flex h-full items-center justify-center text-sm text-slate-400">
+            Загружаем чат...
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-center">
+            <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-7">
+              <MessageCircle className="mx-auto mb-3 h-8 w-8 text-slate-300" />
+              <p className="text-sm font-semibold text-slate-900">Сообщений пока нет</p>
+              <p className="mt-1 text-xs text-slate-500">Напиши первое сообщение в общий чат.</p>
+            </div>
+          </div>
+        ) : (
+          messages.map((message) => {
+            const isMine = message.senderName === managerName && message.senderRole === 'manager';
+
+            return (
+              <div key={message.id} className="flex gap-3">
+                <div className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${isMine ? 'bg-violet-500 text-white' : 'bg-blue-500 text-white'}`}>
+                  {message.senderName.slice(0, 1)}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-slate-950">{message.senderName}</span>
+                      <span className="ml-2 text-xs text-slate-400">{message.senderRole === 'manager' ? 'Менеджер' : 'Курьер'}</span>
+                    </div>
+                    <span className="shrink-0 text-xs text-slate-400">{formatChatTime(message.createdAt)}</span>
+                  </div>
+
+                  <div className="whitespace-pre-wrap break-words rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-5 text-slate-700 shadow-sm ring-1 ring-slate-100">
+                    {message.text}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="border-t border-slate-100 bg-white p-5">
+        <div className="flex items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 shadow-sm">
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            placeholder="Написать сообщение..."
+            rows={1}
+            className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+          />
+          <button
+            type="button"
+            onClick={handleSendMessage}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm transition hover:bg-slate-800 disabled:bg-slate-300"
+            disabled={!draft.trim() || isSendingMessage}
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-400">Enter — отправить, Shift + Enter — новая строка.</p>
+      </div>
+    </aside>
+  );
+}
+
 
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
@@ -360,12 +526,16 @@ function App() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-hidden px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
-          <div className="mx-auto max-w-[1440px] space-y-5">
-            <div className="md:hidden"><h1 className="text-2xl font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="mt-1 text-sm text-slate-500">{getPageDescription()}</p></div>
-            {renderView()}
-          </div>
-        </main>
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 lg:px-7">
+            <div className="mx-auto max-w-[1180px] space-y-5">
+              <div className="md:hidden"><h1 className="text-2xl font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="mt-1 text-sm text-slate-500">{getPageDescription()}</p></div>
+              {renderView()}
+            </div>
+          </main>
+
+          <ManagerChatPanel />
+        </div>
       </div>
     </div>
   );

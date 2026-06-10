@@ -62,6 +62,25 @@ function inputFromBody(body: any): { input: Record<string, unknown>; isBatch: bo
   return { input: unwrapTrpcInput(body), isBatch: false };
 }
 
+
+async function ensureManagerChatTable(conn: any) {
+  await conn.execute(sql`
+    CREATE TABLE IF NOT EXISTS "managerChatMessages" (
+      "id" serial PRIMARY KEY,
+      "senderName" varchar(255) NOT NULL,
+      "senderRole" varchar(40) NOT NULL DEFAULT 'manager',
+      "text" text NOT NULL,
+      "createdAt" timestamp DEFAULT now() NOT NULL
+    )
+  `);
+}
+
+function normalizeSqlRows(result: any) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.rows)) return result.rows;
+  return [];
+}
+
 async function startServer() {
   const app = express();
   const server = createServer(app);
@@ -139,6 +158,63 @@ async function startServer() {
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
   });
+
+
+  app.get("/api/manager/chat/messages", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      await ensureManagerChatTable(conn);
+
+      const rawLimit = Number(req.query.limit || 80);
+      const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 80, 1), 200);
+
+      const result = await conn.execute(sql`
+        SELECT "id", "senderName", "senderRole", "text", "createdAt"
+        FROM "managerChatMessages"
+        ORDER BY "id" DESC
+        LIMIT ${limit}
+      `);
+
+      res.json(normalizeSqlRows(result).reverse());
+    } catch (error) {
+      console.error("[manager.chat.messages] failed", error);
+      const message = error instanceof Error ? error.message : "Failed to load chat messages";
+      res.status(500).json({ error: { message } });
+    }
+  });
+
+  app.post("/api/manager/chat/messages", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      await ensureManagerChatTable(conn);
+
+      const text = String(req.body?.text || "").trim();
+      const senderName = String(req.body?.senderName || "Менеджер").trim().slice(0, 255) || "Менеджер";
+      const senderRole = String(req.body?.senderRole || "manager").trim().slice(0, 40) || "manager";
+
+      if (!text) {
+        res.status(400).json({ error: { message: "Message text is required" } });
+        return;
+      }
+
+      const result = await conn.execute(sql`
+        INSERT INTO "managerChatMessages" ("senderName", "senderRole", "text")
+        VALUES (${senderName}, ${senderRole}, ${text})
+        RETURNING "id", "senderName", "senderRole", "text", "createdAt"
+      `);
+
+      res.json(normalizeSqlRows(result)[0] || { success: true });
+    } catch (error) {
+      console.error("[manager.chat.send] failed", error);
+      const message = error instanceof Error ? error.message : "Failed to send chat message";
+      res.status(500).json({ error: { message } });
+    }
+  });
+
 
   app.get("/api/trpc/manager.couriers", async (_req, res) => {
     try {

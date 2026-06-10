@@ -504,6 +504,36 @@ export async function getRealtimeSnapshot(): Promise<RealtimeSnapshot> {
   };
 }
 
+
+// ─── Manager Chat API ───────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  id: number;
+  senderName: string;
+  senderRole: string;
+  text: string;
+  createdAt: string;
+}
+
+export async function getChatMessages(limit = 80): Promise<ChatMessage[]> {
+  return await restJson<ChatMessage[]>(`/api/manager/chat/messages?limit=${limit}`);
+}
+
+export async function sendChatMessage(input: {
+  text: string;
+  senderName: string;
+  senderRole?: string;
+}): Promise<ChatMessage> {
+  return await restJson<ChatMessage>('/api/manager/chat/messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      text: input.text,
+      senderName: input.senderName,
+      senderRole: input.senderRole || 'manager',
+    }),
+  });
+}
+
 // ─── PDF Extraction ─────────────────────────────────────────────────────────
 
 export interface ExtractedWaybillData {

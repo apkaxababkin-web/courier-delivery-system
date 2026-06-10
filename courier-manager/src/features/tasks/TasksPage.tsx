@@ -539,7 +539,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
             />
           )}
 
-          <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+          <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 xl:right-[400px] 2xl:right-[440px]">
             {showCreateActionMenu && (
               <div className="w-[min(420px,calc(100vw-32px))] overflow-hidden rounded-[28px] border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-950/20">
                 <div className="px-3 pb-2 pt-2">
