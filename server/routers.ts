@@ -285,7 +285,7 @@ export const appRouter = router({
   // ─── Tasks ────────────────────────────────────────────────────────────────────
   tasks: router({
     /**
-     * All tasks for a given date (visible to all couriers)
+     * Shared operations board: all active tasks for all couriers, plus dated history.
      */
     all: publicProcedure
       .input(z.object({
@@ -296,8 +296,14 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
 
-        const date = input.date ?? new Date().toISOString().slice(0, 10);
-        return db.getTasksByDateWithCourier(date);
+        const [activeTasks, completedTasks] = await Promise.all([
+          db.getAllTasksWithCourier(),
+          input.date ? db.getTasksByDateWithCourier(input.date) : db.getCompletedTasksWithCourier(),
+        ]);
+        const completedForDate = completedTasks.filter((task) => task.status === "completed" || task.status === "cancelled");
+        const taskMap = new Map([...activeTasks, ...completedForDate].map((task) => [task.id, task]));
+
+        return Array.from(taskMap.values());
       }),
 
     /**

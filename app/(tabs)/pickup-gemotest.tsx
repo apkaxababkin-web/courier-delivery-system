@@ -1,4 +1,4 @@
-import { FlatList, Pressable, Text, View, Platform } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { skipToken } from "@tanstack/react-query";
 import { ScreenContainer } from "@/components/screen-container";
@@ -15,16 +15,17 @@ interface PickupPoint {
   id: number;
   name: string;
   address: string;
+  phone?: string | null;
   isPicked: boolean;
-  pickedAt: Date | null;
-  courierName?: string;
+  pickedAt: Date | string | null;
+  courierName?: string | null;
 }
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
 }
 
-function formatTime(date: Date | null) {
+function formatTime(date: Date | string | null) {
   if (!date) return "";
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return "";
@@ -48,9 +49,11 @@ export default function HemotestScreen() {
 
   const queryInput = token ? { token, date: selectedDate } : skipToken;
 
-  const { data: pickupPoints = [], isLoading, refetch } = trpc.hemotest.pickupPoints.useQuery(queryInput);
+  const { data: pickupPointsRaw = [], isLoading, refetch } = trpc.hemotest.pickupPoints.useQuery(queryInput);
+  const pickupPoints = Array.isArray(pickupPointsRaw) ? (pickupPointsRaw as PickupPoint[]) : [];
 
-  const { data: pickedCount = 0, refetch: refetchCount } = trpc.hemotest.pickedCount.useQuery(queryInput);
+  const { data: pickedCountRaw = 0, refetch: refetchCount } = trpc.hemotest.pickedCount.useQuery(queryInput);
+  const pickedCount = Number(pickedCountRaw) || pickupPoints.filter((point) => point.isPicked).length;
 
   useMobileLiveSync({
     enabled: true,
@@ -84,15 +87,17 @@ export default function HemotestScreen() {
     setSelectedPointId(null);
   };
 
-  const renderPickupPoint = ({ item, index }: { item: PickupPoint; index: number }) => {
+  const renderPickupPoint = (item: PickupPoint, index: number) => {
     const selected = selectedPointId === item.id;
-    const picked = item.isPicked;
+    const picked = !!item.isPicked;
     const pickedMeta = picked
-      ? `${formatTime(item.pickedAt)}${item.courierName ? ` • ${item.courierName}` : ""}`
+      ? [formatTime(item.pickedAt), item.courierName].filter(Boolean).join(" • ")
       : "";
+    const actionLabel = picked ? "Забрано" : selected ? "Еще раз" : "Забрать";
 
     return (
       <Pressable
+        key={String(item.id)}
         onPress={() => handleTogglePickup(item.id)}
         style={({ pressed }) => ({
           backgroundColor: picked ? pickedBg : selected ? selectedBg : colors.surface,
@@ -105,35 +110,53 @@ export default function HemotestScreen() {
           opacity: pressed ? 0.78 : 1,
         })}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <View style={{ width: 24, height: 24, borderRadius: 10, backgroundColor: picked ? "rgba(34,197,94,0.18)" : soft, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: picked ? "rgba(34,197,94,0.38)" : border }}>
             <Text style={{ color: picked ? "#22C55E" : colors.muted, fontSize: 11, fontWeight: "900" }}>{picked ? "✓" : index + 1}</Text>
           </View>
 
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={{ flex: 1, color: colors.foreground, fontSize: 13, lineHeight: 17 }}
-          >
-            <Text style={{ fontWeight: "900" }}>{item.name}</Text>
-            <Text style={{ fontWeight: "500", color: colors.muted }}> • {item.address}</Text>
-          </Text>
+          <View style={{ flex: 1, minWidth: 0, marginLeft: 10, marginRight: 10 }}>
+            <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, lineHeight: 17, fontWeight: "900" }}>
+              {item.name || "Точка Гемотест"}
+            </Text>
+            <Text numberOfLines={2} style={{ color: colors.muted, fontSize: 12, lineHeight: 16, fontWeight: "700", marginTop: 2 }}>
+              {item.address || "Адрес не указан"}
+            </Text>
+            {!!item.phone && (
+              <Text numberOfLines={1} style={{ color: colors.primary, fontSize: 11, lineHeight: 15, fontWeight: "800", marginTop: 2 }}>
+                {item.phone}
+              </Text>
+            )}
+          </View>
 
-          {!!pickedMeta && (
+          <View style={{ alignItems: "flex-end", maxWidth: 128 }}>
             <Text
               numberOfLines={1}
               style={{
-                maxWidth: 120,
-                color: picked ? "#22C55E" : colors.primary,
+                color: picked ? "#22C55E" : selected ? colors.primary : colors.muted,
                 fontSize: 11,
                 lineHeight: 16,
                 fontWeight: "900",
                 textAlign: "right",
               }}
             >
+              {actionLabel}
+            </Text>
+            {!!pickedMeta && (
+            <Text
+              numberOfLines={1}
+              style={{
+                color: "#22C55E",
+                fontSize: 10.5,
+                lineHeight: 16,
+                fontWeight: "800",
+                textAlign: "right",
+              }}
+            >
               {pickedMeta}
             </Text>
-          )}
+            )}
+          </View>
         </View>
       </Pressable>
     );
@@ -156,15 +179,14 @@ export default function HemotestScreen() {
       </View>
 
       {pickupPoints.length > 0 ? (
-        <FlatList
-          data={pickupPoints}
-          renderItem={renderPickupPoint}
-          keyExtractor={(item) => item.id.toString()}
-          style={Platform.OS === "web" ? ({ flex: 1, height: "calc(100vh - 145px)", maxHeight: "calc(100vh - 145px)", overflowY: "scroll" } as any) : { flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: Math.max(insets.bottom + 190, 220), backgroundColor: colors.background, flexGrow: 1 }}
-          showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
-          ListFooterComponent={<View style={{ height: 180 }} />}
-        />
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.background }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: Math.max(insets.bottom + 190, 220), flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {pickupPoints.map((point, index) => renderPickupPoint(point, index))}
+          <View style={{ height: 180 }} />
+        </ScrollView>
       ) : isLoading ? (
         <View className="flex-1 items-center justify-center">
           <Text style={{ color: colors.muted }}>Загрузка...</Text>

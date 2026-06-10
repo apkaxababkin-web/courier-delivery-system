@@ -13,10 +13,10 @@ import {
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { trpc } from "@/lib/trpc";
 import { NetworkBanner } from "@/components/network-banner";
 import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
+import { getApiBaseUrl } from "@/constants/oauth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
@@ -38,6 +38,25 @@ import {
   Mail,
 } from "lucide-react-native";
 
+const toLocalDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const getTaskDateKey = (task: any) => {
+  const value = task.scheduledAt || task.createdAt;
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+
+  return toLocalDateKey(date);
+};
+
+const isActiveBoardTask = (task: any) => task.status !== "completed" && task.status !== "cancelled";
 
 export default function TaskListScreen() {
   const colors = useColors();
@@ -48,26 +67,27 @@ export default function TaskListScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const mobileClient = useMemo(() => createCourierMobileClient(getApiBaseUrl()), []);
 
   const {
     data: tasksDataRaw,
     isLoading,
     refetch,
     isRefetching: isRefetchingQuery,
-  } = trpc.tasks.all.useQuery(
-    {
-      token: token!,
-      date: selectedDate.toISOString().slice(0, 10),
+  } = useQuery({
+    queryKey: ["courier-mobile-board-tasks", token],
+    enabled: !authLoading && !!token,
+    queryFn: async () => {
+      if (!token) return [];
+      const snapshot = await mobileClient.realtime(token);
+      return snapshot.tasks;
     },
-    {
-      enabled: !authLoading && !!token,
-      staleTime: 0,
-      refetchOnMount: "always",
-      refetchOnReconnect: true,
-      refetchInterval: 60_000,
-      placeholderData: (previousData) => previousData,
-    },
-  );
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnReconnect: true,
+    refetchInterval: 60_000,
+    placeholderData: (previousData) => previousData,
+  });
 
 
   const tasksData = useMemo(() => {
@@ -115,12 +135,12 @@ export default function TaskListScreen() {
       return [];
     }
 
-    const selectedDateKey = selectedDate.toISOString().slice(0, 10);
+    const selectedDateKey = toLocalDateKey(selectedDate);
 
     const tasks = tasksData.filter((task: any) => {
-      const taskDateKey = String(task.scheduledAt || task.createdAt || "").slice(0, 10);
+      const taskDateKey = getTaskDateKey(task);
 
-      if (taskDateKey && taskDateKey !== selectedDateKey) {
+      if (!isActiveBoardTask(task) && taskDateKey && taskDateKey !== selectedDateKey) {
         return false;
       }
 
