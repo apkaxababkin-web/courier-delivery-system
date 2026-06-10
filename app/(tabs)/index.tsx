@@ -266,6 +266,26 @@ export default function TaskListScreen() {
       });
   };
 
+  const getNutsOrderItems = (item: any) => {
+    return String(item.items || "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const match = part.match(/^(.+?):\s*(\d+)/);
+        const rawName = (match?.[1] || part).trim();
+        const quantity = match?.[2] || "";
+        const isOil = rawName.toLowerCase().includes("масло") || rawName.toLowerCase().includes("РјР°СЃР»Рѕ");
+        const label = isOil ? "масло" : rawName.replace(/\s*\(.+?\)\s*/g, "").trim();
+
+        return {
+          label,
+          quantity,
+          unit: isOil ? "шт." : "кор.",
+        };
+      });
+  };
+
   const getNutsSumLabel = (item: any) => {
     const match = String(item.comments || "").match(/Сумма:\s*([0-9.]+)/);
     if (!match?.[1]) return null;
@@ -285,6 +305,19 @@ export default function TaskListScreen() {
     if (to) return `до ${to}`;
 
     return null;
+  };
+
+  const isCourierCallTask = (item: any) => {
+    const type = item.requestType || item.taskType;
+    return type === "courier_call";
+  };
+
+  const getFooterParts = (item: any) => {
+    return [
+      isNutsTask(item) ? getNutsSumLabel(item) : null,
+      getCourierLabel(item),
+      getTaskTimeLabel(item),
+    ].filter(Boolean);
   };
 
   const getMainCardInfo = (item: any) => {
@@ -582,111 +615,73 @@ export default function TaskListScreen() {
                 const info = getMainCardInfo(item);
                 const timeLabel = getTaskTimeLabel(item);
                 const nutsTask = isNutsTask(item);
+                const courierCallTask = isCourierCallTask(item);
 
                 if (nutsTask) {
-                  const orderLines = getNutsOrderLines(item);
-                  const sumLabel = getNutsSumLabel(item);
+                  const orderItems = getNutsOrderItems(item);
 
                   return (
-                    <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
-                      <View style={{ flex: 32, paddingRight: 7, alignItems: "center" }}>
-                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>Получатель</Text>
-                        <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginTop: 2 }}>
+                    <View style={{ marginTop: 8 }}>
+                      <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                        <Text style={{ width: 76, color: colors.muted, fontSize: 10, fontWeight: "800" }}>Получатель</Text>
+                        <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "900" }}>
                           {item.recipientName || "—"}
                         </Text>
-                        {!!item.recipientPhone && (
-                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10, fontWeight: "700", marginTop: 2 }}>
-                            {item.recipientPhone}
-                          </Text>
-                        )}
                       </View>
 
-                      <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: colors.border }} />
-                      </View>
-
-                      <View style={{ flex: 40, paddingHorizontal: 7, alignItems: "center" }}>
-                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>Заказ</Text>
-                        <View style={{ marginTop: 2 }}>
-                          {orderLines.length ? orderLines.map((line, index) => (
-                            <Text key={`${line}-${index}`} numberOfLines={1} style={{ color: colors.foreground, fontSize: 11.5, fontWeight: "800", marginTop: index === 0 ? 0 : 2 }}>
-                              {line}
+                      <View style={{ marginTop: 7, flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
+                        {orderItems.length ? orderItems.slice(0, 6).map((order, orderIndex) => (
+                          <View key={`${order.label}-${orderIndex}`} style={{ flexDirection: "row", alignItems: "center", marginRight: 9, marginBottom: 5 }}>
+                            <View style={{ borderRadius: 7, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, paddingHorizontal: 6, paddingVertical: 2 }}>
+                              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "900" }}>{order.label}</Text>
+                            </View>
+                            <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: "900", marginLeft: 4 }}>
+                              {order.quantity} {order.unit}
                             </Text>
-                          )) : (
-                            <Text style={{ color: colors.foreground, fontSize: 11.5, fontWeight: "800" }}>—</Text>
-                          )}
-                        </View>
-                      </View>
-
-                      <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: colors.border }} />
-                      </View>
-
-                      <View style={{ flex: 24, alignItems: "flex-start", paddingLeft: 7 }}>
-                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>Сумма</Text>
-                        <Text numberOfLines={2} style={{ color: colors.foreground, fontSize: 11.5, fontWeight: "900", marginTop: 2 }}>
-                          {sumLabel || "—"}
-                        </Text>
+                          </View>
+                        )) : (
+                          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>Заказ не указан</Text>
+                        )}
+                        {orderItems.length > 6 && (
+                          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginBottom: 5 }}>+{orderItems.length - 6}</Text>
+                        )}
                       </View>
                     </View>
                   );
                 }
 
                 return (
-                  <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
-                    <View style={{ flex: timeLabel ? 35 : 49, paddingRight: 7, alignItems: "center" }}>
-                      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>{info.leftTitle}</Text>
-                      <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginTop: 2 }}>
+                  <View style={{ marginTop: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                      <Text style={{ width: 54, color: colors.muted, fontSize: 10, fontWeight: "800" }}>{info.leftTitle}</Text>
+                      <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "900" }}>
                         {info.leftName}
                       </Text>
-                      {!!info.leftAddress && (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                          <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
-                            {info.leftAddress}
-                          </Text>
-                        </View>
-                      )}
                     </View>
-
-                    <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                      <View style={{ width: 1, height: 36, backgroundColor: colors.border }} />
-                    </View>
-
-                    <View style={{ flex: timeLabel ? 35 : 49, paddingHorizontal: 7, alignItems: "center" }}>
-                      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400" }}>{info.rightTitle}</Text>
-                      <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginTop: 2 }}>
-                        {info.rightName}
+                    {!!info.leftAddress && (
+                      <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 2, paddingLeft: 54 }}>
+                        {info.leftAddress}
                       </Text>
-                      {!!info.rightAddress && (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                          <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
-                            {info.rightAddress}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {timeLabel && (
-                      <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: 36, backgroundColor: colors.border }} />
-                      </View>
                     )}
 
-                    {timeLabel && (
-                      <View style={{ flex: 26, alignItems: "center", paddingLeft: 7 }}>
-                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "400", textAlign: "center" }}>Время</Text>
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                          <Clock size={11} color="#64748B" strokeWidth={2.3} />
-                          <Text numberOfLines={1} style={{ color: "#475569", fontSize: 10, fontWeight: "400", marginLeft: 3, textAlign: "center" }}>
-                            {timeLabel}
+                    {!courierCallTask && (
+                      <View style={{ marginTop: 5 }}>
+                        <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                          <Text style={{ width: 54, color: colors.muted, fontSize: 10, fontWeight: "800" }}>{info.rightTitle}</Text>
+                          <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "900" }}>
+                            {info.rightName}
                           </Text>
                         </View>
+                        {!!info.rightAddress && (
+                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 2, paddingLeft: 54 }}>
+                            {info.rightAddress}
+                          </Text>
+                        )}
                       </View>
                     )}
                   </View>
                 );
+
               })()}
 
               <View
@@ -725,12 +720,16 @@ export default function TaskListScreen() {
 
                 <Text
                   style={{
-                    color: item.courierName ? "#0F172A" : "#2563EB",
+                    color: colors.muted,
                     fontSize: 11,
                     fontWeight: "800",
+                    flex: 1,
+                    textAlign: "right",
+                    marginLeft: 8,
                   }}
+                  numberOfLines={1}
                 >
-                  {getCourierLabel(item)}
+                  {getFooterParts(item).join(" · ")}
                 </Text>
               </View>
 

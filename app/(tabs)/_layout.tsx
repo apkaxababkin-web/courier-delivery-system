@@ -50,7 +50,7 @@ export default function TabLayout() {
         tabBarInactiveTintColor: inactiveColor,
         tabBarAllowFontScaling: false,
         headerShown: false,
-        tabBarHideOnKeyboard: true,
+        tabBarHideOnKeyboard: Platform.OS !== "android",
         tabBarButton: HapticTab,
         tabBarBackground: () => null,
         sceneStyle: { paddingBottom: 0, backgroundColor: colors.background },

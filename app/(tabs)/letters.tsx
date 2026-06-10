@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { FlatList, Linking, Modal, Pressable, Text, TextInput, View } from "react-native";
+import { FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { NetworkBanner } from "@/components/network-banner";
 import { trpc } from "@/lib/trpc";
@@ -65,9 +65,13 @@ export default function LettersScreen() {
   const [deliveredAtInput, setDeliveredAtInput] = useState(formatDateTimeInput(new Date()));
   const [deliveryTimeError, setDeliveryTimeError] = useState("");
 
-  const { data: mails = [], refetch } = trpc.mails.all.useQuery({ token: token || "" }, { enabled: true, refetchInterval: 5000 });
+  const isDeliveryModalOpen = selectedMailId !== null;
+  const { data: mails = [], refetch } = trpc.mails.all.useQuery(
+    { token: token || "" },
+    { enabled: true, refetchInterval: isDeliveryModalOpen ? false : 5000 },
+  );
 
-  useMobileLiveSync({ enabled: true, onSync: useCallback(() => refetch(), [refetch]) });
+  useMobileLiveSync({ enabled: !isDeliveryModalOpen, onSync: useCallback(() => refetch(), [refetch]) });
 
   const deliverMutation = (trpc.mails as any).deliver.useMutation({
     onSuccess: () => {
@@ -214,8 +218,10 @@ export default function LettersScreen() {
         }}
       />
 
-      <Modal visible={selectedMailId !== null} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }}>
+      <Modal visible={selectedMailId !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }}>
+            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }}>
           <View style={{ backgroundColor: colors.background, borderRadius: 10, padding: 18, borderWidth: 1, borderColor: border }}>
             <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground, marginBottom: 14 }}>Кто получил?</Text>
             <TextInput value={recipientName} onChangeText={setRecipientName} placeholder="Введите ФИО" placeholderTextColor={colors.muted} style={{ backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: border, color: colors.foreground, fontWeight: "700" }} />
@@ -242,7 +248,9 @@ export default function LettersScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScreenContainer>
   );
