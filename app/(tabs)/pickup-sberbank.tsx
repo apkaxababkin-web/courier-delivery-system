@@ -1,4 +1,4 @@
-import { FlatList, Pressable, Text, View, Platform } from "react-native";
+import { Alert, Pressable, ScrollView, Text, View, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { skipToken } from "@tanstack/react-query";
 import { ScreenContainer } from "@/components/screen-container";
@@ -44,7 +44,6 @@ export default function SberbankScreen() {
 
   const [selectedDate] = useState(new Date());
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
-  const [lastTapTime, setLastTapTime] = useState<number>(0);
   const queryInput = token ? { token, date: selectedDate } : skipToken;
 
   const { data: pickupPoints = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(queryInput);
@@ -67,20 +66,35 @@ export default function SberbankScreen() {
     },
   });
 
-  const handleTogglePickup = (pointId: number) => {
-    const now = Date.now();
-    const timeSinceLastTap = now - lastTapTime;
+  const handleTogglePickup = (point: PickupPoint) => {
+    if (!token || toggleMutation.isPending) return;
 
-    if (selectedPointId !== pointId || timeSinceLastTap > 520) {
-      setSelectedPointId(pointId);
-      setLastTapTime(now);
+    if (!point.isPicked) {
+      setSelectedPointId(point.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      toggleMutation.mutate({ token, pointId: point.id, date: selectedDate });
       return;
     }
 
-    if (!token) return;
-    toggleMutation.mutate({ token, pointId, date: selectedDate });
-    setSelectedPointId(null);
+    const cancelPickup = () => {
+      setSelectedPointId(point.id);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      toggleMutation.mutate({ token, pointId: point.id, date: selectedDate });
+    };
+
+    if (Platform.OS === "web") {
+      cancelPickup();
+      return;
+    }
+
+    Alert.alert(
+      "Отменить отметку?",
+      `Точка «${point.name}» снова станет незабранной.`,
+      [
+        { text: "Не отменять", style: "cancel" },
+        { text: "Отменить", style: "destructive", onPress: cancelPickup },
+      ],
+    );
   };
 
   const renderPickupPoint = ({ item, index }: { item: PickupPoint; index: number }) => {
@@ -92,7 +106,7 @@ export default function SberbankScreen() {
 
     return (
       <Pressable
-        onPress={() => handleTogglePickup(item.id)}
+        onPress={() => handleTogglePickup(item)}
         style={({ pressed }) => ({
           backgroundColor: picked ? pickedBg : selected ? selectedBg : colors.surface,
           borderRadius: 10,
@@ -155,15 +169,24 @@ export default function SberbankScreen() {
       </View>
 
       {pickupPoints.length > 0 ? (
-        <FlatList
-          data={pickupPoints}
-          renderItem={renderPickupPoint}
-          keyExtractor={(item) => item.id.toString()}
-          style={Platform.OS === "web" ? ({ flex: 1, height: "calc(100vh - 145px)", maxHeight: "calc(100vh - 145px)", overflowY: "scroll" } as any) : { flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: Math.max(insets.bottom + 190, 220), backgroundColor: colors.background, flexGrow: 1 }}
-          showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
-          ListFooterComponent={<View style={{ height: 180 }} />}
-        />
+        <View style={{ flex: 1, minHeight: 320, backgroundColor: colors.background }}>
+          <ScrollView
+            style={{ flex: 1, backgroundColor: colors.background }}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 2,
+              paddingBottom: Math.max(insets.bottom + 120, 150),
+              backgroundColor: colors.background,
+            }}
+            showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
+          >
+            {pickupPoints.map((item: PickupPoint, index: number) => (
+              <View key={item.id.toString()}>
+                {renderPickupPoint({ item, index })}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
       ) : isLoading ? (
         <View className="flex-1 items-center justify-center">
           <Text style={{ color: colors.muted }}>Загрузка...</Text>

@@ -8,7 +8,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -512,9 +511,8 @@ export default function TaskListScreen() {
         <FlatList
           data={sortedTasks as any}
           keyExtractor={(item) => String(item.id)}
-          style={Platform.OS === "web" ? ({ flex: 1, height: "calc(100vh - 145px)", maxHeight: "calc(100vh - 145px)", overflowY: "scroll" } as any) : { flex: 1 }}
-          contentContainerStyle={{ paddingTop: 20, paddingHorizontal: 12, paddingBottom: 220, backgroundColor: colors.background, flexGrow: 1 }}
-          showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
+          contentContainerStyle={{ paddingTop: 20, paddingHorizontal: 12, paddingBottom: 220, backgroundColor: colors.background }}
+          showsVerticalScrollIndicator={false}
           ListFooterComponent={<View style={{ height: 260 }} />}
           ListEmptyComponent={
             <View style={styles.center}>
