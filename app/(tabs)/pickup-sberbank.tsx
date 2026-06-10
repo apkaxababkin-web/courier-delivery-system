@@ -1,5 +1,6 @@
-import { Alert, Pressable, ScrollView, Text, View, Platform } from "react-native";
+import { Alert, Pressable, ScrollView, Text, View, Platform, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { skipToken } from "@tanstack/react-query";
 import { ScreenContainer } from "@/components/screen-container";
 import { NetworkBanner } from "@/components/network-banner";
@@ -34,6 +35,11 @@ function formatTime(date: Date | null) {
 export default function SberbankScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const tabBarHeight = useBottomTabBarHeight();
+  const headerHeight = 82;
+  const extraRowsHeight = 520;
+  const listHeight = Math.max(320, windowHeight - insets.top - insets.bottom - tabBarHeight - headerHeight + extraRowsHeight);
   const { token } = useCourierAuth();
   const { isOnline } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
@@ -169,13 +175,13 @@ export default function SberbankScreen() {
       </View>
 
       {pickupPoints.length > 0 ? (
-        <View style={{ flex: 1, minHeight: 320, backgroundColor: colors.background }}>
+        <View style={{ height: listHeight, backgroundColor: colors.background, overflow: "hidden" }}>
           <ScrollView
-            style={{ flex: 1, backgroundColor: colors.background }}
+            style={{ flex: 1, alignSelf: "stretch", backgroundColor: colors.background }}
             contentContainerStyle={{
               paddingHorizontal: 16,
               paddingTop: 2,
-              paddingBottom: Math.max(insets.bottom + 120, 150),
+              paddingBottom: Math.max(insets.bottom + 560, 620),
               backgroundColor: colors.background,
             }}
             showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}

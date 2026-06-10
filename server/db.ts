@@ -704,7 +704,9 @@ export async function getHemotestPickupPointsForDate(
   const lists = await db
     .select({ id: hemotestPickupLists.id })
     .from(hemotestPickupLists)
-    .where(eq(hemotestPickupLists.date, dateStr));
+    .where(eq(hemotestPickupLists.date, dateStr))
+    .orderBy(desc(hemotestPickupLists.id))
+    .limit(1);
 
   const listIds = lists.map((list: { id: number }) => list.id);
   if (listIds.length === 0) return [];
@@ -713,13 +715,14 @@ export async function getHemotestPickupPointsForDate(
     .select()
     .from(hemotestListItems)
     .innerJoin(hemotestPickupPoints, eq(hemotestListItems.pointId, hemotestPickupPoints.id))
-    .where(inArray(hemotestListItems.listId, listIds));
+    .where(inArray(hemotestListItems.listId, listIds))
+    .orderBy(hemotestListItems.id);
 
   const pointsById = new Map<number, HemotestPickupPoint>();
   for (const row of listItems as Array<{ hemotestPickupPoints: HemotestPickupPoint }>) {
     pointsById.set(row.hemotestPickupPoints.id, row.hemotestPickupPoints);
   }
-  const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const points = Array.from(pointsById.values());
 
   // Get pickups for this courier and date
   const pickups = await db
@@ -747,8 +750,10 @@ export async function getHemotestPickupPointsForDate(
     };
   });
   
-  // Sort: unpicked first (false), then picked (true)
-  return result.sort((a: HemotestPickupWithStatus, b: HemotestPickupWithStatus) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
+  return result.sort(
+    (a: HemotestPickupWithStatus, b: HemotestPickupWithStatus) =>
+      Number(a.isPicked) - Number(b.isPicked),
+  );
 }
 
 export async function toggleHemotestPickup(
@@ -822,7 +827,9 @@ export async function getSberbankPickupPointsForDate(
   const lists = await db
     .select({ id: sberbankPickupLists.id })
     .from(sberbankPickupLists)
-    .where(eq(sberbankPickupLists.date, dateStr));
+    .where(eq(sberbankPickupLists.date, dateStr))
+    .orderBy(desc(sberbankPickupLists.id))
+    .limit(1);
 
   const listIds = lists.map((list: { id: number }) => list.id);
   if (listIds.length === 0) return [];
@@ -831,13 +838,14 @@ export async function getSberbankPickupPointsForDate(
     .select()
     .from(sberbankListItems)
     .innerJoin(sberbankPickupPoints, eq(sberbankListItems.pointId, sberbankPickupPoints.id))
-    .where(inArray(sberbankListItems.listId, listIds));
+    .where(inArray(sberbankListItems.listId, listIds))
+    .orderBy(sberbankListItems.id);
 
   const pointsById = new Map<number, SberbankPickupPoint>();
   for (const row of listItems as Array<{ sberbankPickupPoints: SberbankPickupPoint }>) {
     pointsById.set(row.sberbankPickupPoints.id, row.sberbankPickupPoints);
   }
-  const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const points = Array.from(pointsById.values());
 
   // Get pickups for this courier and date
   const pickups = await db
@@ -865,8 +873,10 @@ export async function getSberbankPickupPointsForDate(
     };
   });
   
-  // Sort: unpicked first (false), then picked (true)
-  return result.sort((a: SberbankPickupWithStatus, b: SberbankPickupWithStatus) => (a.isPicked ? 1 : 0) - (b.isPicked ? 1 : 0));
+  return result.sort(
+    (a: SberbankPickupWithStatus, b: SberbankPickupWithStatus) =>
+      Number(a.isPicked) - Number(b.isPicked),
+  );
 }
 
 export async function toggleSberbankPickup(
