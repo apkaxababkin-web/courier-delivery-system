@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
+import { DESIGN_PREVIEW_TOKEN, designPreviewCourier, isLocalDesignPreviewAvailable } from "@/lib/design-preview";
 
 async function getMobilePushToken(): Promise<string | null> {
   if (Platform.OS === "web") return null;
@@ -55,6 +56,7 @@ export default function LoginScreen() {
 
   const loginMutation = trpc.courierAuth.login.useMutation();
   const registerPushTokenMutation = trpc.couriers.registerPushToken.useMutation();
+  const previewAvailable = isLocalDesignPreviewAvailable();
 
   const handleLogin = async () => {
     setError("");
@@ -172,6 +174,23 @@ export default function LoginScreen() {
             <Text style={{ color: "white", fontSize: 17, fontWeight: "700" }}>Войти</Text>
           )}
         </Pressable>
+
+        {previewAvailable ? (
+          <Pressable
+            onPress={async () => {
+              await setSession(DESIGN_PREVIEW_TOKEN, designPreviewCourier);
+              router.replace("/(tabs)" as never);
+            }}
+            style={({ pressed }) => ({
+              height: 48,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.65 : 1,
+            })}
+          >
+            <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "800" }}>Открыть предпросмотр дизайна</Text>
+          </Pressable>
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );

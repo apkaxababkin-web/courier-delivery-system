@@ -1,12 +1,16 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
+import { HeaderBarV2 } from "@/components/header-bar-v2";
+import { useRouter } from "expo-router";
 import { NetworkBanner } from "@/components/network-banner";
 import { trpc } from "@/lib/trpc";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { DESIGN_PREVIEW_TOKEN, designPreviewMails } from "@/lib/design-preview";
+import { CalendarDays, CheckCircle2, Circle, FileText, Search, UserRound, X } from "lucide-react-native";
 
 function formatDateTimeInput(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -52,7 +56,9 @@ function shortTime(value?: string | Date | null) {
 
 export default function LettersScreen() {
   const colors = useColors();
+  const router = useRouter();
   const { token } = useCourierAuth();
+  const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
   const { isOnline } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
   const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
@@ -61,26 +67,23 @@ export default function LettersScreen() {
   const [search, setSearch] = useState("");
   const [selectedDate] = useState(new Date());
   const [selectedMailId, setSelectedMailId] = useState<number | null>(null);
+  const [selectedMailIds, setSelectedMailIds] = useState<number[]>([]);
   const [recipientName, setRecipientName] = useState("");
   const [deliveredAtInput, setDeliveredAtInput] = useState(formatDateTimeInput(new Date()));
   const [deliveryTimeError, setDeliveryTimeError] = useState("");
+  const longPressHandledRef = useRef(false);
 
   const isDeliveryModalOpen = selectedMailId !== null;
-  const { data: mails = [], refetch } = trpc.mails.all.useQuery(
+  const { data: mailsRaw = [], refetch } = trpc.mails.all.useQuery(
     { token: token || "" },
-    { enabled: true, refetchInterval: isDeliveryModalOpen ? false : 5000 },
+    { enabled: !!token && !isDesignPreview, refetchInterval: isDeliveryModalOpen || isDesignPreview ? false : 5000 },
   );
+  const mails = isDesignPreview ? designPreviewMails : mailsRaw;
 
-  useMobileLiveSync({ enabled: !isDeliveryModalOpen, onSync: useCallback(() => refetch(), [refetch]) });
+  useMobileLiveSync({ enabled: !isDeliveryModalOpen && !isDesignPreview, onSync: useCallback(() => refetch(), [refetch]) });
 
   const deliverMutation = (trpc.mails as any).deliver.useMutation({
-    onSuccess: () => {
-      setSelectedMailId(null);
-      setRecipientName("");
-      setDeliveryTimeError("");
-      setDeliveredAtInput(formatDateTimeInput(new Date()));
-      refetch();
-    },
+    onSuccess: () => refetch(),
   });
 
   const groupedMails = useMemo(() => {
@@ -133,118 +136,234 @@ export default function LettersScreen() {
     }
   };
 
-  const openDeliveryModal = (mailId: number) => {
-    setSelectedMailId(mailId);
+  const openDeliveryModal = (mailIds: number[]) => {
+    if (!mailIds.length) return;
+    setSelectedMailIds(mailIds);
+    setSelectedMailId(mailIds[0]);
     setRecipientName("");
     setDeliveryTimeError("");
     setDeliveredAtInput(formatDateTimeInput(new Date()));
   };
 
+  const closeDeliveryModal = () => {
+    setSelectedMailId(null);
+    setSelectedMailIds([]);
+    setRecipientName("");
+    setDeliveryTimeError("");
+    setDeliveredAtInput(formatDateTimeInput(new Date()));
+  };
+
+  const confirmDelivery = async () => {
+    const mailIds = selectedMailIds.length ? selectedMailIds : selectedMailId ? [selectedMailId] : [];
+    if (!mailIds.length || !recipientName.trim()) return;
+    const deliveredAt = parseDateTimeInput(deliveredAtInput);
+    if (!deliveredAt) {
+      setDeliveryTimeError("Введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ");
+      return;
+    }
+    if (isDesignPreview) {
+      closeDeliveryModal();
+      return;
+    }
+    if (!token) return;
+    for (const mailId of mailIds) {
+      await deliverMutation.mutateAsync({ token, mailId, recipientSignature: recipientName.trim(), deliveredAt } as any);
+    }
+    closeDeliveryModal();
+    refetch();
+  };
+
+  const toggleMailSelection = (mailId: number) => {
+    setSelectedMailIds((current) => current.includes(mailId) ? current.filter((id) => id !== mailId) : [...current, mailId]);
+  };
+
+  const selectionMode = selectedMailIds.length > 0 && selectedMailId === null;
+
   return (
     <ScreenContainer className="p-0">
       <NetworkBanner visible={!isOnline} />
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, backgroundColor: colors.background }}>
-        <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground, marginBottom: 12 }}>Письма</Text>
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Поиск по № накладной или адресу"
-          placeholderTextColor={colors.muted}
-          style={{
-            backgroundColor: colors.surface,
-            borderRadius: 10,
-            paddingHorizontal: 15,
-            paddingVertical: 13,
-            borderWidth: 1,
-            borderColor: border,
-            color: colors.foreground,
-            fontSize: 12,
-            fontWeight: "700",
-          }}
-        />
+      <HeaderBarV2
+        title="Письма"
+        onProfilePress={() => router.push("/profile" as never)}
+        selectedDate={selectedDate}
+        showDate
+      />
+
+      <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 9, backgroundColor: colors.background }}>
+        <View style={{ height: 38, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: border, paddingHorizontal: 12 }}>
+          <Search size={17} color={colors.muted} strokeWidth={2} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Накладная, получатель или адрес"
+            placeholderTextColor={colors.muted}
+            style={{ flex: 1, height: 38, paddingHorizontal: 9, paddingVertical: 0, color: colors.foreground, fontSize: 12 }}
+          />
+        </View>
       </View>
 
       <FlatList
         data={groupedMails}
         keyExtractor={(item: any, index) => item.type === "header" ? `h-${item.title}-${index}` : `m-${item.mail.id}`}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 220, backgroundColor: colors.background }}
-        ListFooterComponent={<View style={{ height: 260 }} />}
+        contentContainerStyle={{ paddingBottom: 150, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: border }}
+        ListFooterComponent={<View style={{ height: 90 }} />}
         renderItem={({ item }: any) => {
           if (item.type === "header") {
-            return <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "900", marginTop: 10, marginBottom: 8 }}>{item.title}</Text>;
+            if (item.title === "Сегодня") return null;
+            return <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", paddingHorizontal: 16, paddingTop: 9, paddingBottom: 6 }}>{item.title}</Text>;
           }
 
           const mail = item.mail;
           const delivered = mail.status === "delivered";
           const hasPhone = Boolean(normalizePhoneForDial(mail.recipientPhone));
+          const selected = selectedMailIds.includes(mail.id);
 
           return (
             <Pressable
-              onPress={() => !delivered && openDeliveryModal(mail.id)}
+              onLongPress={() => {
+                if (delivered) return;
+                longPressHandledRef.current = true;
+                setSelectedMailId(null);
+                toggleMailSelection(mail.id);
+              }}
+              delayLongPress={350}
+              onPress={() => {
+                if (delivered) return;
+                if (longPressHandledRef.current) {
+                  longPressHandledRef.current = false;
+                  return;
+                }
+                if (selectionMode) {
+                  toggleMailSelection(mail.id);
+                  return;
+                }
+                openDeliveryModal([mail.id]);
+              }}
               style={({ pressed }) => ({
-                backgroundColor: colors.surface,
-                borderRadius: 10,
-                padding: 14,
-                marginBottom: 10,
-                borderWidth: 1,
-                borderColor: border,
+                minHeight: 73,
+                backgroundColor: selected ? "rgba(59,130,246,0.10)" : pressed ? colors.surface : colors.background,
+                flexDirection: "row",
+                borderBottomWidth: 1,
+                borderBottomColor: border,
                 opacity: pressed ? 0.82 : 1,
               })}
             >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900" }}>Письмо №-{mail.waybillNumber}</Text>
-                  <Text style={{ color: colors.muted, marginTop: 4, fontSize: 12, fontWeight: "700" }}>{mail.recipientName || "—"}</Text>
-                  <Text style={{ color: colors.muted, marginTop: 3, fontSize: 12, fontWeight: "700" }} numberOfLines={1}>{mail.deliveryAddress || "—"}</Text>
-                  {hasPhone && (
-                    <Pressable onPress={() => callRecipient(mail.recipientPhone)}>
-                      <Text style={{ color: colors.primary, marginTop: 5, fontSize: 12, fontWeight: "900" }}>{mail.recipientPhone}</Text>
-                    </Pressable>
+              <View style={{ width: 48, alignItems: "center", justifyContent: "center", borderRightWidth: 1, borderRightColor: border }}>
+                <FileText size={21} color={colors.muted} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, paddingVertical: 10, paddingLeft: 12, paddingRight: 14 }}>
+                <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                  <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 13, lineHeight: 18, fontWeight: "700", flex: 1 }}>
+                    Письмо №-{mail.waybillNumber}
+                    {mail.recipientName ? <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "500" }}>  {mail.recipientName}</Text> : null}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 10 }}>{shortTime(mail.deliveredAt || mail.createdAt)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
+                  <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 17, fontWeight: "600", flex: 1 }}>
+                    {mail.recipientName || "—"}
+                    <Text style={{ color: colors.muted, fontWeight: "400" }}>  {mail.deliveryAddress || "—"}</Text>
+                  </Text>
+                  {selected ? (
+                    <CheckCircle2 size={17} color={colors.primary} strokeWidth={2.4} />
+                  ) : delivered ? (
+                    <CheckCircle2 size={17} color={colors.success} strokeWidth={2.2} />
+                  ) : (
+                    <Circle size={17} color={colors.primary} strokeWidth={2.2} />
                   )}
                 </View>
-                <View style={{ alignItems: "flex-end", gap: 6 }}>
-                  <View style={{ backgroundColor: delivered ? "rgba(34,197,94,0.16)" : "rgba(59,130,246,0.14)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 }}>
-                    <Text style={{ color: delivered ? "#22C55E" : colors.primary, fontSize: 11, fontWeight: "900" }}>{delivered ? "Получено" : "В пути"}</Text>
-                  </View>
-                  {delivered && mail.courierName ? (
-                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", maxWidth: 120 }} numberOfLines={1}>{mail.courierName}</Text>
-                  ) : null}
-                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>{shortTime(mail.deliveredAt || mail.createdAt)}</Text>
-                </View>
+                {delivered ? (
+                  <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3, fontSize: 11, lineHeight: 16 }}>
+                    Получил: {mail.recipientSignature || mail.recipientName || "—"}{mail.courierName ? `  ·  ${mail.courierName}` : ""}
+                  </Text>
+                ) : hasPhone ? (
+                  <Pressable onPress={() => callRecipient(mail.recipientPhone)}>
+                    <Text style={{ color: colors.primary, marginTop: 3, fontSize: 11, lineHeight: 16 }}>{mail.recipientPhone}</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </Pressable>
           );
         }}
       />
 
+      {selectionMode ? (
+        <View
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 94,
+            zIndex: 20,
+            minHeight: 54,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 14,
+            backgroundColor: colors.surface,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: border,
+          }}
+        >
+          <Pressable onPress={() => setSelectedMailIds([])} hitSlop={8}>
+            <X size={20} color={colors.muted} />
+          </Pressable>
+          <Text style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "700", marginLeft: 12 }}>
+            Выбрано: {selectedMailIds.length}
+          </Text>
+          <Pressable
+            onPress={() => openDeliveryModal(selectedMailIds)}
+            style={{ minHeight: 36, paddingHorizontal: 18, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Вручить</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <Modal visible={selectedMailId !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "position"}
+          keyboardVerticalOffset={Platform.OS === "android" ? 12 : 0}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flex: 1 }}
+        >
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }}>
-            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }}>
-          <View style={{ backgroundColor: colors.background, borderRadius: 10, padding: 18, borderWidth: 1, borderColor: border }}>
-            <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground, marginBottom: 14 }}>Кто получил?</Text>
-            <TextInput value={recipientName} onChangeText={setRecipientName} placeholder="Введите ФИО" placeholderTextColor={colors.muted} style={{ backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: border, color: colors.foreground, fontWeight: "700" }} />
-            <Text style={{ color: colors.muted, marginTop: 12, marginBottom: 6, fontWeight: "800" }}>Дата и время вручения</Text>
-            <TextInput value={deliveredAtInput} onChangeText={(value) => { setDeliveredAtInput(value); setDeliveryTimeError(""); }} placeholder="ДД.ММ.ГГГГ ЧЧ:ММ" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" style={{ backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: deliveryTimeError ? colors.error : border, color: colors.foreground, fontWeight: "700" }} />
+            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="none" contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", padding: 16, paddingBottom: 86 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: border }}>
+            <Text style={{ fontSize: 16, textAlign: "center", fontWeight: "700", color: colors.foreground, marginBottom: 3 }}>Кто получил?</Text>
+            {selectedMailIds.length > 1 ? (
+              <Text style={{ color: colors.muted, fontSize: 11, textAlign: "center", marginBottom: 10 }}>
+                Будет отмечено писем: {selectedMailIds.length}
+              </Text>
+            ) : <View style={{ height: 10 }} />}
+            <View style={{ height: 42, flexDirection: "row", alignItems: "center", borderRadius: 8, borderWidth: 1, borderColor: border, backgroundColor: colors.background, paddingHorizontal: 11 }}>
+              <UserRound size={17} color={colors.muted} />
+              <TextInput
+                autoFocus
+                value={recipientName}
+                onChangeText={setRecipientName}
+                placeholder="Введите ФИО"
+                placeholderTextColor={colors.muted}
+                returnKeyType="next"
+                style={{ flex: 1, height: 42, paddingHorizontal: 10, paddingVertical: 0, color: colors.foreground, fontSize: 12 }}
+              />
+            </View>
+            <View style={{ height: 42, flexDirection: "row", alignItems: "center", marginTop: 9, borderRadius: 8, borderWidth: 1, borderColor: deliveryTimeError ? colors.error : border, backgroundColor: colors.background, paddingHorizontal: 11 }}>
+              <CalendarDays size={17} color={colors.muted} />
+              <TextInput value={deliveredAtInput} onChangeText={(value) => { setDeliveredAtInput(value); setDeliveryTimeError(""); }} placeholder="ДД.ММ.ГГГГ ЧЧ:ММ" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" style={{ flex: 1, height: 42, paddingHorizontal: 10, paddingVertical: 0, color: colors.foreground, fontSize: 12 }} />
+              <Pressable onPress={() => setDeliveredAtInput("")} hitSlop={8}><X size={16} color={colors.muted} /></Pressable>
+            </View>
             {deliveryTimeError ? <Text style={{ color: colors.error, marginTop: 8, fontWeight: "800" }}>{deliveryTimeError}</Text> : null}
             <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
-              <Pressable onPress={() => { setSelectedMailId(null); setDeliveryTimeError(""); }} style={{ flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: soft, alignItems: "center", borderWidth: 1, borderColor: border }}>
-                <Text style={{ color: colors.foreground, fontWeight: "900" }}>Отмена</Text>
+              <Pressable onPress={closeDeliveryModal} style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: soft, alignItems: "center", borderWidth: 1, borderColor: border }}>
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600" }}>Отмена</Text>
               </Pressable>
               <Pressable
-                onPress={() => {
-                  if (!token || !selectedMailId || !recipientName.trim()) return;
-                  const deliveredAt = parseDateTimeInput(deliveredAtInput);
-                  if (!deliveredAt) {
-                    setDeliveryTimeError("Введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ");
-                    return;
-                  }
-                  deliverMutation.mutate({ token, mailId: selectedMailId, recipientSignature: recipientName.trim(), deliveredAt } as any);
-                }}
-                style={{ flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: colors.primary, alignItems: "center", opacity: deliverMutation.isPending ? 0.7 : 1 }}
+                onPress={confirmDelivery}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", opacity: deliverMutation.isPending || !recipientName.trim() ? 0.62 : 1 }}
               >
-                <Text style={{ color: "white", fontWeight: "900" }}>{deliverMutation.isPending ? "Сохраняю..." : "Подтвердить"}</Text>
+                <Text style={{ color: "white", fontSize: 12, fontWeight: "700" }}>{deliverMutation.isPending ? "Сохраняю..." : "Подтвердить"}</Text>
               </Pressable>
             </View>
           </View>

@@ -15,12 +15,14 @@ import {
   View,
 } from "react-native";
 import * as Notifications from "expo-notifications";
+import { ArrowLeft, Bell, LogOut, Moon, Phone, Route, UserRound, Vibrate } from "lucide-react-native";
 
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useThemeContext } from "@/lib/theme-provider";
 import { isVibrationEnabled, setVibrationEnabled as saveVibrationEnabled } from "@/lib/vibration-preference";
 import { trpc } from "@/lib/trpc";
+import { DESIGN_PREVIEW_TOKEN } from "@/lib/design-preview";
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
@@ -94,7 +96,7 @@ export default function ProfileModal() {
   }, [notificationsEnabled, notificationTypes]);
 
   useEffect(() => {
-    if (!token || !notificationsEnabled || Platform.OS === "web") return;
+    if (!token || token === DESIGN_PREVIEW_TOKEN || !notificationsEnabled || Platform.OS === "web") return;
 
     const registerPushToken = async () => {
       try {
@@ -180,20 +182,21 @@ export default function ProfileModal() {
   const Header = () => (
     <View
       style={{
-        paddingTop: insets.top + 10,
-        paddingHorizontal: 16,
-        paddingBottom: 12,
+        paddingTop: insets.top,
+        height: insets.top + 64,
+        paddingHorizontal: 8,
         backgroundColor: colors.background,
+        borderBottomWidth: 1,
+        borderBottomColor: cardBorder,
+        justifyContent: "flex-end",
       }}
     >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: cardBorder, paddingHorizontal: 14, paddingVertical: 12 }}>
-        <View>
-          <Text style={{ fontSize: 24, fontWeight: "900", color: colors.foreground }}>Профиль</Text>
-          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2, fontWeight: "700" }}>{isAuthenticated ? "Настройки курьера" : "Вход в приложение"}</Text>
-        </View>
-        <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, width: 42, height: 42, borderRadius: 10, backgroundColor: softSurface, alignItems: "center", justifyContent: "center" })}>
-          <Text style={{ fontSize: 12, color: colors.foreground, lineHeight: 28 }}>×</Text>
+      <View style={{ height: 64, flexDirection: "row", alignItems: "center" }}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, width: 44, height: 44, alignItems: "center", justifyContent: "center" })}>
+          <ArrowLeft size={23} color={colors.foreground} />
         </Pressable>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 16, lineHeight: 20, fontWeight: "600", color: colors.foreground }}>Профиль</Text>
+        <View style={{ width: 44 }} />
       </View>
     </View>
   );
@@ -255,58 +258,41 @@ export default function ProfileModal() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 122 }} style={{ flex: 1 }}>
-        <Header />
+      <Header />
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 24 }} style={{ flex: 1 }}>
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 14 }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 18, borderWidth: 1, borderColor: cardBorder }}>
-            <Text style={{ fontSize: 13, color: colors.muted, fontWeight: "800", marginBottom: 6 }}>Курьер</Text>
-            <Text style={{ fontSize: 24, fontWeight: "900", color: colors.foreground }}>{courier?.name || "—"}</Text>
-            <Text style={{ fontSize: 12, color: colors.primary, fontWeight: "800", marginTop: 4 }}>@{courier?.username || "—"}</Text>
+        <View style={{ minHeight: 94, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: cardBorder }}>
+          <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }}>
+            <UserRound size={24} color={colors.primary} />
           </View>
-
-          <View style={{ gap: 12 }}>
-            <InfoCard label="Телефон" value={courier?.phone || "—"} />
-            <InfoCard label="Доставки" value={courier?.totalDeliveries || 0} />
+          <View style={{ flex: 1, marginLeft: 13 }}>
+            <Text style={{ fontSize: 16, lineHeight: 21, fontWeight: "600", color: colors.foreground }}>{courier?.name || "—"}</Text>
+            <Text style={{ fontSize: 11, lineHeight: 17, color: colors.muted, marginTop: 2 }}>@{courier?.username || "—"}</Text>
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 12 }}>
-          <Text style={{ fontSize: 12, fontWeight: "900", color: colors.muted, letterSpacing: 0.6 }}>ПАРАМЕТРЫ</Text>
+        <ProfileInfoRow icon={<Phone size={19} color={colors.muted} />} label="Телефон" value={courier?.phone || "—"} colors={colors} border={cardBorder} />
+        <ProfileInfoRow icon={<Route size={19} color={colors.muted} />} label="Выполнено доставок" value={String(courier?.totalDeliveries || 0)} colors={colors} border={cardBorder} />
 
-          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Тёмный режим</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Переключение темы приложения</Text>
-            </View>
+        <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", paddingHorizontal: 16, paddingTop: 17, paddingBottom: 8 }}>НАСТРОЙКИ</Text>
+
+        <SettingRow icon={<Moon size={19} color={colors.muted} />} title="Тёмная тема" subtitle="Оформление приложения" border={cardBorder} colors={colors}>
             <Switch
               value={isDarkMode}
               onValueChange={() => setColorScheme(isDarkMode ? "light" : "dark")}
               trackColor={{ false: colors.border, true: colors.primary }}
             />
-          </View>
+        </SettingRow>
 
-          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Вибрация</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Отклик при действиях в приложении</Text>
-            </View>
+        <SettingRow icon={<Vibrate size={19} color={colors.muted} />} title="Вибрация" subtitle="Отклик при действиях" border={cardBorder} colors={colors}>
             <Switch
               value={vibrationEnabled}
               onValueChange={handleVibrationChange}
               trackColor={{ false: colors.border, true: colors.primary }}
             />
-          </View>
-        </View>
+        </SettingRow>
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 12 }}>
-          <Text style={{ fontSize: 12, fontWeight: "900", color: colors.muted, letterSpacing: 0.6 }}>УВЕДОМЛЕНИЯ</Text>
-
-          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 16, borderWidth: 1, borderColor: cardBorder, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View>
-              <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground }}>Новые заявки</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Push-уведомления курьеру</Text>
-            </View>
+        <SettingRow icon={<Bell size={19} color={colors.muted} />} title="Уведомления" subtitle="Новые заявки и изменения" border={cardBorder} colors={colors}>
             <Switch
               value={notificationsEnabled && notificationTypes.newTasks}
               onValueChange={(value) => {
@@ -315,17 +301,40 @@ export default function ProfileModal() {
               }}
               trackColor={{ false: colors.border, true: colors.primary }}
             />
-          </View>
-        </View>
+        </SettingRow>
 
         <View style={{ flex: 1 }} />
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 12 }}>
-          <Pressable onPress={handleLogout} style={{ backgroundColor: colors.error, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 10 }}>
-            <Text style={{ textAlign: "center", color: "white", fontWeight: "900", fontSize: 12 }}>Выйти</Text>
+        <View style={{ borderTopWidth: 1, borderTopColor: cardBorder }}>
+          <Pressable onPress={handleLogout} style={({ pressed }) => ({ minHeight: 58, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, opacity: pressed ? 0.65 : 1 })}>
+            <LogOut size={19} color={colors.error} />
+            <Text style={{ color: colors.error, fontSize: 13, fontWeight: "600", marginLeft: 12 }}>Выйти из аккаунта</Text>
           </Pressable>
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function ProfileInfoRow({ icon, label, value, colors, border }: { icon: React.ReactNode; label: string; value: string; colors: ReturnType<typeof useColors>; border: string }) {
+  return (
+    <View style={{ minHeight: 58, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: border }}>
+      <View style={{ width: 28, alignItems: "flex-start" }}>{icon}</View>
+      <Text style={{ flex: 1, color: colors.foreground, fontSize: 12, fontWeight: "400" }}>{label}</Text>
+      <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "400" }}>{value}</Text>
+    </View>
+  );
+}
+
+function SettingRow({ icon, title, subtitle, border, colors, children }: { icon: React.ReactNode; title: string; subtitle: string; border: string; colors: ReturnType<typeof useColors>; children: React.ReactNode }) {
+  return (
+    <View style={{ minHeight: 64, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: border }}>
+      <View style={{ width: 28, alignItems: "flex-start" }}>{icon}</View>
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <Text style={{ color: colors.foreground, fontSize: 12.5, lineHeight: 18, fontWeight: "600" }}>{title}</Text>
+        <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: "400", marginTop: 1 }}>{subtitle}</Text>
+      </View>
+      {children}
     </View>
   );
 }

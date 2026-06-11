@@ -29,7 +29,7 @@ function TabIcon({ name, focused, color }: { name: ComponentProps<typeof Materia
         shadowRadius: focused ? 9 : 0,
       }}
     >
-      <MaterialIcons name={name} size={25} color={color} />
+      <MaterialIcons name={name} size={24} color={color} />
     </View>
   );
 }
@@ -40,8 +40,8 @@ export default function TabLayout() {
   const dark = isDarkBackground(colors.background);
   const bottomSafeArea = Platform.OS === "web" ? 12 : Math.max(insets.bottom, Platform.OS === "android" ? 16 : 12);
   const tabBarHeight = 64 + bottomSafeArea;
-  const activeColor = dark ? "#C7D8F8" : "#1D6FF2";
-  const inactiveColor = dark ? "#7C8797" : "#64748B";
+  const activeColor = dark ? "#8EBEFF" : "#1D6FF2";
+  const inactiveColor = dark ? "#8B96A6" : "#64748B";
 
   return (
     <Tabs
@@ -60,10 +60,10 @@ export default function TabLayout() {
           left: 0,
           right: 0,
           height: tabBarHeight,
-          paddingTop: 8,
+          paddingTop: 7,
           paddingBottom: bottomSafeArea,
           paddingHorizontal: 8,
-          backgroundColor: dark ? "rgba(10,16,24,0.95)" : "rgba(255,253,248,0.96)",
+          backgroundColor: dark ? "#08141E" : "#FFFFFF",
           borderColor: dark ? "rgba(148,163,184,0.18)" : "rgba(226,232,240,0.95)",
           borderWidth: 1,
           borderRadius: 0,
@@ -75,8 +75,8 @@ export default function TabLayout() {
           zIndex: 1000,
         },
         tabBarLabelStyle: {
-          fontSize: 9.5,
-          fontWeight: "900",
+          fontSize: 10,
+          fontWeight: "600",
           marginTop: 1,
           maxWidth: 70,
         },
@@ -92,7 +92,8 @@ export default function TabLayout() {
       <Tabs.Screen name="pickup-gemotest" options={{ title: "Гемотест", tabBarIcon: ({ color, focused }) => <TabIcon name="biotech" color={color} focused={focused} /> }} />
       <Tabs.Screen name="pickup-sberbank" options={{ title: "Сбербанк", tabBarIcon: ({ color, focused }) => <TabIcon name="account-balance" color={color} focused={focused} /> }} />
       <Tabs.Screen name="letters" options={{ title: "Письма", tabBarIcon: ({ color, focused }) => <TabIcon name="description" color={color} focused={focused} /> }} />
-      <Tabs.Screen name="profile" options={{ title: "Профиль", tabBarIcon: ({ color, focused }) => <TabIcon name="person" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="chat" options={{ title: "Чат", tabBarIcon: ({ color, focused }) => <TabIcon name="chat-bubble-outline" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }

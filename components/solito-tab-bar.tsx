@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { performImpact } from '@/lib/vibration-preference';
 
 const TAB_ICONS: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   AllTasks: 'list',
@@ -59,7 +59,7 @@ export function SolitoTabBar({ state, descriptors, navigation }: BottomTabBarPro
           const isFocused = state.index === index;
 
           const onPress = () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            performImpact().catch(() => undefined);
             const event = navigation.emit({
               type: 'tabPress',
               target: route.key,

@@ -26,6 +26,7 @@ import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { CourierAuthProvider, useCourierAuth } from "@/lib/courier-auth";
 import { FilterProvider } from "@/lib/filter-context";
+import { DESIGN_PREVIEW_TOKEN } from "@/lib/design-preview";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -61,7 +62,7 @@ function SessionValidator() {
   const registerPushTokenMutation = trpc.couriers.registerPushToken.useMutation();
 
   const { error } = trpc.courierAuth.me.useQuery(
-    token && isAuthenticated && !loading ? { token } : skipToken,
+    token && token !== DESIGN_PREVIEW_TOKEN && isAuthenticated && !loading ? { token } : skipToken,
     {
       enabled: !!token && isAuthenticated && !loading,
       retry: false,

@@ -32,7 +32,7 @@ const config: ExpoConfig = {
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
-  userInterfaceStyle: "light",
+  userInterfaceStyle: "automatic",
   newArchEnabled: true,
   description: "Courier Delivery System",
   ios: {

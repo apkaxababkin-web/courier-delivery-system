@@ -13,9 +13,9 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { skipToken } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
@@ -26,7 +26,25 @@ import { StatusBadge } from "@/components/status-badge";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
+import { performImpact, performSuccessHaptic } from "@/lib/vibration-preference";
 import { getDisplayRequestId } from "@/shared/request-number";
+import { DESIGN_PREVIEW_TOKEN, designPreviewTasks } from "@/lib/design-preview";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  CircleDot,
+  Clock3,
+  CreditCard,
+  MapPin,
+  MessageSquare,
+  Package,
+  Phone,
+  Plus,
+  UserRound,
+  XCircle,
+} from "lucide-react-native";
 
 type Palette = {
   border: string;
@@ -98,6 +116,24 @@ function splitTaskComment(comments?: string | null, specialInstructions?: string
   return { comment, paymentLabel };
 }
 
+function getTaskTypeLabel(task: any) {
+  const type = task?.requestType || task?.taskType;
+  if (type === "delivery") return "Доставка";
+  if (type === "movement") return "Перемещение";
+  if (type === "nuts" || type === "warehouse_pickup") return "Орехи";
+  if (type === "courier_call") return "Вызов курьера";
+  if (type === "pickup_from_tc") return "Получение в ТК";
+  return "Заявка";
+}
+
+function DetailStatusIcon({ status, colors }: { status?: string; colors: ReturnType<typeof useColors> }) {
+  if (status === "completed") return <CheckCircle2 size={21} color={colors.success} strokeWidth={2.4} />;
+  if (status === "cancelled") return <XCircle size={21} color={colors.error} strokeWidth={2.4} />;
+  if (status === "in_progress") return <Clock3 size={21} color={colors.warning} strokeWidth={2.4} />;
+  if (status === "new") return <Plus size={21} color={colors.primary} strokeWidth={2.6} />;
+  return <CircleDot size={21} color={colors.primary} strokeWidth={2.4} />;
+}
+
 function GlassCard({ children, palette, colors, style }: { children: ReactNode; palette: Palette; colors: ReturnType<typeof useColors>; style?: object }) {
   return (
     <View
@@ -137,6 +173,7 @@ function ClickableLine({ value, onPress, muted = false }: { value?: string | nul
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { height: windowHeight } = useWindowDimensions();
   const colors = useColors();
   const dark = isDarkBackground(colors.background);
   const palette: Palette = {
@@ -145,6 +182,7 @@ export default function TaskDetailScreen() {
     shadow: dark ? "#020617" : "#94A3B8",
   };
   const { token } = useCourierAuth();
+  const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
   const taskId = parseInt(id ?? "0", 10);
   const toast = useToast();
 
@@ -158,14 +196,15 @@ export default function TaskDetailScreen() {
 
   const utils = trpc.useUtils();
 
-  const { data: task, isLoading } = trpc.tasks.byId.useQuery(token ? { token, id: taskId } : skipToken);
-  const { data: couriersList } = trpc.couriers.list.useQuery(token ? { token } : skipToken);
+  const { data: taskRaw, isLoading } = trpc.tasks.byId.useQuery(token && !isDesignPreview ? { token, id: taskId } : skipToken);
+  const task = isDesignPreview ? designPreviewTasks.find((item) => item.id === taskId) : taskRaw;
+  const { data: couriersList } = trpc.couriers.list.useQuery(token && !isDesignPreview ? { token } : skipToken);
 
   const assignMutation = trpc.tasks.assignCourier.useMutation({
     onSuccess: () => {
       utils.tasks.byId.invalidate();
       utils.tasks.all.invalidate();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      performSuccessHaptic().catch(() => undefined);
     },
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
@@ -175,7 +214,7 @@ export default function TaskDetailScreen() {
       utils.tasks.byId.invalidate();
       utils.tasks.all.invalidate();
       utils.tasks.history.invalidate();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      performSuccessHaptic().catch(() => undefined);
     },
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
@@ -196,7 +235,7 @@ export default function TaskDetailScreen() {
       utils.tasks.all.invalidate();
       setCommentsModalVisible(false);
       setCommentsInput("");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      performSuccessHaptic().catch(() => undefined);
     },
     onError: (e: { message: string }) => Alert.alert("Ошибка", e.message),
   });
@@ -207,7 +246,7 @@ export default function TaskDetailScreen() {
       utils.tasks.all.invalidate();
       utils.tasks.history.invalidate();
       setDatePickerVisible(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      performSuccessHaptic().catch(() => undefined);
       toast.show(`✓ Задание перенесено на ${selectedDate.toLocaleDateString("ru-RU")}`, { duration: 2000, placement: "top" });
       router.back();
     },
@@ -226,11 +265,16 @@ export default function TaskDetailScreen() {
   };
 
   const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled") => {
+    if (isDesignPreview) return;
     const statusToSet = task?.status === newStatus ? "assigned" : newStatus;
     statusMutation.mutate({ token: token!, taskId, status: statusToSet });
   };
 
   const handleSavePlaces = () => {
+    if (isDesignPreview) {
+      setPlacesModalVisible(false);
+      return;
+    }
     const places = parseInt(placesInput, 10);
     if (isNaN(places) || places < 0) {
       Alert.alert("Ошибка", "Введите корректное количество мест");
@@ -240,6 +284,10 @@ export default function TaskDetailScreen() {
   };
 
   const handleSaveComments = () => {
+    if (isDesignPreview) {
+      setCommentsModalVisible(false);
+      return;
+    }
     if (!commentsInput.trim()) {
       Alert.alert("Ошибка", "Напишите комментарий");
       return;
@@ -249,6 +297,7 @@ export default function TaskDetailScreen() {
 
   const handleAssignCourier = (courierId: number | null) => {
     setCourierPickerVisible(false);
+    if (isDesignPreview) return;
     assignMutation.mutate({ token: token!, taskId, courierId });
   };
 
@@ -319,107 +368,148 @@ export default function TaskDetailScreen() {
   const courierComment = task.courierComments || "";
 
   return (
-    <ScreenContainer className="p-0">
-      <View style={{ backgroundColor: colors.background, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={{ width: 54, height: 48, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
-            <Text style={{ color: colors.foreground, fontSize: 26, fontWeight: "900" }}>←</Text>
+    <ScreenContainer
+      edges={["top", "left", "right", "bottom"]}
+      className="p-0"
+      style={{
+        backgroundColor: colors.background,
+        height: Platform.OS === "web" ? windowHeight : undefined,
+      }}
+    >
+      <View style={{ backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: palette.border, paddingHorizontal: 12, paddingVertical: 9 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={{ width: 42, height: 42, alignItems: "center", justifyContent: "center" }}>
+            <ArrowLeft size={25} color={colors.foreground} strokeWidth={2.2} />
           </TouchableOpacity>
-          <View style={{ alignItems: "center" }}>
-            <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>#{getDisplayRequestId(task)}</Text>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground }}>Заявка №{getDisplayRequestId(task)}</Text>
+            <Text style={{ color: colors.primary, fontSize: 11.5, fontWeight: "500", marginTop: 2 }}>{getTaskTypeLabel(task)}</Text>
           </View>
-          <StatusBadge status={task.status} />
+          <View style={{ width: 42, height: 42, alignItems: "center", justifyContent: "center" }}>
+            <DetailStatusIcon status={task.status} colors={colors} />
+          </View>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: 24, gap: 10, backgroundColor: colors.background }} showsVerticalScrollIndicator={false}>
-        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
-          <SectionTitle colors={colors}>Отправитель</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 3 }}>{task.senderName || "—"}</Text>
-          <ClickableLine value={task.senderAddress} onPress={() => handleOpenMap(task.senderAddress)} />
-          <View style={{ height: 3 }} />
-          <ClickableLine value={task.senderPhone} onPress={() => handleCallPhone(task.senderPhone)} muted />
-        </GlassCard>
-
-        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
-          <SectionTitle colors={colors}>Получатель</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 3 }}>{task.recipientName || "—"}</Text>
-          <ClickableLine value={task.deliveryAddress} onPress={() => handleOpenMap(task.deliveryAddress)} />
-          <View style={{ height: 3 }} />
-          <ClickableLine value={task.recipientPhone} onPress={() => handleCallPhone(task.recipientPhone)} muted />
-        </GlassCard>
-
-        <GlassCard palette={palette} colors={colors} style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <TouchableOpacity
-              onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
-              activeOpacity={0.75}
-              style={{ flex: 0.82 }}
-            >
-              <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, fontWeight: "900" }}>
-                📦 Мест: {task.placesCount || 0} ›
-              </Text>
-            </TouchableOpacity>
-
-            <View style={{ width: 1, height: 20, backgroundColor: palette.border }} />
-
-            <TouchableOpacity
-              onPress={() => setCourierPickerVisible(true)}
-              activeOpacity={0.75}
-              style={{ flex: 1.18 }}
-            >
-              <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", textAlign: "right" }}>
-                👤 Курьер: {task.courierName || "Не назначен"} ›
-              </Text>
-            </TouchableOpacity>
+      <ScrollView
+        style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}
+        contentContainerStyle={{ paddingBottom: 12, backgroundColor: colors.background }}
+        showsVerticalScrollIndicator={false}
+      >
+        {[
+          {
+            label: "ОТПРАВИТЕЛЬ",
+            name: task.senderName || "—",
+            address: task.senderAddress,
+            phone: task.senderPhone,
+          },
+          {
+            label: "ПОЛУЧАТЕЛЬ",
+            name: task.recipientName || "—",
+            address: task.deliveryAddress,
+            phone: task.recipientPhone,
+          },
+        ].map((party) => (
+          <View key={party.label} style={{ paddingHorizontal: 16, paddingTop: 15, borderBottomWidth: 1, borderBottomColor: palette.border }}>
+            <Text style={{ color: colors.muted, fontSize: 10.5, fontWeight: "600", marginBottom: 10 }}>{party.label}</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700", marginBottom: 7 }}>{party.name}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", minHeight: 38 }}>
+              <Text numberOfLines={2} style={{ flex: 1, color: colors.muted, fontSize: 12.5, lineHeight: 18 }}>{party.address || "Адрес не указан"}</Text>
+              {party.address ? (
+                <TouchableOpacity onPress={() => handleOpenMap(party.address)} style={{ width: 36, height: 36, borderRadius: 8, borderWidth: 1, borderColor: palette.border, alignItems: "center", justifyContent: "center" }}>
+                  <MapPin size={18} color={colors.muted} strokeWidth={2} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {party.phone ? (
+              <View style={{ flexDirection: "row", alignItems: "center", minHeight: 42, marginTop: 2, borderTopWidth: 1, borderTopColor: palette.border }}>
+                <Text style={{ flex: 1, color: colors.muted, fontSize: 12.5 }}>{party.phone}</Text>
+                <TouchableOpacity onPress={() => handleCallPhone(party.phone)} style={{ width: 36, height: 36, borderRadius: 8, borderWidth: 1, borderColor: palette.border, alignItems: "center", justifyContent: "center" }}>
+                  <Phone size={18} color={colors.muted} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+            ) : <View style={{ height: 10 }} />}
           </View>
-        </GlassCard>
+        ))}
 
-        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
-          <SectionTitle colors={colors}>Комментарий заявки</SectionTitle>
-          <Text numberOfLines={3} style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 12, lineHeight: 16, fontWeight: "700" }}>{taskComment}</Text>
-        </GlassCard>
+        <View style={{ flexDirection: "row", minHeight: 54, borderBottomWidth: 1, borderBottomColor: palette.border }}>
+          <TouchableOpacity
+            onPress={() => { setPlacesInput(task.placesCount?.toString() || ""); setPlacesModalVisible(true); }}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderRightWidth: 1, borderRightColor: palette.border }}
+          >
+            <Package size={18} color={colors.muted} strokeWidth={2} />
+            <Text style={{ color: colors.foreground, fontSize: 12.5, marginLeft: 9, flex: 1 }}>{task.placesCount || 0} {task.placesCount === 1 ? "место" : "мест"}</Text>
+            <ChevronRight size={17} color={colors.muted} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setCourierPickerVisible(true)} style={{ flex: 1.15, flexDirection: "row", alignItems: "center", paddingHorizontal: 14 }}>
+            <UserRound size={18} color={colors.muted} strokeWidth={2} />
+            <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12.5, marginLeft: 9, flex: 1 }}>{task.courierName || "Не назначен"}</Text>
+            <ChevronRight size={17} color={colors.muted} />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={{ minHeight: 56, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: palette.border }}>
+          <MessageSquare size={18} color={colors.muted} strokeWidth={2} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={{ color: colors.muted, fontSize: 10.5, marginBottom: 3 }}>Комментарий к заявке</Text>
+            <Text numberOfLines={2} style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 12.5, lineHeight: 17 }}>{taskComment}</Text>
+          </View>
+          <ChevronRight size={17} color={colors.muted} />
+        </TouchableOpacity>
 
         {paymentStatusLabel ? (
-          <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
-            <SectionTitle colors={colors}>Статус оплаты</SectionTitle>
-            <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 16, fontWeight: "800" }}>{paymentStatusLabel}</Text>
-          </GlassCard>
+          <View style={{ minHeight: 52, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: palette.border }}>
+            <CreditCard size={18} color={colors.muted} strokeWidth={2} />
+            <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 12.5, marginLeft: 10, flex: 1 }}>Оплата  ·  {paymentStatusLabel}</Text>
+            <ChevronRight size={17} color={colors.muted} />
+          </View>
         ) : null}
 
-        <GlassCard palette={palette} colors={colors} style={{ padding: 10 }}>
-          <SectionTitle colors={colors}>Комментарий курьера</SectionTitle>
-          {courierComment ? (
-            <View style={{ gap: 8, marginBottom: 12 }}>
-              {courierComment.split("\n").filter(Boolean).map((line, index) => (
-                <View key={`${line}-${index}`} style={{ borderLeftWidth: 2, borderLeftColor: colors.primary, paddingLeft: 10 }}>
-                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginBottom: 3 }}>Курьер</Text>
-                  <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 16, fontWeight: "700" }}>{line}</Text>
-                </View>
-              ))}
+        <View style={{ borderBottomWidth: 1, borderBottomColor: palette.border }}>
+          <Text style={{ color: colors.muted, fontSize: 10.5, fontWeight: "600", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>КОММЕНТАРИИ КУРЬЕРОВ</Text>
+          {courierComment ? courierComment.split("\n").filter(Boolean).map((line: string, index: number) => (
+            <View key={`${line}-${index}`} style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 5 }}>
+                <UserRound size={14} color={colors.muted} />
+                <Text style={{ color: colors.muted, fontSize: 10.5, marginLeft: 6 }}>{task.courierName || "Курьер"}</Text>
+              </View>
+              <Text style={{ color: colors.foreground, fontSize: 12.5, lineHeight: 18 }}>{line}</Text>
             </View>
-          ) : null}
-          <TouchableOpacity
-            activeOpacity={0.75}
-            onPress={() => { setCommentsInput(courierComment); setCommentsModalVisible(true); }}
-            style={{ backgroundColor: palette.soft, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingVertical: 9, paddingHorizontal: 10 }}
-          >
-            <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>Добавить свой комментарий курьеру</Text>
+          )) : null}
+          <TouchableOpacity onPress={() => { setCommentsInput(courierComment); setCommentsModalVisible(true); }} style={{ minHeight: 46, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderTopWidth: courierComment ? 1 : 0, borderTopColor: palette.border }}>
+            <MessageSquare size={17} color={colors.primary} strokeWidth={2} />
+            <Text style={{ color: colors.primary, fontSize: 12.5, fontWeight: "500", marginLeft: 10, flex: 1 }}>Добавить комментарий</Text>
+            <ChevronRight size={17} color={colors.muted} />
           </TouchableOpacity>
-        </GlassCard>
+        </View>
 
-        <View style={{ gap: 6, marginTop: 0 }}>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <ActionButton label="Отмена" onPress={() => handleSetStatus("cancelled")} disabled={isCompleted} muted active={isCancelled} />
-            <ActionButton label="Перенос" onPress={() => setDatePickerVisible(true)} muted />
-            <ActionButton label="В работе" onPress={() => handleSetStatus("in_progress")} disabled={isCompleted || isCancelled} muted active={isInProgress} />
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Clock3 size={15} color={colors.muted} />
+            <Text style={{ color: colors.muted, fontSize: 10.5, marginLeft: 6 }}>{formatCreatedAt((task as any).createdAt)}</Text>
           </View>
-          <ActionButton label="Выполнено" onPress={() => handleSetStatus("completed")} disabled={isCancelled} done active={isCompleted} />
-          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textAlign: "center", marginTop: 2 }}>
-            {formatCreatedAt((task as any).createdAt)}
-          </Text>
         </View>
       </ScrollView>
+
+      <View
+        style={{
+          flexShrink: 0,
+          backgroundColor: colors.background,
+          borderTopWidth: 1,
+          borderTopColor: palette.border,
+          paddingHorizontal: 16,
+          paddingTop: 10,
+          paddingBottom: 12,
+        }}
+      >
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <ActionButton label="Отменить" icon="cancel" onPress={() => handleSetStatus("cancelled")} disabled={isCompleted} muted active={isCancelled} />
+          <ActionButton label="Перенести" icon="calendar" onPress={() => setDatePickerVisible(true)} muted />
+          <ActionButton label="В работе" icon="clock" onPress={() => handleSetStatus("in_progress")} disabled={isCompleted || isCancelled} muted active={isInProgress} />
+        </View>
+        <View style={{ height: 7 }} />
+        <ActionButton label="Выполнено" icon="done" onPress={() => handleSetStatus("completed")} disabled={isCancelled} done active={isCompleted} />
+      </View>
 
       <Modal visible={courierPickerVisible} transparent animationType="slide" onRequestClose={() => setCourierPickerVisible(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
@@ -514,17 +604,19 @@ function InputModal({ visible, title, children, colors, palette, onClose, onSave
   );
 }
 
-function ActionButton({ label, onPress, disabled, muted, done, active }: { label: string; onPress: () => void; disabled?: boolean; muted?: boolean; done?: boolean; active?: boolean }) {
+function ActionButton({ label, icon, onPress, disabled, muted, done, active }: { label: string; icon?: "cancel" | "calendar" | "clock" | "done"; onPress: () => void; disabled?: boolean; muted?: boolean; done?: boolean; active?: boolean }) {
   const colors = useColors();
   const backgroundColor = done ? "#4B8B3B" : active ? "rgba(59,130,246,0.22)" : muted ? "rgba(148,163,184,0.12)" : colors.primary;
   const borderColor = done ? "rgba(74,139,59,0.9)" : active ? "rgba(125,178,255,0.34)" : "rgba(148,163,184,0.18)";
   const textColor = done ? "#fff" : active ? "#BFD5FF" : colors.foreground;
+  const iconColor = icon === "cancel" ? colors.error : icon === "clock" ? colors.warning : done ? "#fff" : colors.muted;
+  const Icon = icon === "cancel" ? XCircle : icon === "calendar" ? CalendarDays : icon === "clock" ? Clock3 : CheckCircle2;
 
   return (
     <Pressable
       onPress={() => {
         onPress();
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        performImpact().catch(() => undefined);
       }}
       disabled={disabled}
       style={({ pressed }) => ({
@@ -535,10 +627,14 @@ function ActionButton({ label, onPress, disabled, muted, done, active }: { label
         borderRadius: 10,
         paddingVertical: done ? 11 : 9,
         alignItems: "center" as const,
+        justifyContent: "center" as const,
+        flexDirection: "row" as const,
+        gap: 7,
         opacity: disabled ? 0.45 : pressed ? 0.82 : 1,
       })}
     >
-      <Text style={{ color: textColor, fontWeight: "900", fontSize: done ? 13 : 12 }}>{label}</Text>
+      <Icon size={done ? 20 : 18} color={iconColor} strokeWidth={2.2} />
+      <Text style={{ color: textColor, fontWeight: "600", fontSize: done ? 13 : 11.5 }}>{label}</Text>
     </Pressable>
   );
 }

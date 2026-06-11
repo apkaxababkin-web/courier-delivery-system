@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NetworkBanner } from "@/components/network-banner";
 import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
+import { OperationRow } from "@/components/operation-row";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
@@ -25,12 +26,11 @@ import { useFilter } from "@/lib/filter-context";
 import { sortTasks } from "@/lib/task-sorting";
 import { createCourierMobileClient } from "@/shared/mobileCourierClient";
 import { type TaskStatus } from "@/shared/types";
+import { DESIGN_PREVIEW_TOKEN, designPreviewTasks } from "@/lib/design-preview";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Package,
-  MapPin,
-  Clock,
   PackageOpen,
   ArrowLeftRight,
   Nut,
@@ -68,6 +68,7 @@ export default function TaskListScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const mobileClient = useMemo(() => createCourierMobileClient(getApiBaseUrl()), []);
+  const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
 
   const {
     data: tasksDataRaw,
@@ -76,7 +77,7 @@ export default function TaskListScreen() {
     isRefetching: isRefetchingQuery,
   } = useQuery({
     queryKey: ["courier-mobile-board-tasks", token],
-    enabled: !authLoading && !!token,
+    enabled: !authLoading && !!token && !isDesignPreview,
     queryFn: async () => {
       if (!token) return [];
       const dateKey = toLocalDateKey(selectedDate);
@@ -107,12 +108,13 @@ export default function TaskListScreen() {
 
 
   const tasksData = useMemo(() => {
+    if (isDesignPreview) return designPreviewTasks;
     const next = Array.isArray(tasksDataRaw) ? (tasksDataRaw as any[]) : [];
     return next;
-  }, [tasksDataRaw, authLoading, token, isLoading, isRefetchingQuery]);
+  }, [tasksDataRaw, authLoading, token, isLoading, isRefetchingQuery, isDesignPreview]);
 
   useMobileLiveSync({
-    enabled: !!token,
+    enabled: !!token && !isDesignPreview,
     onSync: useCallback(() => {
       if (!token) return;
       return refetch();
@@ -120,17 +122,17 @@ export default function TaskListScreen() {
   });
 
   useEffect(() => {
-    if (!token || authLoading) return;
+    if (!token || authLoading || isDesignPreview) return;
 
     const timer = setTimeout(() => {
       refetch();
     }, 700);
 
     return () => clearTimeout(timer);
-  }, [token, authLoading, selectedDate, refetch]);
+  }, [token, authLoading, selectedDate, refetch, isDesignPreview]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || isDesignPreview) return;
 
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
@@ -138,7 +140,7 @@ export default function TaskListScreen() {
     });
 
     return () => subscription.remove();
-  }, [token, refetch]);
+  }, [token, refetch, isDesignPreview]);
 
 
   const isToday = useMemo(() => {
@@ -206,8 +208,9 @@ export default function TaskListScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (isDesignPreview) return;
       refetch();
-    }, [refetch]),
+    }, [refetch, isDesignPreview]),
   );
 
   const getDaysInMonth = (date: Date) => {
@@ -231,6 +234,7 @@ export default function TaskListScreen() {
       const comments = String(item.comments || "");
       return comments.includes("получатель → ТК") ? "Отправка в ТК" : "Получение в ТК";
     }
+    if (type === "simple") return "Простая заявка";
 
     return "Заявка";
   };
@@ -405,9 +409,15 @@ export default function TaskListScreen() {
 
     if (!Number.isFinite(count) || count <= 0) return null;
 
-    if (count === 1) return "1 место";
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    const word = mod10 === 1 && mod100 !== 11
+      ? "место"
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? "места"
+        : "мест";
 
-    return `${count} м`;
+    return `${count} ${word}`;
   };
 
   const getCourierLabel = (item: any) => {
@@ -518,11 +528,14 @@ export default function TaskListScreen() {
       <NetworkBanner visible={!isOnline} />
 
       <HeaderBarV2
+        title="Заявки"
         onProfilePress={() => router.push("/profile" as never)}
         onFilterToggle={setFilterMode}
         filterMode={filterMode}
         selectedDate={selectedDate}
         onDatePress={() => setShowDatePicker(true)}
+        showDate
+        showFilter
         myTasksCount={myTasksCount}
       />
 
@@ -582,9 +595,9 @@ export default function TaskListScreen() {
           data={sortedTasks as any}
           keyExtractor={(item) => String(item.id)}
           style={Platform.OS === "web" ? ({ flex: 1, height: "calc(100vh - 145px)", maxHeight: "calc(100vh - 145px)", overflowY: "scroll" } as any) : { flex: 1 }}
-          contentContainerStyle={{ paddingTop: 20, paddingHorizontal: 12, paddingBottom: 220, backgroundColor: colors.background, flexGrow: 1 }}
+          contentContainerStyle={{ paddingTop: 2, paddingBottom: 150, backgroundColor: colors.background, flexGrow: 1 }}
           showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
-          ListFooterComponent={<View style={{ height: 260 }} />}
+          ListFooterComponent={<View style={{ height: 90 }} />}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={{ fontSize: 48 }}>📋</Text>
@@ -597,179 +610,38 @@ export default function TaskListScreen() {
             </View>
           }
           renderItem={({ item, index }) => {
+            const info = getMainCardInfo(item);
+            const nutsTask = isNutsTask(item);
+            const courierCallTask = isCourierCallTask(item);
+            const nutsItems = nutsTask
+              ? getNutsOrderItems(item)
+                  .map((order) => `${order.label} (${order.quantity} ${order.unit})`)
+                  .join(" · ")
+              : undefined;
+            const nutsSum = nutsTask ? getNutsSumLabel(item) : null;
+            const TypeIcon = getTaskTypeIcon(item);
+
             return (
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={() => router.push(`/task/${item.id}` as never)}
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 10,
-                padding: 10,
-                marginBottom: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                minHeight: 104,
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View style={{ flex: 1, paddingRight: 12, flexDirection: "row", alignItems: "center" }}>
-                  <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "900" }}>
-                    {index + 1}
-                  </Text>
-                  {(() => {
-                    const Icon = getTaskTypeIcon(item);
-                    const typeColor = getTaskTypeColor(item);
-
-                    return (
-                      <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 7 }}>
-                        <Icon size={14} color={typeColor} strokeWidth={2.4} />
-                        <Text style={{ color: typeColor, fontSize: 13, fontWeight: "800", marginLeft: 5 }}>
-                          {getTaskTypeLabel(item)}
-                        </Text>
-                      </View>
-                    );
-                  })()}
-                </View>
-
-                <View style={{ paddingHorizontal: 0, paddingVertical: 0 }}>
-                  <Text style={{ color: getTaskStatusColor(item.status), fontSize: 11, fontWeight: "900" }}>
-                    {getTaskStatusLabel(item.status)}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: colors.border,
-                  marginTop: 8,
-                  marginHorizontal: -12,
-                }}
+              <OperationRow
+                colors={colors}
+                status={item.status}
+                statusColor={getTaskStatusColor(item.status)}
+                typeLabel={getTaskTypeLabel(item)}
+                typeColor={getTaskTypeColor(item)}
+                TypeIcon={TypeIcon}
+                requestNumber={getDisplayRequestId(item)}
+                primaryName={nutsTask ? item.recipientName || "Получатель" : info.leftName}
+                primaryAddress={nutsTask ? item.deliveryAddress || item.recipientAddress : info.leftAddress}
+                secondaryName={!nutsTask && !courierCallTask ? info.rightName : undefined}
+                secondaryAddress={!nutsTask && !courierCallTask ? info.rightAddress : undefined}
+                detailLine={nutsTask ? nutsItems || "Заказ не указан" : courierCallTask ? item.comments || "Забрать у отправителя" : undefined}
+                places={getPlacesLabel(item)}
+                courier={getCourierLabel(item)}
+                trailingMeta={nutsTask ? nutsSum : undefined}
+                time={getTaskTimeLabel(item)}
+                isLast={index === sortedTasks.length - 1}
+                onPress={() => router.push(`/task/${item.id}` as never)}
               />
-
-              {(() => {
-                const info = getMainCardInfo(item);
-                const timeLabel = getTaskTimeLabel(item);
-                const nutsTask = isNutsTask(item);
-                const courierCallTask = isCourierCallTask(item);
-
-                if (nutsTask) {
-                  const orderItems = getNutsOrderItems(item);
-
-                  return (
-                    <View style={{ marginTop: 8 }}>
-                      <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-                        <Text style={{ width: 76, color: colors.muted, fontSize: 10, fontWeight: "800" }}>Получатель</Text>
-                        <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "900" }}>
-                          {item.recipientName || "—"}
-                        </Text>
-                      </View>
-
-                      <View style={{ marginTop: 7, flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
-                        {orderItems.length ? orderItems.slice(0, 6).map((order, orderIndex) => (
-                          <View key={`${order.label}-${orderIndex}`} style={{ flexDirection: "row", alignItems: "center", marginRight: 9, marginBottom: 5 }}>
-                            <View style={{ borderRadius: 7, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, paddingHorizontal: 6, paddingVertical: 2 }}>
-                              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "900" }}>{order.label}</Text>
-                            </View>
-                            <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: "900", marginLeft: 4 }}>
-                              {order.quantity} {order.unit}
-                            </Text>
-                          </View>
-                        )) : (
-                          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>Заказ не указан</Text>
-                        )}
-                        {orderItems.length > 6 && (
-                          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginBottom: 5 }}>+{orderItems.length - 6}</Text>
-                        )}
-                      </View>
-                    </View>
-                  );
-                }
-
-                return (
-                  <View style={{ marginTop: 8 }}>
-                    <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-                      <Text style={{ width: 54, color: colors.muted, fontSize: 10, fontWeight: "800" }}>{info.leftTitle}</Text>
-                      <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "900" }}>
-                        {info.leftName}
-                      </Text>
-                    </View>
-                    {!!info.leftAddress && (
-                      <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 2, paddingLeft: 54 }}>
-                        {info.leftAddress}
-                      </Text>
-                    )}
-
-                    {!courierCallTask && (
-                      <View style={{ marginTop: 5 }}>
-                        <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-                          <Text style={{ width: 54, color: colors.muted, fontSize: 10, fontWeight: "800" }}>{info.rightTitle}</Text>
-                          <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "900" }}>
-                            {info.rightName}
-                          </Text>
-                        </View>
-                        {!!info.rightAddress && (
-                          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 2, paddingLeft: 54 }}>
-                            {info.rightAddress}
-                          </Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                );
-
-              })()}
-
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: colors.border,
-                  marginTop: 8,
-                  marginHorizontal: -12,
-                }}
-              />
-
-              <View
-                style={{
-                  marginTop: 8,
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    color: colors.muted,
-                    fontSize: 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  {getPlacesLabel(item) ? (
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Package size={13} color="#64748B" strokeWidth={2.2} />
-                      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", marginLeft: 5 }}>
-                        {getPlacesLabel(item)}
-                      </Text>
-                    </View>
-                  ) : ""}
-                </Text>
-
-                <Text
-                  style={{
-                    color: colors.muted,
-                    fontSize: 11,
-                    fontWeight: "800",
-                    flex: 1,
-                    textAlign: "right",
-                    marginLeft: 8,
-                  }}
-                  numberOfLines={1}
-                >
-                  {getFooterParts(item).join(" · ")}
-                </Text>
-              </View>
-
-            </TouchableOpacity>
             );
           }}
         />

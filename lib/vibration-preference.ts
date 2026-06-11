@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Haptics from "expo-haptics";
 
 export const VIBRATION_ENABLED_KEY = "vibrationEnabled";
 
@@ -18,4 +19,14 @@ export async function setVibrationEnabled(enabled: boolean): Promise<void> {
   } catch (error) {
     console.warn("[Vibration] Failed to save preference", error);
   }
+}
+
+export async function performImpact(style = Haptics.ImpactFeedbackStyle.Light) {
+  if (!(await isVibrationEnabled())) return;
+  await Haptics.impactAsync(style);
+}
+
+export async function performSuccessHaptic() {
+  if (!(await isVibrationEnabled())) return;
+  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 }
