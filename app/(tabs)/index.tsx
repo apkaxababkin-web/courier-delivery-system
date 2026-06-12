@@ -630,56 +630,58 @@ export default function TaskListScreen() {
                 </Text>
               </View>
             ) : (
-              sortedTasks.map((item: any, index: number) => {
-                const info = getMainCardInfo(item);
-                const nutsTask = isNutsTask(item);
-                const places = getPlacesLabel(item);
-                const time = getTaskTimeLabel(item);
+              <View style={{ width: "100%", alignSelf: "stretch" }} collapsable={false}>
+                {sortedTasks.map((item: any, index: number) => {
+                  const info = getMainCardInfo(item);
+                  const nutsTask = isNutsTask(item);
+                  const places = getPlacesLabel(item);
+                  const time = getTaskTimeLabel(item);
 
-                return (
-                  <TouchableOpacity
-                    key={String(item.id)}
-                    onPress={() => router.push(`/task/${item.id}` as never)}
-                    activeOpacity={0.75}
-                    style={{
-                      minHeight: 90,
-                      backgroundColor: colors.surface,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 14,
-                      padding: 12,
-                      marginHorizontal: 12,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <Text style={{ color: "#DC2626", fontSize: 12, lineHeight: 18, fontWeight: "900", marginBottom: 4 }}>
-                      CARD DEBUG #{index + 1} id={item.id}
-                    </Text>
-                    <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, fontWeight: "800" }}>
-                      №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
-                    </Text>
-                    <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 5 }}>
-                      Откуда: {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
-                    </Text>
-                    <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                      {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
-                    </Text>
-                    {!nutsTask ? (
-                      <>
-                        <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 4 }}>
-                          Куда: {info.rightName || "—"}
-                        </Text>
-                        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                          {info.rightAddress || "—"}
-                        </Text>
-                      </>
-                    ) : null}
-                    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginTop: 5 }}>
-                      {[places, getCourierLabel(item), time].filter(Boolean).join(" · ")}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })
+                  return (
+                    <TouchableOpacity
+                      key={`${String(item.id)}-${index}`}
+                      onPress={() => router.push(`/task/${item.id}` as never)}
+                      activeOpacity={0.75}
+                      style={{
+                        minHeight: 90,
+                        backgroundColor: colors.surface,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 14,
+                        padding: 12,
+                        marginHorizontal: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <Text style={{ color: "#DC2626", fontSize: 12, lineHeight: 18, fontWeight: "900", marginBottom: 4 }}>
+                        CARD DEBUG #{index + 1} id={item.id}
+                      </Text>
+                      <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, fontWeight: "800" }}>
+                        №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
+                      </Text>
+                      <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 5 }}>
+                        Откуда: {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
+                      </Text>
+                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                        {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
+                      </Text>
+                      {!nutsTask ? (
+                        <>
+                          <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 4 }}>
+                            Куда: {info.rightName || "—"}
+                          </Text>
+                          <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                            {info.rightAddress || "—"}
+                          </Text>
+                        </>
+                      ) : null}
+                      <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginTop: 5 }}>
+                        {[places, getCourierLabel(item), time].filter(Boolean).join(" · ")}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             )}
           </ScrollView>
         </View>
