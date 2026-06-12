@@ -12,10 +12,11 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { NetworkBanner } from "@/components/network-banner";
-import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
+import { OperationRow } from "@/components/operation-row";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
@@ -527,32 +528,35 @@ export default function TaskListScreen() {
 
   if (!token) {
     return (
-      <ScreenContainer className="p-6">
-        <NetworkBanner visible={!isOnline} />
-        <View style={styles.center}>
-          <Text style={{ fontSize: 40 }}>📦</Text>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Войдите в аккаунт</Text>
-          <Text style={[styles.emptySubtitle, { color: colors.muted }]}>Перейдите на вкладку «Профиль» и введите логин и пароль</Text>
+      <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
+        <View style={{ flex: 1, minHeight: 0, padding: 24 }}>
+          <NetworkBanner visible={!isOnline} />
+          <View style={styles.center}>
+            <Text style={{ fontSize: 40 }}>📦</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Войдите в аккаунт</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.muted }]}>Перейдите на вкладку «Профиль» и введите логин и пароль</Text>
+          </View>
         </View>
-      </ScreenContainer>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScreenContainer className="p-0">
-      <NetworkBanner visible={!isOnline} />
+    <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
+        <NetworkBanner visible={!isOnline} />
 
-      <HeaderBarV2
-        title="Заявки"
-        onProfilePress={() => router.push("/profile" as never)}
-        onFilterToggle={setFilterMode}
-        filterMode={filterMode}
-        selectedDate={selectedDate}
-        onDatePress={() => setShowDatePicker(true)}
-        showDate
-        showFilter
-        myTasksCount={myTasksCount}
-      />
+        <HeaderBarV2
+          title="Заявки"
+          onProfilePress={() => router.push("/profile" as never)}
+          onFilterToggle={setFilterMode}
+          filterMode={filterMode}
+          selectedDate={selectedDate}
+          onDatePress={() => setShowDatePicker(true)}
+          showDate
+          showFilter
+          myTasksCount={myTasksCount}
+        />
 
       <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setShowDatePicker(false)}>
@@ -601,93 +605,84 @@ export default function TaskListScreen() {
         </Pressable>
       </Modal>
 
-      <View style={{ backgroundColor: "#FACC15", paddingHorizontal: 8, paddingVertical: 5 }}>
-        <Text style={{ color: "#111827", fontSize: 10, lineHeight: 14, fontWeight: "700" }}>
-          raw {tasksData.length} / filtered {filteredTasks.length} / sorted {sortedTasks.length} / tokenPresent {String(!!token)} / authLoading{" "}
-          {String(authLoading)} / isLoading {String(isLoading)} / {selectedDateKey} / filterMode {filterMode}
-        </Text>
-      </View>
-
-      {isLoading && sortedTasks.length === 0 ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+        <View style={{ backgroundColor: "#FACC15", paddingHorizontal: 8, paddingVertical: 5 }}>
+          <Text style={{ color: "#111827", fontSize: 10, lineHeight: 14, fontWeight: "700" }}>
+            BUILD LAYOUT FIX 14a8ef2
+          </Text>
+          <Text style={{ color: "#111827", fontSize: 10, lineHeight: 14, fontWeight: "700" }}>
+            raw {tasksData.length} / filtered {filteredTasks.length} / sorted {sortedTasks.length} / tokenPresent {String(!!token)} / authLoading{" "}
+            {String(authLoading)} / isLoading {String(isLoading)} / {selectedDateKey} / filterMode {filterMode}
+          </Text>
         </View>
-      ) : (
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <ScrollView
-            style={{ flex: 1, backgroundColor: colors.background }}
-            contentContainerStyle={{ paddingTop: 10, paddingBottom: 150 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {sortedTasks.length === 0 ? (
-              <View style={styles.center}>
-                <Text style={{ fontSize: 48 }}>📋</Text>
-                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                  {isSelectedDateToday ? "Нет заявок" : "Нет заявок на эту дату"}
-                </Text>
-                <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                  {isSelectedDateToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
-                </Text>
-              </View>
-            ) : (
-              <View style={{ width: "100%", alignSelf: "stretch" }} collapsable={false}>
-                {sortedTasks.map((item: any, index: number) => {
+
+        {isLoading && sortedTasks.length === 0 ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
+          <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
+            <ScrollView
+              style={{ flex: 1, backgroundColor: colors.background }}
+              contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 12, paddingBottom: 160 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {sortedTasks.length === 0 ? (
+                <View style={styles.center}>
+                  <Text style={{ fontSize: 48 }}>📋</Text>
+                  <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                    {isSelectedDateToday ? "Нет заявок" : "Нет заявок на эту дату"}
+                  </Text>
+                  <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
+                    {isSelectedDateToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
+                  </Text>
+                </View>
+              ) : (
+                sortedTasks.map((item: any, index: number) => {
                   const info = getMainCardInfo(item);
                   const nutsTask = isNutsTask(item);
-                  const places = getPlacesLabel(item);
-                  const time = getTaskTimeLabel(item);
+                  const courierCallTask = isCourierCallTask(item);
+                  const nutsItems = nutsTask
+                    ? getNutsOrderItems(item)
+                        .map((order) => `${order.label} (${order.quantity} ${order.unit})`)
+                        .join(" · ")
+                    : undefined;
+                  const nutsSum = nutsTask ? getNutsSumLabel(item) : null;
+                  const TypeIcon = getTaskTypeIcon(item);
 
                   return (
-                    <TouchableOpacity
-                      key={`${String(item.id)}-${index}`}
-                      onPress={() => router.push(`/task/${item.id}` as never)}
-                      activeOpacity={0.75}
-                      style={{
-                        minHeight: 90,
-                        backgroundColor: colors.surface,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 14,
-                        padding: 12,
-                        marginHorizontal: 12,
-                        marginBottom: 10,
-                      }}
-                    >
-                      <Text style={{ color: "#DC2626", fontSize: 12, lineHeight: 18, fontWeight: "900", marginBottom: 4 }}>
+                    <View key={`${String(item.id)}-${index}`} collapsable={false}>
+                      <Text style={{ color: "#DC2626", fontSize: 10, lineHeight: 14, fontWeight: "900" }}>
                         CARD DEBUG #{index + 1} id={item.id}
                       </Text>
-                      <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, fontWeight: "800" }}>
-                        №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
-                      </Text>
-                      <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 5 }}>
-                        Откуда: {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
-                      </Text>
-                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                        {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
-                      </Text>
-                      {!nutsTask ? (
-                        <>
-                          <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 4 }}>
-                            Куда: {info.rightName || "—"}
-                          </Text>
-                          <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                            {info.rightAddress || "—"}
-                          </Text>
-                        </>
-                      ) : null}
-                      <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginTop: 5 }}>
-                        {[places, getCourierLabel(item), time].filter(Boolean).join(" · ")}
-                      </Text>
-                    </TouchableOpacity>
+                      <OperationRow
+                        colors={colors}
+                        status={item.status}
+                        statusColor={getTaskStatusColor(item.status)}
+                        typeLabel={getTaskTypeLabel(item)}
+                        typeColor={getTaskTypeColor(item)}
+                        TypeIcon={TypeIcon}
+                        requestNumber={getDisplayRequestId(item)}
+                        primaryName={nutsTask ? item.recipientName || "Получатель" : info.leftName}
+                        primaryAddress={nutsTask ? item.deliveryAddress || item.recipientAddress : info.leftAddress}
+                        secondaryName={!nutsTask && !courierCallTask ? info.rightName : undefined}
+                        secondaryAddress={!nutsTask && !courierCallTask ? info.rightAddress : undefined}
+                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : courierCallTask ? item.comments || "Забрать у отправителя" : undefined}
+                        places={getPlacesLabel(item)}
+                        courier={getCourierLabel(item)}
+                        trailingMeta={nutsTask ? nutsSum : undefined}
+                        time={getTaskTimeLabel(item)}
+                        isLast={index === sortedTasks.length - 1}
+                        onPress={() => router.push(`/task/${item.id}` as never)}
+                      />
+                    </View>
                   );
-                })}
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      )}
-
-    </ScreenContainer>
+                })
+              )}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
