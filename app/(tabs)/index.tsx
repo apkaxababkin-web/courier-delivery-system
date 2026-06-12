@@ -189,6 +189,28 @@ export default function TaskListScreen() {
     });
   }, [filteredTasks]);
 
+  useEffect(() => {
+    console.log("[TasksScreen] visible state", {
+      tokenPresent: !!token,
+      authLoading,
+      isLoading,
+      raw: tasksData.length,
+      filtered: filteredTasks.length,
+      sorted: sortedTasks.length,
+      selectedDateKey,
+      filterMode,
+    });
+  }, [
+    token,
+    authLoading,
+    isLoading,
+    tasksData.length,
+    filteredTasks.length,
+    sortedTasks.length,
+    selectedDateKey,
+    filterMode,
+  ]);
+
   const myTasksCount = useMemo(() => {
     if (!tasksData.length) return 0;
     return tasksData.filter((task: any) => {
@@ -589,6 +611,13 @@ export default function TaskListScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <View style={{ backgroundColor: "#FACC15", paddingHorizontal: 8, paddingVertical: 5 }}>
+        <Text style={{ color: "#111827", fontSize: 10, lineHeight: 14, fontWeight: "700" }}>
+          raw {tasksData.length} / filtered {filteredTasks.length} / sorted {sortedTasks.length} / tokenPresent {String(!!token)} / authLoading{" "}
+          {String(authLoading)} / isLoading {String(isLoading)} / {selectedDateKey} / filterMode {filterMode}
+        </Text>
+      </View>
 
       {isLoading && sortedTasks.length === 0 ? (
         <View style={styles.center}>
