@@ -16,16 +16,13 @@ import { useQuery } from "@tanstack/react-query";
 import { NetworkBanner } from "@/components/network-banner";
 import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
-import { OperationRow } from "@/components/operation-row";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useFilter } from "@/lib/filter-context";
-import { sortTasks } from "@/lib/task-sorting";
 import { createCourierMobileClient } from "@/shared/mobileCourierClient";
-import { type TaskStatus } from "@/shared/types";
 import { DESIGN_PREVIEW_TOKEN, designPreviewTasks } from "@/lib/design-preview";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -36,6 +33,10 @@ import {
   Nut,
   Truck,
   Mail,
+  CheckCircle2,
+  CircleDot,
+  Clock3,
+  XCircle,
 } from "lucide-react-native";
 
 const toLocalDateKey = (date: Date) => {
@@ -84,26 +85,17 @@ export default function TaskListScreen() {
     enabled: !authLoading && !!token && !isDesignPreview,
     queryFn: async () => {
       if (!token) return [];
-      console.log("[TasksScreen] token present", !!token);
-      console.log("[TasksScreen] selected date", selectedDateKey, "today", isSelectedDateToday);
 
       if (isSelectedDateToday) {
         try {
           const snapshot = await mobileClient.realtime(token);
           const realtimeTasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
-          console.log("[TasksScreen] realtime response ok/error", snapshot.ok ? "ok" : "error");
-          console.log("[TasksScreen] realtime tasks count", realtimeTasks.length);
 
           if (realtimeTasks.length > 0) return realtimeTasks;
-        } catch (error) {
-          console.log("[TasksScreen] realtime response ok/error", error instanceof Error ? error.message : "error");
-          console.log("[TasksScreen] realtime tasks count", 0);
-        }
+        } catch {}
       }
 
-      const dateTasks = await mobileClient.tasksAll(token, selectedDateKey);
-      console.log("[TasksScreen] date tasks count", dateTasks.length);
-      return dateTasks;
+      return mobileClient.tasksAll(token, selectedDateKey);
     },
     staleTime: 0,
     refetchOnMount: "always",
@@ -448,6 +440,13 @@ export default function TaskListScreen() {
     return "#2563EB";
   };
 
+  const getTaskStatusIcon = (status?: string) => {
+    if (status === "completed") return CheckCircle2;
+    if (status === "cancelled") return XCircle;
+    if (status === "in_progress") return Clock3;
+    return CircleDot;
+  };
+
   const handleDateChange = (day: number) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(day);
@@ -591,12 +590,6 @@ export default function TaskListScreen() {
         </Pressable>
       </Modal>
 
-      <View style={{ backgroundColor: "#ffeb3b", padding: 8 }}>
-        <Text style={{ color: "#000", fontSize: 14, fontWeight: "900" }}>
-          DEBUG: raw {tasksData.length} / filtered {filteredTasks.length} / sorted {sortedTasks.length}
-        </Text>
-      </View>
-
       {isLoading && sortedTasks.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -631,45 +624,85 @@ export default function TaskListScreen() {
               : undefined;
             const nutsSum = nutsTask ? getNutsSumLabel(item) : null;
             const TypeIcon = getTaskTypeIcon(item);
+            const StatusIcon = getTaskStatusIcon(item.status);
+            const statusColor = getTaskStatusColor(item.status);
+            const places = getPlacesLabel(item);
+            const time = getTaskTimeLabel(item);
 
             return (
               <TouchableOpacity
                 onPress={() => router.push(`/task/${item.id}` as never)}
+                activeOpacity={0.72}
                 style={{
-                  marginHorizontal: 12,
-                  marginBottom: 10,
-                  padding: 12,
-                  borderRadius: 14,
-                  backgroundColor: colors.surface,
-                  borderWidth: 1,
-                  borderColor: colors.border,
+                  width: "100%",
+                  minHeight: 122,
+                  flexDirection: "row",
+                  backgroundColor: colors.background,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
                 }}
               >
-                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginBottom: 6 }}>
-                  №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
-                </Text>
+                <View
+                  style={{
+                    width: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRightWidth: 1,
+                    borderRightColor: colors.border,
+                  }}
+                >
+                  <StatusIcon size={21} color={statusColor} strokeWidth={2.4} />
+                </View>
 
-                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "800" }}>
-                  Откуда: {nutsTask ? item.recipientName || "Получатель" : info.leftName}
-                </Text>
-                <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
-                  {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
-                </Text>
-
-                {!nutsTask && !courierCallTask ? (
-                  <>
-                    <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "800" }}>
-                      Куда: {info.rightName}
+                <View style={{ flex: 1, minWidth: 0, paddingVertical: 11, paddingLeft: 13, paddingRight: 12 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 20 }}>
+                    <TypeIcon size={14} color={getTaskTypeColor(item)} strokeWidth={2.2} />
+                    <Text
+                      numberOfLines={1}
+                      style={{ flex: 1, color: getTaskTypeColor(item), fontSize: 12, lineHeight: 18, fontWeight: "700", marginLeft: 6 }}
+                    >
+                      {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
                     </Text>
-                    <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
-                      {info.rightAddress || "—"}
+                    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginLeft: 8 }}>
+                      №{getDisplayRequestId(item)}
                     </Text>
-                  </>
-                ) : null}
+                  </View>
 
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  {getPlacesLabel(item) || "Места не указаны"} · {getCourierLabel(item)} · {getTaskTimeLabel(item) || "Время не указано"}
-                </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 21 }}>
+                    <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", flexShrink: 1 }}>
+                      {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
+                    </Text>
+                    <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 12, lineHeight: 19, marginLeft: 7, flexShrink: 1 }}>
+                      {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 21 }}>
+                    {nutsTask ? (
+                      <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "600", flex: 1 }}>
+                        {nutsItems || "Заказ не указан"}
+                      </Text>
+                    ) : (
+                      <>
+                        <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", flexShrink: 1 }}>
+                          {info.rightName || (courierCallTask ? "Офис" : "—")}
+                        </Text>
+                        <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 12, lineHeight: 19, marginLeft: 7, flexShrink: 1 }}>
+                          {info.rightAddress || "—"}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 21 }}>
+                    <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, lineHeight: 18, flex: 1, paddingRight: 8 }}>
+                      {getCourierLabel(item)}
+                      {nutsSum ? ` · ${nutsSum}` : ""}
+                    </Text>
+                    {time ? <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18 }}>{time}</Text> : null}
+                    {places ? <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginLeft: time ? 10 : 0 }}>{places}</Text> : null}
+                  </View>
+                </View>
               </TouchableOpacity>
             );
           }}
