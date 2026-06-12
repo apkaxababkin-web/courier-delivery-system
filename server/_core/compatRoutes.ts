@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
-import { isExpoPushToken, sendExpoPush } from "./expoPush";
+import { sendExpoPush } from "./expoPush";
 
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -39,18 +39,23 @@ function trpcBatchJson(data: unknown) {
 
 // Unwrap tRPC batch input format: {"0":{"json":{...}}} -> {...}
 function unwrapBatchInput(obj: Record<string, unknown>): Record<string, unknown> {
+  if (obj.json && typeof obj.json === "object") {
+    return obj.json as Record<string, unknown>;
+  }
+
   const firstKey = Object.keys(obj)[0];
   if (firstKey === "0" && obj["0"] && typeof obj["0"] === "object") {
     const inner = (obj["0"] as Record<string, unknown>).json;
     if (inner && typeof inner === "object") return inner as Record<string, unknown>;
   }
+
   return obj;
 }
 
 async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
   try {
     const allCouriers = await db.getAllCouriers();
-    const targets = allCouriers.filter((courier) => isExpoPushToken(courier.pushToken));
+    const targets = allCouriers.filter((courier) => courier.pushToken?.startsWith("ExponentPushToken"));
 
     console.log("[PUSH_ALL] targets", targets.length, title);
 
@@ -130,27 +135,6 @@ function inputFrom(req: Request): Record<string, unknown> {
   try { return unwrapBatchInput(JSON.parse(raw) as Record<string, unknown>); } catch { return {}; }
 }
 
-const COURIER_TIME_ZONE = "Asia/Irkutsk";
-
-function getCourierBusinessNoon(date = new Date()) {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: COURIER_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-
-  const parts = Object.fromEntries(
-    formatter.formatToParts(date).map((part) => [part.type, part.value])
-  );
-
-  const year = Number(parts.year);
-  const month = Number(parts.month);
-  const day = Number(parts.day);
-
-  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
-}
-
 function normalizeTaskStatus(status: unknown): Task["status"] {
   if (status === "in_progress" || status === "completed" || status === "cancelled") return status;
   return "assigned";
@@ -167,8 +151,8 @@ function taskTypeFromRequest(type: unknown): InsertTask["taskType"] {
   return "regular";
 }
 
-function requestStatusFromTask(status: Task["status"], courierId?: number | null): DeliveryRequest["status"] {
-  if (status === "assigned") return courierId ? "assigned" : "pending";
+function requestStatusFromTask(status: Task["status"]): DeliveryRequest["status"] {
+  if (status === "assigned") return "assigned";
   return status;
 }
 
@@ -255,7 +239,7 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
     specialInstructions: request.specialInstructions ?? null,
     comments,
     items: request.items ?? null,
-    scheduledAt: request.scheduledAt ?? getCourierBusinessNoon(request.createdAt ?? new Date()),
+    scheduledAt: request.scheduledAt ?? null,
     acceptedAt: request.acceptedAt ?? null,
     completedAt: request.completedAt ?? null,
   };
@@ -428,10 +412,9 @@ async function updateRequestStatusFromTask(taskId: number, status: Task["status"
   if (!marker) return;
   const requestId = Number(marker);
   if (!requestId) return;
-  const nextCourierId = courierId ?? task?.courierId ?? null;
   await conn.update(requests).set({
-    status: requestStatusFromTask(status, nextCourierId),
-    courierId: nextCourierId,
+    status: requestStatusFromTask(status),
+    courierId: courierId ?? task?.courierId ?? null,
     acceptedAt: status === "in_progress" ? new Date() : task?.acceptedAt ?? null,
     completedAt: status === "completed" ? new Date() : null,
     updatedAt: new Date(),
@@ -812,6 +795,15 @@ export function registerCompatRoutes(app: Express) {
       const courierId = await courierIdFromReq(req);
       if (!courierId) {
         res.status(401).json({ error: { message: "Invalid courier token" } });
+        return;
+      }
+
+      const input = inputFrom(req);
+      const date = typeof input.date === "string" && input.date.trim() ? input.date.trim() : undefined;
+
+      if (date) {
+        const datedTasks = await db.getTasksByDateWithCourier(date);
+        res.json(trpcJson(await tasksWithRequestType(datedTasks)));
         return;
       }
 

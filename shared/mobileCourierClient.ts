@@ -72,7 +72,7 @@ export class CourierMobileClient {
   }
 
   async tasksAll(token: string, date?: string): Promise<unknown[]> {
-    const input = encodeURIComponent(JSON.stringify({ token, ...(date ? { date } : {}) }));
+    const input = encodeURIComponent(JSON.stringify({ json: { token, ...(date ? { date } : {}) } }));
     const response = await fetch(`${this.baseUrl}/api/trpc/tasks.all?input=${input}`, {
       headers: { accept: 'application/json', Authorization: `Bearer ${token}` },
       cache: 'no-store',

@@ -70,39 +70,45 @@ export default function TaskListScreen() {
   const mobileClient = useMemo(() => createCourierMobileClient(getApiBaseUrl()), []);
   const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
 
+  const selectedDateKey = toLocalDateKey(selectedDate);
+  const todayDateKey = toLocalDateKey(new Date());
+  const isSelectedDateToday = selectedDateKey === todayDateKey;
+
   const {
     data: tasksDataRaw,
     isLoading,
     refetch,
     isRefetching: isRefetchingQuery,
   } = useQuery({
-    queryKey: ["courier-mobile-board-tasks", token],
+    queryKey: ["courier-mobile-board-tasks", token, selectedDateKey],
     enabled: !authLoading && !!token && !isDesignPreview,
     queryFn: async () => {
       if (!token) return [];
-      const dateKey = toLocalDateKey(selectedDate);
       console.log("[TasksScreen] token present", !!token);
+      console.log("[TasksScreen] selected date", selectedDateKey, "today", isSelectedDateToday);
 
-      try {
-        const snapshot = await mobileClient.realtime(token);
-        const realtimeTasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
-        console.log("[TasksScreen] realtime response ok/error", snapshot.ok ? "ok" : "error");
-        console.log("[TasksScreen] realtime tasks count", realtimeTasks.length);
+      if (isSelectedDateToday) {
+        try {
+          const snapshot = await mobileClient.realtime(token);
+          const realtimeTasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+          console.log("[TasksScreen] realtime response ok/error", snapshot.ok ? "ok" : "error");
+          console.log("[TasksScreen] realtime tasks count", realtimeTasks.length);
 
-        if (realtimeTasks.length > 0) return realtimeTasks;
-      } catch (error) {
-        console.log("[TasksScreen] realtime response ok/error", error instanceof Error ? error.message : "error");
-        console.log("[TasksScreen] realtime tasks count", 0);
+          if (realtimeTasks.length > 0) return realtimeTasks;
+        } catch (error) {
+          console.log("[TasksScreen] realtime response ok/error", error instanceof Error ? error.message : "error");
+          console.log("[TasksScreen] realtime tasks count", 0);
+        }
       }
 
-      const fallbackTasks = await mobileClient.tasksAll(token, dateKey);
-      console.log("[TasksScreen] fallback tasks count", fallbackTasks.length);
-      return fallbackTasks;
+      const dateTasks = await mobileClient.tasksAll(token, selectedDateKey);
+      console.log("[TasksScreen] date tasks count", dateTasks.length);
+      return dateTasks;
     },
     staleTime: 0,
     refetchOnMount: "always",
     refetchOnReconnect: true,
-    refetchInterval: 60_000,
+    refetchInterval: isSelectedDateToday ? 60_000 : false,
     placeholderData: (previousData) => previousData,
   });
 
@@ -128,7 +134,7 @@ export default function TaskListScreen() {
       refetch();
     }, 700);
 
-    return () => clearTimeout(timer);
+  return () => clearTimeout(timer);
   }, [token, authLoading, selectedDate, refetch, isDesignPreview]);
 
   useEffect(() => {
@@ -143,11 +149,6 @@ export default function TaskListScreen() {
   }, [token, refetch, isDesignPreview]);
 
 
-  const isToday = useMemo(() => {
-    const today = new Date();
-    return selectedDate.toDateString() === today.toDateString();
-  }, [selectedDate]);
-
   const filteredTasks = useMemo(() => {
     if (!tasksData.length) {
       return [];
@@ -158,7 +159,11 @@ export default function TaskListScreen() {
     const tasks = tasksData.filter((task: any) => {
       const taskDateKey = getTaskDateKey(task);
 
-      if (!isActiveBoardTask(task) && taskDateKey && taskDateKey !== selectedDateKey) {
+      if (!isSelectedDateToday && taskDateKey !== selectedDateKey) {
+        return false;
+      }
+
+      if (isSelectedDateToday && !isActiveBoardTask(task) && taskDateKey && taskDateKey !== selectedDateKey) {
         return false;
       }
 
@@ -179,7 +184,7 @@ export default function TaskListScreen() {
     });
 
     return tasks;
-  }, [tasksData, filterMode, courier?.id, courier?.name, selectedDate]);
+  }, [tasksData, filterMode, courier?.id, courier?.name, selectedDate, isSelectedDateToday]);
 
   const sortedTasks = useMemo(() => {
     return [...(filteredTasks as any[])].sort((a: any, b: any) => {
@@ -586,6 +591,12 @@ export default function TaskListScreen() {
         </Pressable>
       </Modal>
 
+      <View style={{ backgroundColor: "#ffeb3b", padding: 8 }}>
+        <Text style={{ color: "#000", fontSize: 14, fontWeight: "900" }}>
+          DEBUG: raw {tasksData.length} / filtered {filteredTasks.length} / sorted {sortedTasks.length}
+        </Text>
+      </View>
+
       {isLoading && sortedTasks.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -602,10 +613,10 @@ export default function TaskListScreen() {
             <View style={styles.center}>
               <Text style={{ fontSize: 48 }}>📋</Text>
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {isToday ? "Нет заявок" : "Нет заявок на эту дату"}
+                {isSelectedDateToday ? "Нет заявок" : "Нет заявок на эту дату"}
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                {isToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
+                {isSelectedDateToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
               </Text>
             </View>
           }
@@ -622,26 +633,44 @@ export default function TaskListScreen() {
             const TypeIcon = getTaskTypeIcon(item);
 
             return (
-              <OperationRow
-                colors={colors}
-                status={item.status}
-                statusColor={getTaskStatusColor(item.status)}
-                typeLabel={getTaskTypeLabel(item)}
-                typeColor={getTaskTypeColor(item)}
-                TypeIcon={TypeIcon}
-                requestNumber={getDisplayRequestId(item)}
-                primaryName={nutsTask ? item.recipientName || "Получатель" : info.leftName}
-                primaryAddress={nutsTask ? item.deliveryAddress || item.recipientAddress : info.leftAddress}
-                secondaryName={!nutsTask && !courierCallTask ? info.rightName : undefined}
-                secondaryAddress={!nutsTask && !courierCallTask ? info.rightAddress : undefined}
-                detailLine={nutsTask ? nutsItems || "Заказ не указан" : courierCallTask ? item.comments || "Забрать у отправителя" : undefined}
-                places={getPlacesLabel(item)}
-                courier={getCourierLabel(item)}
-                trailingMeta={nutsTask ? nutsSum : undefined}
-                time={getTaskTimeLabel(item)}
-                isLast={index === sortedTasks.length - 1}
+              <TouchableOpacity
                 onPress={() => router.push(`/task/${item.id}` as never)}
-              />
+                style={{
+                  marginHorizontal: 12,
+                  marginBottom: 10,
+                  padding: 12,
+                  borderRadius: 14,
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900", marginBottom: 6 }}>
+                  №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
+                </Text>
+
+                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "800" }}>
+                  Откуда: {nutsTask ? item.recipientName || "Получатель" : info.leftName}
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
+                  {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
+                </Text>
+
+                {!nutsTask && !courierCallTask ? (
+                  <>
+                    <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "800" }}>
+                      Куда: {info.rightName}
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
+                      {info.rightAddress || "—"}
+                    </Text>
+                  </>
+                ) : null}
+
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  {getPlacesLabel(item) || "Места не указаны"} · {getCourierLabel(item)} · {getTaskTimeLabel(item) || "Время не указано"}
+                </Text>
+              </TouchableOpacity>
             );
           }}
         />
