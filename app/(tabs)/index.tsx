@@ -624,118 +624,74 @@ export default function TaskListScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
-        <FlatList
-          data={sortedTasks as any}
-          keyExtractor={(item) => String(item.id)}
-          style={Platform.OS === "web" ? ({ flex: 1, height: "calc(100vh - 145px)", maxHeight: "calc(100vh - 145px)", overflowY: "scroll" } as any) : { flex: 1 }}
-          contentContainerStyle={{ paddingTop: 2, paddingBottom: 150, backgroundColor: colors.background, flexGrow: 1 }}
-          showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
-          ListFooterComponent={<View style={{ height: 90 }} />}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={{ fontSize: 48 }}>📋</Text>
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {isSelectedDateToday ? "Нет заявок" : "Нет заявок на эту дату"}
-              </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                {isSelectedDateToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
-              </Text>
-            </View>
-          }
-          renderItem={({ item, index }) => {
-            const info = getMainCardInfo(item);
-            const nutsTask = isNutsTask(item);
-            const courierCallTask = isCourierCallTask(item);
-            const nutsItems = nutsTask
-              ? getNutsOrderItems(item)
-                  .map((order) => `${order.label} (${order.quantity} ${order.unit})`)
-                  .join(" · ")
-              : undefined;
-            const nutsSum = nutsTask ? getNutsSumLabel(item) : null;
-            const TypeIcon = getTaskTypeIcon(item);
-            const StatusIcon = getTaskStatusIcon(item.status);
-            const statusColor = getTaskStatusColor(item.status);
-            const places = getPlacesLabel(item);
-            const time = getTaskTimeLabel(item);
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <FlatList
+            data={sortedTasks as any}
+            keyExtractor={(item) => String(item.id)}
+            style={{ flex: 1, backgroundColor: colors.background }}
+            contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 12, paddingBottom: 150 }}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.center}>
+                <Text style={{ fontSize: 48 }}>📋</Text>
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                  {isSelectedDateToday ? "Нет заявок" : "Нет заявок на эту дату"}
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
+                  {isSelectedDateToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
+                </Text>
+              </View>
+            }
+            renderItem={({ item, index }) => {
+              const info = getMainCardInfo(item);
+              const nutsTask = isNutsTask(item);
+              const places = getPlacesLabel(item);
+              const time = getTaskTimeLabel(item);
 
-            return (
-              <TouchableOpacity
-                onPress={() => router.push(`/task/${item.id}` as never)}
-                activeOpacity={0.72}
-                style={{
-                  width: "100%",
-                  minHeight: 122,
-                  flexDirection: "row",
-                  backgroundColor: colors.background,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                }}
-              >
-                <View
+              return (
+                <TouchableOpacity
+                  onPress={() => router.push(`/task/${item.id}` as never)}
+                  activeOpacity={0.75}
                   style={{
-                    width: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRightWidth: 1,
-                    borderRightColor: colors.border,
+                    minHeight: 90,
+                    backgroundColor: colors.surface,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 14,
+                    padding: 12,
+                    marginBottom: 10,
                   }}
                 >
-                  <StatusIcon size={21} color={statusColor} strokeWidth={2.4} />
-                </View>
-
-                <View style={{ flex: 1, minWidth: 0, paddingVertical: 11, paddingLeft: 13, paddingRight: 12 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 20 }}>
-                    <TypeIcon size={14} color={getTaskTypeColor(item)} strokeWidth={2.2} />
-                    <Text
-                      numberOfLines={1}
-                      style={{ flex: 1, color: getTaskTypeColor(item), fontSize: 12, lineHeight: 18, fontWeight: "700", marginLeft: 6 }}
-                    >
-                      {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
-                    </Text>
-                    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginLeft: 8 }}>
-                      №{getDisplayRequestId(item)}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 21 }}>
-                    <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", flexShrink: 1 }}>
-                      {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
-                    </Text>
-                    <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 12, lineHeight: 19, marginLeft: 7, flexShrink: 1 }}>
-                      {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 21 }}>
-                    {nutsTask ? (
-                      <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "600", flex: 1 }}>
-                        {nutsItems || "Заказ не указан"}
+                  <Text style={{ color: "#DC2626", fontSize: 12, lineHeight: 18, fontWeight: "900", marginBottom: 4 }}>
+                    CARD DEBUG #{index + 1} id={item.id}
+                  </Text>
+                  <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, fontWeight: "800" }}>
+                    №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
+                  </Text>
+                  <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 5 }}>
+                    {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                    {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
+                  </Text>
+                  {!nutsTask ? (
+                    <>
+                      <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 4 }}>
+                        {info.rightName || "—"}
                       </Text>
-                    ) : (
-                      <>
-                        <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", flexShrink: 1 }}>
-                          {info.rightName || (courierCallTask ? "Офис" : "—")}
-                        </Text>
-                        <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 12, lineHeight: 19, marginLeft: 7, flexShrink: 1 }}>
-                          {info.rightAddress || "—"}
-                        </Text>
-                      </>
-                    )}
-                  </View>
-
-                  <View style={{ flexDirection: "row", alignItems: "center", minHeight: 21 }}>
-                    <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, lineHeight: 18, flex: 1, paddingRight: 8 }}>
-                      {getCourierLabel(item)}
-                      {nutsSum ? ` · ${nutsSum}` : ""}
-                    </Text>
-                    {time ? <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18 }}>{time}</Text> : null}
-                    {places ? <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginLeft: time ? 10 : 0 }}>{places}</Text> : null}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-        />
+                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                        {info.rightAddress || "—"}
+                      </Text>
+                    </>
+                  ) : null}
+                  <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginTop: 5 }}>
+                    {[places, getCourierLabel(item), time].filter(Boolean).join(" · ")}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
       )}
 
     </ScreenContainer>
