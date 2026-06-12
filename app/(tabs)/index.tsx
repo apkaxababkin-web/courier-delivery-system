@@ -1,9 +1,9 @@
 import {
   ActivityIndicator,
   AppState,
-  FlatList,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -33,10 +33,6 @@ import {
   Nut,
   Truck,
   Mail,
-  CheckCircle2,
-  CircleDot,
-  Clock3,
-  XCircle,
 } from "lucide-react-native";
 
 const toLocalDateKey = (date: Date) => {
@@ -462,13 +458,6 @@ export default function TaskListScreen() {
     return "#2563EB";
   };
 
-  const getTaskStatusIcon = (status?: string) => {
-    if (status === "completed") return CheckCircle2;
-    if (status === "cancelled") return XCircle;
-    if (status === "in_progress") return Clock3;
-    return CircleDot;
-  };
-
   const handleDateChange = (day: number) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(day);
@@ -625,13 +614,12 @@ export default function TaskListScreen() {
         </View>
       ) : (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <FlatList
-            data={sortedTasks as any}
-            keyExtractor={(item) => String(item.id)}
+          <ScrollView
             style={{ flex: 1, backgroundColor: colors.background }}
-            contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 12, paddingBottom: 150 }}
+            contentContainerStyle={{ paddingTop: 10, paddingBottom: 150 }}
             showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
+          >
+            {sortedTasks.length === 0 ? (
               <View style={styles.center}>
                 <Text style={{ fontSize: 48 }}>📋</Text>
                 <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
@@ -641,56 +629,59 @@ export default function TaskListScreen() {
                   {isSelectedDateToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
                 </Text>
               </View>
-            }
-            renderItem={({ item, index }) => {
-              const info = getMainCardInfo(item);
-              const nutsTask = isNutsTask(item);
-              const places = getPlacesLabel(item);
-              const time = getTaskTimeLabel(item);
+            ) : (
+              sortedTasks.map((item: any, index: number) => {
+                const info = getMainCardInfo(item);
+                const nutsTask = isNutsTask(item);
+                const places = getPlacesLabel(item);
+                const time = getTaskTimeLabel(item);
 
-              return (
-                <TouchableOpacity
-                  onPress={() => router.push(`/task/${item.id}` as never)}
-                  activeOpacity={0.75}
-                  style={{
-                    minHeight: 90,
-                    backgroundColor: colors.surface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 14,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <Text style={{ color: "#DC2626", fontSize: 12, lineHeight: 18, fontWeight: "900", marginBottom: 4 }}>
-                    CARD DEBUG #{index + 1} id={item.id}
-                  </Text>
-                  <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, fontWeight: "800" }}>
-                    №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
-                  </Text>
-                  <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 5 }}>
-                    {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
-                  </Text>
-                  <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                    {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
-                  </Text>
-                  {!nutsTask ? (
-                    <>
-                      <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 4 }}>
-                        {info.rightName || "—"}
-                      </Text>
-                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                        {info.rightAddress || "—"}
-                      </Text>
-                    </>
-                  ) : null}
-                  <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginTop: 5 }}>
-                    {[places, getCourierLabel(item), time].filter(Boolean).join(" · ")}
-                  </Text>
-                </TouchableOpacity>
-              );
-            }}
-          />
+                return (
+                  <TouchableOpacity
+                    key={String(item.id)}
+                    onPress={() => router.push(`/task/${item.id}` as never)}
+                    activeOpacity={0.75}
+                    style={{
+                      minHeight: 90,
+                      backgroundColor: colors.surface,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 14,
+                      padding: 12,
+                      marginHorizontal: 12,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text style={{ color: "#DC2626", fontSize: 12, lineHeight: 18, fontWeight: "900", marginBottom: 4 }}>
+                      CARD DEBUG #{index + 1} id={item.id}
+                    </Text>
+                    <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, fontWeight: "800" }}>
+                      №{getDisplayRequestId(item)} · {getTaskTypeLabel(item)} · {getTaskStatusLabel(item.status)}
+                    </Text>
+                    <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 5 }}>
+                      Откуда: {nutsTask ? item.recipientName || "Получатель" : info.leftName || "—"}
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                      {nutsTask ? item.deliveryAddress || item.recipientAddress || "—" : info.leftAddress || "—"}
+                    </Text>
+                    {!nutsTask ? (
+                      <>
+                        <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 19, fontWeight: "700", marginTop: 4 }}>
+                          Куда: {info.rightName || "—"}
+                        </Text>
+                        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                          {info.rightAddress || "—"}
+                        </Text>
+                      </>
+                    ) : null}
+                    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18, marginTop: 5 }}>
+                      {[places, getCourierLabel(item), time].filter(Boolean).join(" · ")}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
         </View>
       )}
 
