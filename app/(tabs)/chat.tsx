@@ -1,5 +1,15 @@
-import { useMemo, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { MessageCircle, Paperclip, Send } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,60 +17,141 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { useColors } from "@/hooks/use-colors";
+import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
+import { getApiBaseUrl } from "@/constants/oauth";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { DESIGN_PREVIEW_TOKEN } from "@/lib/design-preview";
 
-type DemoMessage = {
+type ChatMessage = {
   id: number;
-  author: string;
+  authorType: "manager" | "courier";
+  authorId: number | null;
+  authorName: string;
   text: string;
-  time: string;
-  own?: boolean;
+  createdAt: string;
 };
 
-const initialMessages: DemoMessage[] = [
-  { id: 1, author: "Менеджер", text: "Добавлена новая заявка №202. Нужно забрать до 14:10.", time: "10:04" },
-  { id: 2, author: "Юрий Бабкин", text: "Принял. Сначала заеду в Hello Korea.", time: "10:06" },
-  { id: 3, author: "Аркадий Бабкин", text: "Гемотест на Партизанской забрал, две пробирки.", time: "10:18", own: true },
-  { id: 4, author: "Менеджер", text: "Хорошо. По письмам на Ленина два разных получателя.", time: "10:21" },
-  { id: 5, author: "Аркадий Бабкин", text: "Понял, отмечу каждое письмо отдельно.", time: "10:23", own: true },
-];
+function formatMessageTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+async function readJson(response: Response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
 
 export default function ChatScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const { token } = useCourierAuth();
-  const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState(initialMessages);
-  const border = useMemo(() => "rgba(148,163,184,0.18)", []);
+  const { token, courier } = useCourierAuth();
 
-  const sendDemoMessage = () => {
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const border = useMemo(() => "rgba(148,163,184,0.18)", []);
+  const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
+  const isReady = Boolean(token) && !isDesignPreview;
+
+  const loadMessages = useCallback(async (showLoader = false) => {
+    if (!token || isDesignPreview) return;
+
+    try {
+      if (showLoader) setIsLoading(true);
+
+      const response = await fetch(`${getApiBaseUrl()}/api/chat/messages?limit=120`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const data = await readJson(response);
+      if (!response.ok) {
+        throw new Error(data?.error?.message || "Не удалось загрузить чат");
+      }
+
+      setMessages(Array.isArray(data) ? data : []);
+      setError(null);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Ошибка загрузки чата";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isDesignPreview, token]);
+
+  useEffect(() => {
+    if (!isReady) {
+      setIsLoading(false);
+      return;
+    }
+
+    loadMessages(true);
+  }, [isReady, loadMessages]);
+
+  useMobileLiveSync({
+    enabled: isReady,
+    onSync: useCallback(() => {
+      loadMessages(false);
+    }, [loadMessages]),
+  });
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const timer = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+    return () => clearTimeout(timer);
+  }, [messages.length]);
+
+  const sendMessage = async () => {
     const text = draft.trim();
-    if (!text) return;
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        author: "Аркадий Бабкин",
-        text,
-        time: new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
-        own: true,
-      },
-    ]);
-    setDraft("");
+    if (!text || !token || isSending || isDesignPreview) return;
+
+    setIsSending(true);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/chat/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      const data = await readJson(response);
+      if (!response.ok) {
+        throw new Error(data?.error?.message || "Не удалось отправить сообщение");
+      }
+
+      setDraft("");
+      await loadMessages(false);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Ошибка отправки сообщения";
+      setError(message);
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  if (token !== DESIGN_PREVIEW_TOKEN) {
+  if (!isReady) {
     return (
       <ScreenContainer className="p-0">
         <HeaderBarV2 title="Чат" subtitle="Общий чат" onProfilePress={() => router.push("/profile" as never)} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
           <MessageCircle size={30} color={colors.primary} strokeWidth={2} />
-          <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "600", marginTop: 12 }}>Чат появится позже</Text>
+          <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "600", marginTop: 12 }}>Войдите в профиль</Text>
           <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: "center", marginTop: 4 }}>
-            Сейчас раздел оставлен как заглушка
+            Общий чат доступен после входа курьера
           </Text>
         </View>
       </ScreenContainer>
@@ -75,64 +166,83 @@ export default function ChatScreen() {
         backgroundColor: colors.background,
       }}
     >
-      <HeaderBarV2 title="Чат" subtitle="Общий чат" onProfilePress={() => router.push("/profile" as never)} />
+      <HeaderBarV2 title="Чат" subtitle="Общий чат МИГ" onProfilePress={() => router.push("/profile" as never)} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
         style={{ flex: 1, minHeight: 0, paddingBottom: Platform.OS === "web" ? 76 : 64 + Math.max(insets.bottom, 12) }}
       >
+        {isLoading ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>Загружаем чат…</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item) => String(item.id)}
+            style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}
+            contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", paddingHorizontal: 10, paddingTop: 12, paddingBottom: 12 }}
+            ListEmptyComponent={
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
+                <MessageCircle size={26} color={colors.primary} strokeWidth={2} />
+                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700", marginTop: 10 }}>Сообщений пока нет</Text>
+                <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", marginTop: 4 }}>
+                  Напишите первое сообщение в общий чат
+                </Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const own = item.authorType === "courier" && item.authorId === courier?.id;
 
-        <FlatList
-          data={messages}
-          keyExtractor={(item) => String(item.id)}
-          style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", paddingHorizontal: 10, paddingTop: 12, paddingBottom: 12 }}
-          ListHeaderComponent={
-            <View style={{ alignItems: "center", marginBottom: 12 }}>
-              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: colors.surface }}>
-                <Text style={{ color: colors.muted, fontSize: 10.5, fontWeight: "500" }}>Сегодня</Text>
-              </View>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <View
-              style={{
-                width: "100%",
-                alignItems: item.own ? "flex-end" : "flex-start",
-                marginBottom: 7,
-              }}
-            >
-              <View
-                style={{
-                  maxWidth: "82%",
-                  minWidth: 92,
-                  paddingHorizontal: 11,
-                  paddingTop: 7,
-                  paddingBottom: 6,
-                  borderRadius: 12,
-                  borderBottomRightRadius: item.own ? 3 : 12,
-                  borderBottomLeftRadius: item.own ? 12 : 3,
-                  borderWidth: item.own ? 0 : 1,
-                  borderColor: border,
-                  backgroundColor: item.own ? "#174B78" : colors.surface,
-                }}
-              >
-                {!item.own ? (
-                  <Text numberOfLines={1} style={{ color: colors.primary, fontSize: 11, lineHeight: 16, fontWeight: "600", marginBottom: 2 }}>
-                    {item.author}
-                  </Text>
-                ) : null}
-                <Text style={{ color: item.own ? "#F5F9FF" : colors.foreground, fontSize: 12.5, lineHeight: 18, fontWeight: "400" }}>
-                  {item.text}
-                </Text>
-                <Text style={{ alignSelf: "flex-end", color: item.own ? "rgba(235,245,255,0.68)" : colors.muted, fontSize: 9.5, lineHeight: 13, marginTop: 2 }}>
-                  {item.time}
-                </Text>
-              </View>
-            </View>
-          )}
-        />
+              return (
+                <View
+                  style={{
+                    width: "100%",
+                    alignItems: own ? "flex-end" : "flex-start",
+                    marginBottom: 7,
+                  }}
+                >
+                  <View
+                    style={{
+                      maxWidth: "82%",
+                      minWidth: 92,
+                      paddingHorizontal: 11,
+                      paddingTop: 7,
+                      paddingBottom: 6,
+                      borderRadius: 12,
+                      borderBottomRightRadius: own ? 3 : 12,
+                      borderBottomLeftRadius: own ? 12 : 3,
+                      borderWidth: own ? 0 : 1,
+                      borderColor: border,
+                      backgroundColor: own ? "#174B78" : colors.surface,
+                    }}
+                  >
+                    {!own ? (
+                      <Text numberOfLines={1} style={{ color: colors.primary, fontSize: 11, lineHeight: 16, fontWeight: "600", marginBottom: 2 }}>
+                        {item.authorType === "manager" ? `Менеджер • ${item.authorName}` : `Курьер • ${item.authorName}`}
+                      </Text>
+                    ) : null}
+                    <Text style={{ color: own ? "#F5F9FF" : colors.foreground, fontSize: 12.5, lineHeight: 18, fontWeight: "400" }}>
+                      {item.text}
+                    </Text>
+                    <Text style={{ alignSelf: "flex-end", color: own ? "rgba(235,245,255,0.68)" : colors.muted, fontSize: 9.5, lineHeight: 13, marginTop: 2 }}>
+                      {formatMessageTime(item.createdAt)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            }}
+          />
+        )}
+
+        {error ? (
+          <Text style={{ color: "#EF4444", fontSize: 11, textAlign: "center", paddingHorizontal: 12, paddingVertical: 4 }}>
+            {error}
+          </Text>
+        ) : null}
 
         <View style={{ minHeight: 58, flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 8, paddingTop: 7, paddingBottom: 8, borderTopWidth: 1, borderTopColor: border, backgroundColor: colors.background }}>
           <View style={{ flex: 1, minHeight: 42, maxHeight: 94, flexDirection: "row", alignItems: "flex-end", borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: colors.surface }}>
@@ -149,9 +259,9 @@ export default function ChatScreen() {
             />
           </View>
           <Pressable
-            onPress={sendDemoMessage}
-            disabled={!draft.trim()}
-            style={({ pressed }) => ({ width: 42, height: 42, marginLeft: 7, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, opacity: pressed || !draft.trim() ? 0.5 : 1 })}
+            onPress={sendMessage}
+            disabled={!draft.trim() || isSending}
+            style={({ pressed }) => ({ width: 42, height: 42, marginLeft: 7, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, opacity: pressed || !draft.trim() || isSending ? 0.5 : 1 })}
           >
             <Send size={18} color="#fff" strokeWidth={2.2} />
           </Pressable>

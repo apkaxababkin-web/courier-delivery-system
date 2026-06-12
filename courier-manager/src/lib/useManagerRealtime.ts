@@ -87,6 +87,7 @@ export function useManagerRealtime(_intervalMs = 5000): ManagerRealtimeState {
         eventSource.addEventListener('hemotest_changed', sync);
         eventSource.addEventListener('sberbank_changed', sync);
         eventSource.addEventListener('data_changed', sync);
+        eventSource.addEventListener('chat_changed', sync);
 
         eventSource.onerror = () => {
           console.warn('[ManagerRealtime] SSE error, reconnecting');

@@ -498,6 +498,76 @@ export function registerCompatRoutes(app: Express) {
     });
   });
 
+
+  app.get("/api/chat/messages", async (req, res) => {
+    try {
+      const limit = Number(req.query.limit || 100);
+      res.json(await db.getChatMessages(limit));
+    } catch (error) {
+      sendError(res, error, "Failed to load chat messages");
+    }
+  });
+
+  app.post("/api/chat/messages", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const text = String(input.text || "").trim();
+
+      if (!text) {
+        res.status(400).json({ error: { message: "Message text is required" } });
+        return;
+      }
+
+      if (text.length > 2000) {
+        res.status(400).json({ error: { message: "Message is too long" } });
+        return;
+      }
+
+      const courierId = await courierIdFromReq(req);
+      let authorType: "manager" | "courier" = "manager";
+      let authorId: number | null = null;
+      let authorName = String(input.authorName || "").trim() || "Менеджер";
+      if (authorName.length > 255) authorName = authorName.slice(0, 255);
+
+      if (courierId) {
+        const courier = await db.getCourierById(courierId);
+        authorType = "courier";
+        authorId = courierId;
+        authorName = courier?.name || "Курьер";
+      }
+
+      const message = await db.createChatMessage({
+        authorType,
+        authorId,
+        authorName,
+        text,
+      });
+
+      broadcastLive("chat_changed", { messageId: message.id });
+
+      res.json(message);
+    } catch (error) {
+      sendError(res, error, "Failed to send chat message");
+    }
+  });
+
+  app.delete("/api/chat/messages/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: { message: "Invalid message id" } });
+        return;
+      }
+
+      await db.deleteChatMessage(id);
+      broadcastLive("chat_changed", { messageId: id, deleted: true });
+
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to delete chat message");
+    }
+  });
+
   app.get("/api/manager/couriers", async (_req, res) => {
     try {
       res.json(await db.getAllCouriers());

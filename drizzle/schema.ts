@@ -609,3 +609,19 @@ export const managers = pgTable("managers", {
 
 export type Manager = typeof managers.$inferSelect;
 export type InsertManager = typeof managers.$inferInsert;
+
+// ─── Chat Messages Table ─────────────────────────────────────────────────────
+
+export const chatMessages = pgTable("chatMessages", {
+  id: serial("id").primaryKey(),
+  authorType: varchar("authorType", { length: 20 }).notNull(), // manager | courier
+  authorId: integer("authorId"),
+  authorName: varchar("authorName", { length: 255 }).notNull(),
+  text: text("text").notNull(),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = typeof chatMessages.$inferInsert;

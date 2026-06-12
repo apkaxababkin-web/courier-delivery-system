@@ -21,6 +21,7 @@ import MailsView from './views/MailsView';
 import ReportsView from './views/ReportsView';
 import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
+import ManagerChat from './components/ManagerChat';
 
 type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'couriers';
 
@@ -367,6 +368,8 @@ function App() {
           </div>
         </main>
       </div>
+
+      <ManagerChat managerName={managerName || 'Менеджер'} />
     </div>
   );
 }

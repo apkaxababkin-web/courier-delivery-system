@@ -47,8 +47,11 @@ import {
   type Request,
   type InsertRequest,
   managers,
+  chatMessages,
   type Manager,
   type InsertManager,
+  type ChatMessage,
+  type InsertChatMessage,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1034,6 +1037,47 @@ export async function seedDemoSberbankPoints(): Promise<void> {
 }
 
 
+
+// ─── Chat helpers ─────────────────────────────────────────────────────────────
+
+export async function getChatMessages(limit = 100): Promise<ChatMessage[]> {
+  const conn = await getDb();
+  if (!conn) return [];
+
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 200));
+
+  const rows = await conn
+    .select()
+    .from(chatMessages)
+    .where(sql`${chatMessages.deletedAt} is null`)
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(safeLimit);
+
+  return rows.reverse();
+}
+
+export async function createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+  const conn = await getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const result = await conn
+    .insert(chatMessages)
+    .values(message)
+    .returning();
+
+  return result[0];
+}
+
+export async function deleteChatMessage(id: number): Promise<void> {
+  const conn = await getDb();
+  if (!conn) throw new Error("Database not available");
+
+  await conn
+    .update(chatMessages)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(eq(chatMessages.id, id));
+}
+
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
 export async function getAllClients(): Promise<Client[]> {
@@ -1647,6 +1691,7 @@ export async function seedDemoManager(): Promise<number> {
   }).returning({ id: managers.id });
   return result[0].id as number;
 }
+
 
 // ─── Client helpers ────────────────────────────────────────────────────────────
 

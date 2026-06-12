@@ -414,6 +414,39 @@ export async function bulkCreateMails(mails: Array<Omit<Mail, 'id' | 'createdAt'
   return await trpcPost('managerMails.bulkCreate', { mails }, { created: 0, skipped: 0, errors: [] });
 }
 
+
+// ─── Chat API ───────────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  id: number;
+  authorType: 'manager' | 'courier';
+  authorId: number | null;
+  authorName: string;
+  text: string;
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export async function getChatMessages(limit = 120): Promise<ChatMessage[]> {
+  return await restJson<ChatMessage[]>(`/api/chat/messages?limit=${encodeURIComponent(String(limit))}`, {
+    method: 'GET',
+  });
+}
+
+export async function sendChatMessage(text: string, authorName: string): Promise<ChatMessage> {
+  return await restJson<ChatMessage>('/api/chat/messages', {
+    method: 'POST',
+    body: JSON.stringify({ text, authorName }),
+  });
+}
+
+export async function deleteChatMessage(id: number): Promise<void> {
+  await restJson<{ success: boolean }>(`/api/chat/messages/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // ─── Requests API (multi-type requests) ─────────────────────────────────────
 
 export interface Request {

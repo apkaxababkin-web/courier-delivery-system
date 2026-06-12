@@ -57,6 +57,7 @@ export function useMobileLiveSync({ enabled, onSync }: UseMobileLiveSyncOptions)
       eventSource.addEventListener("hemotest_changed", () => runSync("hemotest_changed"));
       eventSource.addEventListener("sberbank_changed", () => runSync("sberbank_changed"));
       eventSource.addEventListener("data_changed", () => runSync("data_changed"));
+      eventSource.addEventListener("chat_changed", () => runSync("chat_changed"));
 
       eventSource.addEventListener("error", (error: unknown) => {
         console.warn("[LiveSync] error:", error);
