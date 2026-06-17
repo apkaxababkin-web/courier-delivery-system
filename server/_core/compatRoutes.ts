@@ -215,6 +215,8 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
 
   return {
     courierId: request.courierId ?? null,
+    requestId: request.id,
+    sourceRequestId: request.id,
     status: normalizeTaskStatus(request.status),
     taskType: taskTypeFromRequest(request.requestType),
     recipientName: fallbackName,
@@ -227,7 +229,7 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
     senderPhone: request.senderPhone ?? null,
     packageDescription: request.packageDescription || request.description || request.callReason || null,
     packageType: request.packageType ?? "small",
-    placesCount: request.placesCount ?? 1,
+    placesCount: request.placesCount ?? null,
     estimatedMinutes: request.estimatedMinutes ?? null,
     deliveryTimeFrom: request.deliveryTimeFrom ?? null,
     deliveryTimeTo: request.deliveryTimeTo ?? null,
@@ -424,10 +426,12 @@ async function managerSnapshot() {
     db.getAllMails(),
     pickupFeedbackSummary(),
   ]);
+  const allTasks = await tasksWithRequestType([...activeTasks, ...completedTasks]);
+
   return {
     ok: true,
     updatedAt: new Date().toISOString(),
-    tasks: [...activeTasks, ...completedTasks],
+    tasks: allTasks,
     requests: requestList,
     mails: await mailsWithCourierName(mailList),
     pickupFeedback,
@@ -441,7 +445,7 @@ async function courierSnapshot(courierId: number) {
     db.getCompletedTasksWithCourier(),
     db.getAllMails(),
   ]);
-  const allTasks = [...activeTasks, ...completedTasks];
+  const allTasks = await tasksWithRequestType([...activeTasks, ...completedTasks]);
   return {
     ok: true,
     updatedAt: new Date().toISOString(),
@@ -868,7 +872,7 @@ export function registerCompatRoutes(app: Express) {
         senderPhone: input.senderPhone ? String(input.senderPhone) : null,
         packageDescription: input.packageDescription ? String(input.packageDescription) : null,
         packageType: (input.packageType as InsertTask["packageType"]) || "small",
-        placesCount: input.placesCount == null || input.placesCount === "" ? 1 : Number(input.placesCount),
+        placesCount: input.placesCount == null || input.placesCount === "" ? null : Number(input.placesCount),
         deliveryTimeFrom: input.deliveryTimeFrom ? String(input.deliveryTimeFrom) : null,
         deliveryTimeTo: input.deliveryTimeTo ? String(input.deliveryTimeTo) : null,
         specialInstructions: input.specialInstructions ? String(input.specialInstructions) : null,
@@ -950,7 +954,7 @@ export function registerCompatRoutes(app: Express) {
         deliveryCity: input.deliveryCity ? String(input.deliveryCity) : null,
         packageDescription: input.packageDescription ? String(input.packageDescription) : null,
         packageType: (input.packageType as InsertRequest["packageType"]) || "small",
-        placesCount: input.placesCount == null || input.placesCount === "" ? 1 : Number(input.placesCount),
+        placesCount: input.placesCount == null || input.placesCount === "" ? null : Number(input.placesCount),
         senderName: input.senderName ? String(input.senderName) : null,
         senderCompany: input.senderCompany ? String(input.senderCompany) : null,
         senderCity: input.senderCity ? String(input.senderCity) : null,

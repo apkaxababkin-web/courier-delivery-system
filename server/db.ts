@@ -314,11 +314,18 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
     .where(
       or(
         and(
+          inArray(tasks.status, ["completed", "cancelled"]),
+          gte(tasks.completedAt, startOfDay),
+          lte(tasks.completedAt, endOfDay)
+        ),
+        and(
+          sql`${tasks.status} NOT IN ('completed', 'cancelled')`,
           gte(tasks.scheduledAt, startOfDay),
           lte(tasks.scheduledAt, endOfDay)
         ),
         and(
           sql`${tasks.scheduledAt} IS NULL`,
+          sql`${tasks.completedAt} IS NULL`,
           gte(tasks.createdAt, startOfDay),
           lte(tasks.createdAt, endOfDay)
         )
@@ -329,10 +336,36 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
   
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
   const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
-  return allTasks.map((t: Task) => ({
-    ...t,
-    courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
-  }));
+
+  const requestIds: number[] = Array.from(new Set(
+    allTasks
+      .map((t: Task): number | null => {
+        const requestId = t.requestId ?? t.sourceRequestId ?? null;
+        return typeof requestId === "number" ? requestId : null;
+      })
+      .filter((id: number | null): id is number => id !== null)
+  ));
+
+  const requestTypeMap = new Map<number, Request["requestType"]>();
+  if (requestIds.length > 0) {
+    const requestRows = await db
+      .select({ id: requests.id, requestType: requests.requestType })
+      .from(requests)
+      .where(inArray(requests.id, requestIds));
+
+    for (const request of requestRows) {
+      requestTypeMap.set(request.id, request.requestType);
+    }
+  }
+
+  return allTasks.map((t: Task) => {
+    const requestId = t.requestId ?? t.sourceRequestId ?? null;
+    return {
+      ...t,
+      requestType: requestId ? requestTypeMap.get(requestId) ?? null : null,
+      courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+    };
+  });
 }
 
 export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCourier | null> {

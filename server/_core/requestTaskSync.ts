@@ -47,6 +47,8 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
 
   return {
     courierId: request.courierId ?? null,
+    requestId: request.id,
+    sourceRequestId: request.id,
     status: normalizeTaskStatus(request.status),
     taskType: taskTypeFromRequest(request.requestType),
     recipientName: fallbackName,
@@ -59,7 +61,7 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
     senderPhone: request.senderPhone ?? null,
     packageDescription: request.packageDescription || request.description || request.callReason || null,
     packageType: request.packageType ?? "small",
-    placesCount: request.placesCount ?? 1,
+    placesCount: request.placesCount ?? null,
     estimatedMinutes: request.estimatedMinutes ?? null,
     deliveryTimeFrom: request.deliveryTimeFrom ?? null,
     deliveryTimeTo: request.deliveryTimeTo ?? null,
