@@ -1,4 +1,5 @@
 import { Activity, AlertCircle, CheckCircle2, RefreshCcw } from 'lucide-react';
+import { formatLocalTime } from '../lib/local-time';
 
 interface RealtimeStatusCardProps {
   isRefreshing?: boolean;
@@ -16,7 +17,7 @@ export function RealtimeStatusCard({
   const isHealthy = !error;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-5 shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-5 shadow-sm">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_35%)]" />
 
       <div className="relative flex items-center justify-between gap-4">
@@ -39,7 +40,7 @@ export function RealtimeStatusCard({
               {error
                 ? error
                 : lastSyncAt
-                  ? `Последнее обновление: ${new Date(lastSyncAt).toLocaleTimeString('ru-RU')}`
+                  ? `Последнее обновление: ${formatLocalTime(lastSyncAt)}`
                   : 'Ожидание первого обновления'}
             </div>
           </div>

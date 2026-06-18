@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
+import { formatLocalDate } from '../lib/local-time';
 
 const HIDDEN_POINTS_STORAGE_KEY = 'courier-manager:hidden-sberbank-points';
 const POINT_ORDER_STORAGE_KEY = 'courier-manager:sberbank-point-order';
 
-const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
-const primaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50';
-const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50';
-const dangerButtonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950';
+const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
+const primaryButtonClass = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50';
+const secondaryButtonClass = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50';
+const dangerButtonClass = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950';
 
 const readNumberArray = (key: string) => {
   if (typeof window === 'undefined') return [] as number[];
@@ -173,7 +174,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
     try {
       setLoading(true);
 
-      const formattedDate = new Date(selectedDate).toLocaleDateString('ru-RU');
+      const formattedDate = formatLocalDate(selectedDate);
       const orderedSelectedPointIds = visiblePoints
         .filter((point) => selectedPoints.includes(point.id))
         .map((point) => point.id);
@@ -250,7 +251,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
   };
 
   return (
-    <div className="w-full space-y-5 p-4 sm:p-6">
+    <div className="w-full space-y-5">
       {showForm &&
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
@@ -342,7 +343,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
               type="checkbox"
               checked={selectedPoints.length === visiblePoints.length && visiblePoints.length > 0}
               onChange={handleSelectAll}
-              className="h-5 w-5 cursor-pointer rounded border-slate-300 text-slate-950 focus:ring-2 focus:ring-slate-300"
+              className="h-4 w-4 cursor-pointer rounded border-slate-300 text-slate-950 focus:ring-2 focus:ring-slate-300"
             />
 
             <span className="inline-flex h-9 items-center rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
@@ -362,9 +363,9 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
         ) : visiblePoints.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">Нет сохранённых точек</div>
         ) : (
-          <div className="overflow-x-auto">
-            <div className="w-full min-w-[1180px]">
-              <div className="grid grid-cols-[44px_44px_minmax(220px,1.1fr)_minmax(420px,2.1fr)_minmax(220px,1fr)_240px] items-center border-b border-slate-200 bg-slate-50/95 px-5 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+          <div className="overflow-hidden">
+            <div className="w-full">
+              <div className="grid grid-cols-[36px_36px_minmax(150px,1fr)_minmax(220px,1.6fr)_minmax(96px,0.7fr)_176px] items-center border-b border-slate-200 bg-slate-50/95 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
                 <div />
                 <div />
                 <div>Точка</div>
@@ -382,13 +383,13 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={() => handleDropPoint(point.id)}
                     onDragEnd={() => setDraggedPointId(null)}
-                    className={`grid grid-cols-[44px_44px_minmax(220px,1.1fr)_minmax(420px,2.1fr)_minmax(220px,1fr)_240px] items-center gap-0 px-5 py-3 transition hover:bg-slate-50 ${
+                    className={`grid grid-cols-[36px_36px_minmax(150px,1fr)_minmax(220px,1.6fr)_minmax(96px,0.7fr)_176px] items-center gap-0 px-4 py-3 transition hover:bg-slate-50 ${
                       draggedPointId === point.id ? 'bg-slate-50 opacity-60' : ''
                     }`}
                   >
                     <button
                       type="button"
-                      className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
+                      className="inline-flex h-8 w-8 cursor-grab items-center justify-center rounded-xl text-slate-300 transition hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
                       title="Перетащить точку"
                     >
                       <GripVertical className="h-5 w-5" />
@@ -398,22 +399,22 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
                       type="checkbox"
                       checked={selectedPoints.includes(point.id)}
                       onChange={() => handleTogglePoint(point.id)}
-                      className="h-5 w-5 cursor-pointer rounded border-slate-300 text-slate-950 focus:ring-2 focus:ring-slate-300"
+                      className="h-4 w-4 cursor-pointer rounded border-slate-300 text-slate-950 focus:ring-2 focus:ring-slate-300"
                     />
 
-                    <div className="min-w-0 pr-4">
+                    <div className="min-w-0 pr-3">
                       <p className="truncate text-sm font-semibold text-slate-950" title={point.name}>
                         {point.name}
                       </p>
                     </div>
 
-                    <div className="min-w-0 pr-4">
+                    <div className="min-w-0 pr-3">
                       <p className="truncate text-sm text-slate-700" title={point.address}>
                         {point.address}
                       </p>
                     </div>
 
-                    <div className="min-w-0 pr-4">
+                    <div className="min-w-0 pr-3">
                       <p className="truncate text-xs font-medium text-slate-600" title={point.phone || ''}>
                         {point.phone || '—'}
                       </p>
@@ -424,11 +425,11 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
                       )}
                     </div>
 
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button
                         type="button"
                         onClick={() => openEditForm(point)}
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                         title="Редактировать точку"
                       >
                         <Pencil size={14} />
@@ -438,7 +439,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
                       <button
                         type="button"
                         onClick={() => handleHidePoint(point)}
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
                         title="Убрать точку из списка"
                       >
                         <Trash2 size={14} />
@@ -456,7 +457,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
       <button
         type="button"
         onClick={openCreateForm}
-        className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
+        className="fixed bottom-6 right-6 z-40 xl:right-[400px] 2xl:right-[440px] inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
         title="Добавить точку"
         aria-label="Добавить точку"
       >

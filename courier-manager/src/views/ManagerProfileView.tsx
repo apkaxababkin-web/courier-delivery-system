@@ -20,8 +20,8 @@ export default function ManagerProfileView({ managerName, managerRole, onNameCha
   };
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="w-full space-y-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
             <UserRound className="h-7 w-7" />
@@ -34,7 +34,7 @@ export default function ManagerProfileView({ managerName, managerRole, onNameCha
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-950">Профиль</h3>
           <p className="mt-1 text-sm text-slate-500">Это имя будет отображаться в верхней панели сайта.</p>
 
@@ -61,7 +61,7 @@ export default function ManagerProfileView({ managerName, managerRole, onNameCha
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-950">Безопасность</h3>
           <p className="mt-1 text-sm text-slate-500">Смена пароля будет подключена следующим шагом через API.</p>
           <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">

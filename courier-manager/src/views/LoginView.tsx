@@ -61,7 +61,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
 
           <div className="relative z-10">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-slate-950 text-lg font-semibold text-white shadow-lg shadow-slate-950/10">CD</div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-lg font-semibold text-white shadow-lg shadow-slate-950/10">CD</div>
               <div>
                 <h1 className="text-lg font-semibold tracking-tight text-slate-950">Courier Delivery</h1>
                 <p className="text-sm text-slate-500">Manager Console</p>
@@ -81,7 +81,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
               ['API', 'единая система'],
               ['SaaS', 'рабочий интерфейс'],
             ].map(([value, label]) => (
-              <div key={label} className="rounded-3xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+              <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
                 <p className="text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
                 <p className="mt-2 text-sm leading-6 text-slate-500">{label}</p>
               </div>
@@ -92,12 +92,12 @@ export default function LoginView({ onLogin }: LoginViewProps) {
         <section className="flex items-center justify-center p-6 sm:p-10 lg:p-14">
           <div className="w-full max-w-md">
             <div className="mb-10 lg:hidden">
-              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-3xl bg-slate-950 text-lg font-semibold text-white shadow-lg shadow-slate-950/10">CD</div>
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-lg font-semibold text-white shadow-lg shadow-slate-950/10">CD</div>
               <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Courier Delivery</h1>
               <p className="mt-2 text-sm text-slate-500">Панель управления заявками и курьерами.</p>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/40 sm:p-8">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/40 sm:p-8">
               <div>
                 <h2 className="text-3xl font-semibold tracking-tight text-slate-950">Вход в систему</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-500">Используйте аккаунт менеджера. Демо-вход отключён, чтобы не путать рабочую авторизацию.</p>

@@ -10,6 +10,14 @@ export interface NutsBox {
 
 export interface TaskFormData {
   requestType?: 'delivery' | 'movement' | 'nuts' | 'courier_call' | 'pickup_from_tc' | 'simple';
+  requestDate?: string;
+  requestFiles?: File[];
+  extraPickupPoints?: Array<{
+    name: string;
+    address: string;
+    contactPerson?: string;
+    phone?: string;
+  }>;
   clientId?: number;
   courierId?: number;
   senderName?: string;

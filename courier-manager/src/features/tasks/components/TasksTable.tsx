@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { FileText, Loader2, Trash2 } from 'lucide-react';
 import type { Request } from '../model/types';
 import { getStatusLabel, getStatusBadgeClass, getStatusIcon } from '../model/stats';
+import { formatLocalDate } from '../../../lib/local-time';
 
 type CourierOption = {
   id: number;
@@ -82,7 +84,7 @@ export function TasksTable({
 
   if (isLoading) {
     return (
-      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -99,7 +101,7 @@ export function TasksTable({
 
   if (requests.length === 0) {
     return (
-      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
             <FileText className="h-5 w-5" />
@@ -115,13 +117,13 @@ export function TasksTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
         <h2 className="text-sm font-semibold text-slate-950">Список заявок</h2>
         <CompletionProgress completed={completedRequests} total={totalRequests} />
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-visible">
         <table className="w-full min-w-[1080px] text-sm">
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-left text-xs uppercase tracking-[0.08em] text-slate-500 backdrop-blur">
             <tr>
@@ -175,29 +177,18 @@ export function TasksTable({
                   </td>
 
                   <td className="px-5 py-4 align-middle" onClick={(event) => event.stopPropagation()}>
-                    <select
-                      value={request.courierId ?? ''}
-                      disabled={!onAssignCourier || assigningRequestId === request.id}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        onAssignCourier?.(request.id, value ? Number(value) : null);
-                      }}
-                      className="h-9 w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm outline-none transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
-                    >
-                      <option value="">Не назначен</option>
-                      {couriers.map((courier) => (
-                        <option key={courier.id} value={courier.id}>
-                          {courier.name} #{courier.id}
-                        </option>
-                      ))}
-                    </select>
+                    <CourierAssignSelect
+                      value={request.courierId ?? null}
+                      couriers={couriers}
+                      onChange={(courierId) => onAssignCourier(request.id, courierId)}
+                    />
                     {request.courierName && (
                       <div className="mt-1 text-xs text-slate-400">Сейчас: {request.courierName}</div>
                     )}
                   </td>
 
                   <td className="whitespace-nowrap px-5 py-4 align-middle text-slate-500">
-                    {request.createdAt ? new Date(request.createdAt).toLocaleDateString('ru-RU') : 'N/A'}
+                    {request.createdAt ? formatLocalDate(request.createdAt) : 'N/A'}
                   </td>
 
                   <td className="whitespace-nowrap px-5 py-4 text-right align-middle" onClick={(event) => event.stopPropagation()}>
@@ -205,7 +196,7 @@ export function TasksTable({
                       type="button"
                       disabled={isDeleting}
                       onClick={() => onDeleteRequest?.(request, displayNumber)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 opacity-100 shadow-sm transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-60 sm:opacity-0 sm:group-hover:opacity-100"
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 opacity-100 shadow-sm transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-60 sm:opacity-0 sm:group-hover:opacity-100"
                     >
                       {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                       Удалить
@@ -220,3 +211,60 @@ export function TasksTable({
     </div>
   );
 }
+
+function CourierAssignSelect({
+  value,
+  couriers,
+  onChange,
+}: {
+  value: number | null;
+  couriers: Array<{ id: number; name: string }>;
+  onChange: (value: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedCourier = couriers.find((courier) => courier.id === value);
+
+  const handleSelect = (courierId: number | null) => {
+    onChange(courierId);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative z-[100] min-w-[160px]">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`flex h-10 w-full items-center justify-between border border-slate-200 px-3 text-left text-sm text-slate-900 outline-none transition ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white' : 'rounded-2xl bg-white hover:bg-slate-50'}`}
+      >
+        <span className={selectedCourier ? 'truncate' : 'truncate text-slate-500'}>
+          {selectedCourier ? selectedCourier.name : 'Не назначен'}
+        </span>
+        <span className="ml-2 shrink-0 text-slate-400">{open ? '−' : '⌄'}</span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-[999] -mt-px max-h-72 overflow-visible rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
+          <button
+            type="button"
+            onClick={() => handleSelect(null)}
+            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${value === null ? 'bg-slate-950 font-semibold text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
+          >
+            Не назначен
+          </button>
+
+          {couriers.map((courier) => (
+            <button
+              key={courier.id}
+              type="button"
+              onClick={() => handleSelect(courier.id)}
+              className={`mt-0.5 block w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${value === courier.id ? 'bg-slate-950 font-semibold text-white' : 'text-slate-900 hover:bg-slate-50'}`}
+            >
+              <span className="block truncate">{courier.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+

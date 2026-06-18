@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Activity, CheckCircle2, Landmark, MapPin, Plus, Sparkles } from 'lucide-react';
+import { Activity, ArrowLeftRight, CheckCircle2, Landmark, Mail, MapPin, Nut, Package, Plus, Sparkles, Truck, type LucideIcon } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
   createRequest,
+  uploadRequestAttachment,
   parseRequestWithAI,
   assignRequestCourier,
   post,
@@ -16,6 +17,7 @@ import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { AiTaskModal } from './components/modals/AiTaskModal';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
 import { getFilteredRequests } from './model/filters';
+import { formatLocalDate, formatLocalDateWithOptions, formatLocalTime, getLocalDateKey, toLocalDateKey } from '../../lib/local-time';
 
 type OperationMode = 'requests' | 'hemotest' | 'sberbank';
 const normalizePackageType = (value: unknown): TaskFormData['packageType'] => {
@@ -45,18 +47,20 @@ type PickupListWithItems = { list?: PickupList; items?: OperationPoint[] };
 const API_BASE = '/api/trpc';
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-const REQUEST_CREATE_OPTIONS: Array<{
+interface CreateRequestOption {
   type: NonNullable<TaskFormData['requestType']>;
   title: string;
   description: string;
-  icon: string;
-}> = [
-  { type: 'delivery', title: 'Доставка', description: 'Обычная доставка от отправителя к получателю', icon: '↗' },
-  { type: 'movement', title: 'Перемещение', description: 'Перевезти между двумя точками или клиентами', icon: '⇄' },
-  { type: 'nuts', title: 'Орехи', description: 'Заявка по коробкам, весу и тарифам', icon: '◈' },
-  { type: 'courier_call', title: 'Вызов курьера', description: 'Курьер нужен по адресу клиента', icon: '⌁' },
-  { type: 'pickup_from_tc', title: 'Транспортная компания', description: 'Получение или отправка груза через ТК', icon: '▣' },
-  { type: 'simple', title: 'Простая заявка', description: 'Минимальная форма без лишних полей', icon: '+' },
+  Icon: LucideIcon;
+}
+
+const REQUEST_CREATE_OPTIONS: CreateRequestOption[] = [
+  { type: 'delivery', title: 'Доставка', description: 'Обычная доставка от отправителя к получателю', Icon: Package },
+  { type: 'movement', title: 'Перемещение', description: 'Перевезти между двумя точками или клиентами', Icon: ArrowLeftRight },
+  { type: 'nuts', title: 'Орехи', description: 'Заявка по коробкам, весу и тарифам', Icon: Nut },
+  { type: 'courier_call', title: 'Вызов курьера', description: 'Курьер нужен по адресу клиента', Icon: Mail },
+  { type: 'pickup_from_tc', title: 'Транспортная компания', description: 'Получение или отправка груза через ТК', Icon: Truck },
+  { type: 'simple', title: 'Простая заявка', description: 'Минимальная форма без лишних полей', Icon: Plus },
 ];
 
 const weekdayNames: Record<number, string> = { 1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг', 5: 'Пятница' };
@@ -126,22 +130,19 @@ function getBusinessWeekdayFromDate(dateValue: string) {
 
 function isSameDateKey(value: string | undefined, dateKey: string) {
   if (!value) return false;
-  return new Date(value).toISOString().slice(0, 10) === dateKey;
+  return toLocalDateKey(value) === dateKey;
 }
 
 function formatArchiveDateLabel(dateKey: string) {
   if (!dateKey) return '';
-  const [year, month, day] = dateKey.split('-').map(Number);
-  if (!year || !month || !day) return dateKey;
-
-  return new Date(year, month - 1, day).toLocaleDateString('ru-RU', {
+  return formatLocalDateWithOptions(dateKey, {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
-  });
+  }, dateKey);
 }
 
-function getTodayDate() { return new Date().toISOString().slice(0, 10); }
+function getTodayDate() { return getLocalDateKey(); }
 function getTodayBusinessWeekday() { const day = new Date().getDay(); return day === 0 || day > 5 ? 5 : day; }
 
 function getPickupMeta(point: OperationPoint) {
@@ -149,7 +150,7 @@ function getPickupMeta(point: OperationPoint) {
   const pickedBy = point.pickedBy || point.courierName;
   const isPicked = point.isPicked === true;
   if (!isPicked) return { isPicked, label: 'Не забран', detail: '' };
-  const time = pickedAt ? new Date(pickedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'время не указано';
+  const time = pickedAt ? formatLocalTime(pickedAt) : 'время не указано';
   return { isPicked, label: 'Забран', detail: `${pickedBy || 'Курьер'} • ${time}` };
 }
 
@@ -241,7 +242,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
       const lists = await trpcQuery<PickupList[]>('hemotest.listsForDate', { date: selectedDate });
       const detailed = await Promise.all(lists.map(async (list) => {
         const full = await trpcQuery<PickupListWithItems>('hemotest.getList', { listId: list.id });
-        return { id: list.id, name: list.name, meta: list.date ? new Date(list.date).toLocaleDateString('ru-RU') : formatArchiveDateLabel(selectedDate), status: list.status, items: full.items || [] };
+        return { id: list.id, name: list.name, meta: list.date ? formatLocalDate(list.date) : formatArchiveDateLabel(selectedDate), status: list.status, items: full.items || [] };
       }));
       setOperationLists(detailed);
     } catch (error) {
@@ -310,14 +311,19 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const handleCreateTask = async (data: TaskFormData) => {
     try {
       setIsCreating(true);
+      const { requestFiles, ...requestPayload } = data;
       const requestData = {
-        requestType: data.requestType || 'delivery',
-        recipientName: data.recipientName || data.senderName || 'Без получателя',
-        recipientPhone: data.recipientPhone || data.senderPhone || '',
-        deliveryAddress: data.deliveryAddress || data.recipientAddress || data.senderAddress || '',
-        ...data,
+        requestType: requestPayload.requestType || 'delivery',
+        recipientName: requestPayload.recipientName || requestPayload.senderName || 'Без получателя',
+        recipientPhone: requestPayload.recipientPhone || requestPayload.senderPhone || '',
+        deliveryAddress: requestPayload.deliveryAddress || requestPayload.recipientAddress || requestPayload.senderAddress || '',
+        ...requestPayload,
       };
-      await createRequest(requestData as any);
+      const createdRequest = await createRequest(requestData as any);
+
+      if (createdRequest.id && requestFiles?.length) {
+        await Promise.all(requestFiles.map((file) => uploadRequestAttachment(createdRequest.id, file)));
+      }
       closeCreateRequest();
       setOperationMode('requests');
       setSelectedStatus('all');
@@ -421,24 +427,29 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
   const renderModeButton = (mode: OperationMode, label: string, icon: React.ReactNode) => {
     const isActive = operationMode === mode;
+
     return (
-      <button type="button" onClick={() => setOperationMode(mode)} className={`inline-flex h-10 items-center gap-2 rounded-2xl px-4 text-sm font-medium shadow-sm transition ${isActive ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'}`}>
-        {icon}{label}
+      <button
+        type="button"
+        onClick={() => setOperationMode(mode)}
+        className={`relative -mb-px inline-flex h-12 items-center gap-2 text-sm font-semibold transition ${
+          isActive ? 'text-slate-950' : 'text-slate-500 hover:text-slate-950'
+        }`}
+      >
+        {icon}
+        {label}
+        {isActive && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-slate-950" />}
       </button>
     );
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="w-full space-y-5">
+      <div className="border-b border-slate-200">
+        <div className="flex flex-wrap gap-7">
           {renderModeButton('requests', 'Созданные заявки', <Activity className="h-4 w-4" />)}
           {renderModeButton('hemotest', 'Гемотест', <MapPin className="h-4 w-4" />)}
           {renderModeButton('sberbank', 'Сбербанк', <Landmark className="h-4 w-4" />)}
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium">Режим: {operationMode === 'requests' ? 'Заявки' : operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</span>
-          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium">Видимость назначений</span>
         </div>
       </div>
 
@@ -448,7 +459,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateActionMenu(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
       ) : (
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-950">{operationMode === 'hemotest' ? 'Гемотест' : 'Сбербанк'}</h2>
@@ -486,7 +497,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                     const pickedAt = point.pickedAt || point.completedAt;
                     const pickedBy = point.pickedBy || point.courierName;
                     const pickupTime = pickedAt
-                      ? new Date(pickedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+                      ? formatLocalTime(pickedAt)
                       : '—';
 
                     return (
@@ -541,30 +552,34 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
           <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 xl:right-[400px] 2xl:right-[440px]">
             {showCreateActionMenu && (
-              <div className="w-[min(420px,calc(100vw-32px))] overflow-hidden rounded-[28px] border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-950/20">
-                <div className="px-3 pb-2 pt-2">
-                  <p className="text-sm font-semibold text-slate-950">Создать заявку</p>
-                  <p className="mt-0.5 text-xs text-slate-500">Выбери тип — форма откроется сразу нужная.</p>
+              <div className="w-96 max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xl shadow-slate-950/15">
+                <div className="px-3 pb-2.5 pt-2.5">
+                  <p className="text-base font-semibold text-slate-950">Создать заявку</p>
+                  <p className="mt-0.5 text-sm text-slate-500">Выбери тип заявки.</p>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {REQUEST_CREATE_OPTIONS.map((option) => (
-                    <button
-                      key={option.type}
-                      type="button"
-                      onClick={() => openCreateRequest(option.type)}
-                      className="group flex min-h-[92px] items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-slate-300 hover:bg-white hover:shadow-sm"
-                    >
-                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-sm">
-                        {option.icon}
-                      </span>
+                <div className="space-y-1">
+                  {REQUEST_CREATE_OPTIONS.map((option) => {
+                    const Icon = option.Icon;
 
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-slate-950">{option.title}</span>
-                        <span className="mt-1 block text-xs leading-4 text-slate-500">{option.description}</span>
-                      </span>
-                    </button>
-                  ))}
+                    return (
+                      <button
+                        key={option.type}
+                        type="button"
+                        onClick={() => openCreateRequest(option.type)}
+                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
+                      >
+                        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-950">
+                          <Icon className="h-[18px] w-[18px]" />
+                        </span>
+
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-base font-semibold text-slate-950">{option.title}</span>
+                          <span className="mt-0.5 block truncate text-[13px] text-slate-500">{option.description}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
 
                   <button
                     type="button"
@@ -572,15 +587,15 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                       setShowCreateActionMenu(false);
                       setShowAiModal(true);
                     }}
-                    className="group flex min-h-[92px] items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm sm:col-span-2"
+                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
                   >
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
-                      <Sparkles className="h-4 w-4" />
+                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+                      <Sparkles className="h-[18px] w-[18px]" />
                     </span>
 
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-950">Создать по тексту</span>
-                      <span className="mt-1 block text-xs leading-4 text-slate-500">Вставить текст заявки и разобрать автоматически.</span>
+                      <span className="block text-base font-semibold text-slate-950">Создать по тексту</span>
+                      <span className="mt-0.5 block truncate text-[13px] text-slate-500">Вставить текст и разобрать автоматически</span>
                     </span>
                   </button>
                 </div>

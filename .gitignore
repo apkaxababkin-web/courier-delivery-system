@@ -71,3 +71,6 @@ postgres_data/
 
 # Deployment
 .vercel/
+
+# Runtime uploads
+uploads/

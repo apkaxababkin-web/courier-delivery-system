@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MailCheck, Plus, Search } from 'lucide-react';
+import { FileSpreadsheet, MailPlus, MailCheck, Plus, Search } from 'lucide-react';
 import * as api from '../lib/api';
 import * as XLSX from 'xlsx';
+import { formatLocalDate, formatLocalDateTime } from '../lib/local-time';
 
 interface Mail {
   id: number;
@@ -23,10 +24,10 @@ interface FieldMapping { waybill: CellRange; recipient: CellRange; address: Cell
 type MailStatus = 'all' | 'not_delivered' | 'delivered';
 type PreviewCell = string | number | boolean | Date | null | undefined;
 
-const inputClass = 'h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
-const compactInputClass = 'h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
-const primaryButtonClass = 'inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50';
-const secondaryButtonClass = 'inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50';
+const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
+const compactInputClass = 'h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
+const primaryButtonClass = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50';
+const secondaryButtonClass = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50';
 
 const statusLabels: Record<Exclude<MailStatus, 'all'>, string> = { delivered: 'Доставлено', not_delivered: 'В работе' };
 const statusClass: Record<Exclude<MailStatus, 'all'>, string> = { delivered: 'border-slate-300 bg-white text-slate-950', not_delivered: 'border-slate-200 bg-slate-50 text-slate-600' };
@@ -89,6 +90,14 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const [previewRows, setPreviewRows] = useState(50);
   const [mapping, setMapping] = useState<FieldMapping>({ waybill: { column: 'A', startRow: 2, endRow: 100 }, recipient: { column: 'B', startRow: 2, endRow: 100 }, address: { column: 'C', startRow: 2, endRow: 100 } });
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    waybillNumber: '',
+    recipientName: '',
+    recipientPhone: '',
+    deliveryAddress: '',
+  });
   const selectedArchiveDate = archiveDate || getTodayDateKey();
   const manifestInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -155,6 +164,48 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
     }
   };
 
+  const resetManualForm = () => {
+    setManualForm({
+      waybillNumber: '',
+      recipientName: '',
+      recipientPhone: '',
+      deliveryAddress: '',
+    });
+  };
+
+  const handleCreateManualMail = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const waybillNumber = manualForm.waybillNumber.trim();
+    const recipientName = manualForm.recipientName.trim();
+    const deliveryAddress = manualForm.deliveryAddress.trim();
+
+    if (!waybillNumber || !recipientName || !deliveryAddress) {
+      alert('Заполните накладную, получателя и адрес');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      await api.createMail({
+        waybillNumber,
+        recipientName,
+        deliveryAddress,
+        recipientPhone: manualForm.recipientPhone.trim(),
+      });
+
+      setShowManualForm(false);
+      resetManualForm();
+      await loadMails();
+    } catch (error) {
+      console.error('Error creating mail manually:', error);
+      alert('Ошибка при добавлении письма');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadMails = async () => {
     try {
       setLoading(true);
@@ -186,9 +237,9 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const inWorkCount = filteredMails.length - deliveredTodayCount;
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-5">
 
-      <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full lg:max-w-xl">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -216,20 +267,153 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
           />
         </div>
 
-        <div className="p-4"><MailsTable mails={filteredMails} loading={loading} compactTitle="Письма выбранного дня" /></div>
+        <MailsTable mails={filteredMails} loading={loading} compactTitle="Письма выбранного дня" />
       </div>
 
 
-      <button
-        type="button"
-        onClick={() => manifestInputRef.current?.click()}
-        className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
-        title="Загрузить манифест"
-        aria-label="Загрузить манифест"
-      >
-        <Plus className="h-6 w-6" />
-      </button>
+      {showAddMenu && (
+        <button
+          type="button"
+          aria-label="Закрыть меню добавления писем"
+          className="fixed inset-0 z-30 cursor-default bg-transparent"
+          onClick={() => setShowAddMenu(false)}
+        />
+      )}
 
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3 xl:right-[400px] 2xl:right-[440px]">
+        {showAddMenu && (
+          <div className="w-96 max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xl shadow-slate-950/15">
+            <div className="px-3 pb-2.5 pt-2.5">
+              <p className="text-base font-semibold text-slate-950">Добавить письма</p>
+              <p className="mt-0.5 text-sm text-slate-500">Выбери способ добавления.</p>
+            </div>
+
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddMenu(false);
+                  manifestInputRef.current?.click();
+                }}
+                className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
+              >
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-950">
+                  <FileSpreadsheet className="h-[18px] w-[18px]" />
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-base font-semibold text-slate-950">Добавить из файла</span>
+                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">Excel или CSV со списком писем</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddMenu(false);
+                  resetManualForm();
+                  setShowManualForm(true);
+                }}
+                className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
+              >
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-950">
+                  <MailPlus className="h-[18px] w-[18px]" />
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-base font-semibold text-slate-950">Добавить вручную</span>
+                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">Одно письмо через форму</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowAddMenu((value) => !value)}
+          className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
+          title="Добавить письма"
+          aria-label="Добавить письма"
+        >
+          <Plus className={`h-6 w-6 transition ${showAddMenu ? 'rotate-45' : ''}`} />
+        </button>
+      </div>
+
+
+      {showManualForm && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-lg font-semibold text-slate-950">Добавить письмо вручную</h3>
+              <p className="mt-1 text-sm text-slate-500">Заполните накладную, получателя и адрес доставки.</p>
+            </div>
+
+            <form onSubmit={handleCreateManualMail} className="space-y-4 p-5">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-slate-500">Накладная *</span>
+                <input
+                  value={manualForm.waybillNumber}
+                  onChange={(event) => setManualForm({ ...manualForm, waybillNumber: event.target.value })}
+                  className={inputClass}
+                  placeholder="Например: 97-0214962"
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-slate-500">Получатель *</span>
+                <input
+                  value={manualForm.recipientName}
+                  onChange={(event) => setManualForm({ ...manualForm, recipientName: event.target.value })}
+                  className={inputClass}
+                  placeholder="ФИО или организация"
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-slate-500">Телефон</span>
+                <input
+                  value={manualForm.recipientPhone}
+                  onChange={(event) => setManualForm({ ...manualForm, recipientPhone: event.target.value })}
+                  className={inputClass}
+                  placeholder="Можно оставить пустым"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-slate-500">Адрес доставки *</span>
+                <textarea
+                  value={manualForm.deliveryAddress}
+                  onChange={(event) => setManualForm({ ...manualForm, deliveryAddress: event.target.value })}
+                  className="min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  placeholder="Адрес доставки"
+                  required
+                />
+              </label>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowManualForm(false);
+                    resetManualForm();
+                  }}
+                  className={secondaryButtonClass}
+                >
+                  Отмена
+                </button>
+
+                <button type="submit" disabled={loading} className={primaryButtonClass}>
+                  {loading ? 'Добавляем...' : 'Добавить письмо'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showMappingForm && fileData.length > 0 && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
@@ -305,7 +489,7 @@ function MailCompletionProgress({
 function MailsTable({ mails, loading, compactTitle, showReportColumns = false }: { mails: Mail[]; loading: boolean; compactTitle: string; showReportColumns?: boolean }) {
   const deliveredCount = mails.filter((mail) => mail.status === 'delivered').length;
 
-  return <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3"><h2 className="text-sm font-semibold text-slate-950">{compactTitle}</h2><MailCompletionProgress completed={deliveredCount} total={mails.length} /></div>{loading ? <MailsSkeleton /> : mails.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500"><MailCheck className="mb-3 h-8 w-8 text-slate-300" /><p className="font-medium text-slate-950">Нет писем для отображения</p><p className="mt-1 max-w-sm">На выбранную дату нет писем. Недоставленные письма автоматически переходят на следующий день.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50"><tr className="border-b border-slate-200"><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Накладная</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Получатель</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адрес</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус</th>{showReportColumns && <><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Курьер</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Доставка</th></>}<th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th></tr></thead><tbody className="divide-y divide-slate-100">{mails.map((mail) => <tr key={mail.id} className="hover:bg-slate-50/80"><td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-950">{mail.waybillNumber}</td><td className="px-3 py-2.5 text-slate-900"><div className="font-medium">{mail.recipientName}</div><div className="text-xs text-slate-500">{mail.recipientPhone || 'Телефон не указан'}</div></td><td className="max-w-[360px] px-3 py-2.5 text-slate-600"><span className="line-clamp-2">{mail.deliveryAddress}</span></td><td className="px-3 py-2.5"><span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[mail.status]}`}><span className={`h-1.5 w-1.5 rounded-full ${statusDotClass[mail.status]}`} />{statusLabels[mail.status]}</span></td>{showReportColumns && <><td className="px-3 py-2.5 text-slate-600">{getCourierName(mail)}</td><td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{mail.deliveredAt ? new Date(mail.deliveredAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td></>}<td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{new Date(mail.createdAt).toLocaleDateString('ru-RU')}</td></tr>)}</tbody></table></div>}</div>;
+  return <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3"><h2 className="text-sm font-semibold text-slate-950">{compactTitle}</h2><MailCompletionProgress completed={deliveredCount} total={mails.length} /></div>{loading ? <MailsSkeleton /> : mails.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500"><MailCheck className="mb-3 h-8 w-8 text-slate-300" /><p className="font-medium text-slate-950">Нет писем для отображения</p><p className="mt-1 max-w-sm">На выбранную дату нет писем. Недоставленные письма автоматически переходят на следующий день.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50"><tr className="border-b border-slate-200"><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Накладная</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Получатель</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адрес</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус</th>{showReportColumns && <><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Курьер</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Доставка</th></>}<th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th></tr></thead><tbody className="divide-y divide-slate-100">{mails.map((mail) => <tr key={mail.id} className="hover:bg-slate-50/80"><td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-950">{mail.waybillNumber}</td><td className="px-3 py-2.5 text-slate-900"><div className="font-medium">{mail.recipientName}</div><div className="text-xs text-slate-500">{mail.recipientPhone || 'Телефон не указан'}</div></td><td className="max-w-[360px] px-3 py-2.5 text-slate-600"><span className="line-clamp-2">{mail.deliveryAddress}</span></td><td className="px-3 py-2.5"><span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[mail.status]}`}><span className={`h-1.5 w-1.5 rounded-full ${statusDotClass[mail.status]}`} />{statusLabels[mail.status]}</span></td>{showReportColumns && <><td className="px-3 py-2.5 text-slate-600">{getCourierName(mail)}</td><td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{mail.deliveredAt ? formatLocalDateTime(mail.deliveredAt) : '—'}</td></>}<td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{formatLocalDate(mail.createdAt)}</td></tr>)}</tbody></table></div>}</div>;
 }
 
 function MailsSkeleton() {

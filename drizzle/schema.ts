@@ -460,6 +460,46 @@ export const clientRegularClients = pgTable("clientRegularClients", {
 export type ClientRegularClient = typeof clientRegularClients.$inferSelect;
 export type InsertClientRegularClient = typeof clientRegularClients.$inferInsert;
 
+// ─── Partners Table ──────────────────────────────────────────────────────────
+
+/**
+ * Partners table — organizations or people who send mails, invoices, waybills and source files.
+ */
+export const partners = pgTable("partners", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }),
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  comment: text("comment"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type Partner = typeof partners.$inferSelect;
+export type InsertPartner = typeof partners.$inferInsert;
+
+// ─── Transport Companies Table ───────────────────────────────────────────────
+
+/**
+ * Transport companies table — reference list for pickup_from_tc requests.
+ */
+export const transportCompanies = pgTable("transportCompanies", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  comment: text("comment"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type TransportCompany = typeof transportCompanies.$inferSelect;
+export type InsertTransportCompany = typeof transportCompanies.$inferInsert;
+
 // ─── Requests Table ──────────────────────────────────────────────────────────
 
 /**
@@ -573,6 +613,26 @@ export const requests = pgTable("requests", {
 
 export type Request = typeof requests.$inferSelect;
 export type InsertRequest = typeof requests.$inferInsert;
+
+// ─── Request Attachments Table ───────────────────────────────────────────────
+
+/**
+ * Files attached to manager requests and visible to couriers.
+ */
+export const requestAttachments = pgTable("requestAttachments", {
+  id: serial("id").primaryKey(),
+  requestId: integer("requestId").notNull(),
+  originalName: text("originalName").notNull(),
+  storedName: text("storedName").notNull(),
+  fileUrl: text("fileUrl").notNull(),
+  mimeType: varchar("mimeType", { length: 255 }),
+  sizeBytes: integer("sizeBytes").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type RequestAttachment = typeof requestAttachments.$inferSelect;
+export type InsertRequestAttachment = typeof requestAttachments.$inferInsert;
+
 
 // ─── Settings Table ──────────────────────────────────────────────────────────
 

@@ -7,35 +7,34 @@ import * as api from '../lib/api';
 type Client = api.Client;
 type Point = api.ClientPoint & { isPrimary?: boolean };
 type RegularClient = api.ClientRegularClient;
+type Partner = api.Partner;
+type TransportCompany = api.TransportCompany;
+type CounterpartyTab = 'clients' | 'partners' | 'transport';
 
 type ClientForm = { name: string; address: string; contactPerson: string; phone: string; email: string };
 type PointForm = { name: string; address: string; contactPerson: string; phone: string };
+type PartnerForm = { name: string; email: string; contactPerson: string; phone: string; comment: string };
+type TransportCompanyForm = { name: string; address: string; contactPerson: string; phone: string; comment: string };
 
 const emptyClient: ClientForm = { name: '', address: '', contactPerson: '', phone: '', email: '' };
 const emptyPoint: PointForm = { name: '', address: '', contactPerson: '', phone: '' };
+const emptyPartner: PartnerForm = { name: '', email: '', contactPerson: '', phone: '', comment: '' };
+const emptyTransportCompany: TransportCompanyForm = { name: '', address: '', contactPerson: '', phone: '', comment: '' };
 
 const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white';
 const buttonPrimary = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 hover:opacity-95 disabled:opacity-50';
 const buttonSecondary = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50';
-
-function primaryPoint(client: Client): Point {
-  return {
-    id: 0,
-    clientId: client.id,
-    name: 'Основная точка',
-    address: client.address,
-    contactPerson: client.contactPerson,
-    phone: client.phone,
-    sortOrder: -1,
-    isPrimary: true,
-  };
-}
 
 export default function ClientsViewV2() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Client | null>(null);
+  const [activeCounterpartyTab, setActiveCounterpartyTab] = useState<CounterpartyTab>('clients');
+
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [transportCompanies, setTransportCompanies] = useState<TransportCompany[]>([]);
+  const [counterpartiesLoading, setCounterpartiesLoading] = useState(false);
 
   const [points, setPoints] = useState<Point[]>([]);
   const [regularClients, setRegularClients] = useState<RegularClient[]>([]);
@@ -52,8 +51,17 @@ export default function ClientsViewV2() {
   const [editingRegularClientId, setEditingRegularClientId] = useState<number | null>(null);
   const [regularClientForm, setRegularClientForm] = useState<PointForm>(emptyPoint);
 
+  const [showPartnerModal, setShowPartnerModal] = useState(false);
+  const [editingPartnerId, setEditingPartnerId] = useState<number | null>(null);
+  const [partnerForm, setPartnerForm] = useState<PartnerForm>(emptyPartner);
+
+  const [showTransportCompanyModal, setShowTransportCompanyModal] = useState(false);
+  const [editingTransportCompanyId, setEditingTransportCompanyId] = useState<number | null>(null);
+  const [transportCompanyForm, setTransportCompanyForm] = useState<TransportCompanyForm>(emptyTransportCompany);
+
   useEffect(() => {
     void loadClients();
+    void loadCounterpartyDirectories();
   }, []);
 
   async function loadClients() {
@@ -83,7 +91,7 @@ export default function ClientsViewV2() {
       api.getClientRegularClients(client.id),
     ]);
 
-    setPoints([primaryPoint(client), ...dbPoints]);
+    setPoints(dbPoints);
     setRegularClients(dbRegularClients);
   }
 
@@ -252,6 +260,172 @@ export default function ClientsViewV2() {
     }
   }
 
+  async function loadCounterpartyDirectories() {
+    try {
+      setCounterpartiesLoading(true);
+      const [partnersData, transportCompaniesData] = await Promise.all([
+        api.getPartners(),
+        api.getTransportCompanies(),
+      ]);
+
+      setPartners(partnersData || []);
+      setTransportCompanies(transportCompaniesData || []);
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка при загрузке партнёров и транспортных компаний');
+    } finally {
+      setCounterpartiesLoading(false);
+    }
+  }
+
+  function openPartnerForm(item?: Partner) {
+    if (item) {
+      setEditingPartnerId(item.id);
+      setPartnerForm({
+        name: item.name || '',
+        email: item.email || '',
+        contactPerson: item.contactPerson || '',
+        phone: item.phone || '',
+        comment: item.comment || '',
+      });
+    } else {
+      setEditingPartnerId(null);
+      setPartnerForm(emptyPartner);
+    }
+
+    setShowPartnerModal(true);
+  }
+
+  async function submitPartner(event: FormEvent) {
+    event.preventDefault();
+
+    if (!partnerForm.name.trim()) {
+      alert('Название партнёра обязательно');
+      return;
+    }
+
+    const payload = {
+      name: partnerForm.name.trim(),
+      email: partnerForm.email.trim() || null,
+      contactPerson: partnerForm.contactPerson.trim() || null,
+      phone: partnerForm.phone.trim() || null,
+      comment: partnerForm.comment.trim() || null,
+      isActive: true,
+    };
+
+    try {
+      if (editingPartnerId) {
+        await api.updatePartner(editingPartnerId, payload);
+      } else {
+        await api.createPartner(payload);
+      }
+
+      setShowPartnerModal(false);
+      setEditingPartnerId(null);
+      setPartnerForm(emptyPartner);
+      await loadCounterpartyDirectories();
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка при сохранении партнёра');
+    }
+  }
+
+  async function deletePartner(item: Partner) {
+    if (!confirm(`Удалить партнёра «${item.name}»?`)) return;
+
+    try {
+      await api.deletePartner(item.id);
+      await loadCounterpartyDirectories();
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка при удалении партнёра');
+    }
+  }
+
+  function openTransportCompanyForm(item?: TransportCompany) {
+    if (item) {
+      setEditingTransportCompanyId(item.id);
+      setTransportCompanyForm({
+        name: item.name || '',
+        address: item.address || '',
+        contactPerson: item.contactPerson || '',
+        phone: item.phone || '',
+        comment: item.comment || '',
+      });
+    } else {
+      setEditingTransportCompanyId(null);
+      setTransportCompanyForm(emptyTransportCompany);
+    }
+
+    setShowTransportCompanyModal(true);
+  }
+
+  async function submitTransportCompany(event: FormEvent) {
+    event.preventDefault();
+
+    if (!transportCompanyForm.name.trim() || !transportCompanyForm.address.trim()) {
+      alert('Название и адрес ТК обязательны');
+      return;
+    }
+
+    const payload = {
+      name: transportCompanyForm.name.trim(),
+      address: transportCompanyForm.address.trim(),
+      contactPerson: transportCompanyForm.contactPerson.trim() || null,
+      phone: transportCompanyForm.phone.trim() || null,
+      comment: transportCompanyForm.comment.trim() || null,
+      isActive: true,
+    };
+
+    try {
+      if (editingTransportCompanyId) {
+        await api.updateTransportCompany(editingTransportCompanyId, payload);
+      } else {
+        await api.createTransportCompany(payload);
+      }
+
+      setShowTransportCompanyModal(false);
+      setEditingTransportCompanyId(null);
+      setTransportCompanyForm(emptyTransportCompany);
+      await loadCounterpartyDirectories();
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка при сохранении транспортной компании');
+    }
+  }
+
+  async function deleteTransportCompany(item: TransportCompany) {
+    if (!confirm(`Удалить транспортную компанию «${item.name}»?`)) return;
+
+    try {
+      await api.deleteTransportCompany(item.id);
+      await loadCounterpartyDirectories();
+    } catch (error) {
+      console.error(error);
+      alert('Ошибка при удалении транспортной компании');
+    }
+  }
+
+  function openActiveCounterpartyForm() {
+    if (activeCounterpartyTab === 'partners') {
+      openPartnerForm();
+      return;
+    }
+
+    if (activeCounterpartyTab === 'transport') {
+      openTransportCompanyForm();
+      return;
+    }
+
+    openClientForm();
+  }
+
+  const addButtonTitle = activeCounterpartyTab === 'partners'
+    ? 'Добавить партнёра'
+    : activeCounterpartyTab === 'transport'
+      ? 'Добавить ТК'
+      : 'Добавить клиента';
+
   const filtered = useMemo(() => {
     const value = query.toLowerCase().trim();
     if (!value) return clients;
@@ -293,7 +467,7 @@ export default function ClientsViewV2() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
             <UserRound className="h-4 w-4" />
             Руководитель / владелец
@@ -307,7 +481,7 @@ export default function ClientsViewV2() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="text-sm font-semibold text-slate-950">Точки и магазины</h2>
             <p className="mt-1 text-xs text-slate-500">Адреса, контакты и телефоны конкретных точек клиента.</p>
@@ -332,7 +506,7 @@ export default function ClientsViewV2() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-sm font-semibold text-slate-950">Постоянные клиенты</h2>
@@ -402,7 +576,7 @@ export default function ClientsViewV2() {
         <button
           type="button"
           onClick={() => openPointForm()}
-          className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
+          className="pointer-events-auto fixed bottom-6 right-6 z-[9998] xl:right-[400px] 2xl:right-[440px] inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
           title="Добавить точку"
           aria-label="Добавить точку"
         >
@@ -410,6 +584,8 @@ export default function ClientsViewV2() {
         </button>
 
         {showClientModal && <ClientModal form={clientForm} setForm={setClientForm} editing={Boolean(editingClientId)} onSubmit={submitClient} onClose={() => setShowClientModal(false)} />}
+      {showPartnerModal && <PartnerModal form={partnerForm} setForm={setPartnerForm} editing={Boolean(editingPartnerId)} onSubmit={submitPartner} onClose={() => setShowPartnerModal(false)} />}
+      {showTransportCompanyModal && <TransportCompanyModal form={transportCompanyForm} setForm={setTransportCompanyForm} editing={Boolean(editingTransportCompanyId)} onSubmit={submitTransportCompany} onClose={() => setShowTransportCompanyModal(false)} />}
         {showPointModal && <PointModal form={pointForm} setForm={setPointForm} editing={Boolean(editingPointId)} onSubmit={submitPoint} onClose={() => setShowPointModal(false)} />}
         {showRegularClientModal && <RegularClientModal form={regularClientForm} setForm={setRegularClientForm} editing={Boolean(editingRegularClientId)} onSubmit={submitRegularClient} onClose={() => setShowRegularClientModal(false)} />}
       </div>
@@ -418,7 +594,51 @@ export default function ClientsViewV2() {
 
   return (
     <div className="w-full space-y-5">
-      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200">
+        <div className="flex flex-wrap gap-7">
+          {[
+            ['clients', 'Клиенты'],
+            ['partners', 'Партнёры'],
+            ['transport', 'Транспортные компании'],
+          ].map(([tabId, label]) => (
+            <button
+              key={tabId}
+              type="button"
+              onClick={() => setActiveCounterpartyTab(tabId as CounterpartyTab)}
+              className={`relative -mb-px inline-flex h-12 items-center justify-center text-sm font-semibold transition ${
+                activeCounterpartyTab === tabId
+                  ? 'text-slate-950'
+                  : 'text-slate-500 hover:text-slate-950'
+              }`}
+            >
+              {label}
+              {activeCounterpartyTab === tabId && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-slate-950" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeCounterpartyTab === 'partners' && (
+        <PartnersTable
+          partners={partners}
+          loading={counterpartiesLoading}
+          onEdit={openPartnerForm}
+          onDelete={(item) => void deletePartner(item)}
+        />
+      )}
+
+      {activeCounterpartyTab === 'transport' && (
+        <TransportCompaniesTable
+          companies={transportCompanies}
+          loading={counterpartiesLoading}
+          onEdit={openTransportCompanyForm}
+          onDelete={(item) => void deleteTransportCompany(item)}
+        />
+      )}
+
+      <div className={activeCounterpartyTab === 'clients' ? 'overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm' : 'hidden'}>
         <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -473,22 +693,141 @@ export default function ClientsViewV2() {
 
       <button
         type="button"
-        onClick={() => openClientForm()}
-        className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
-        title="Добавить клиента"
-        aria-label="Добавить клиента"
+        onClick={openActiveCounterpartyForm}
+        className="pointer-events-auto fixed bottom-6 right-6 z-[9998] xl:right-[400px] 2xl:right-[440px] inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
+        title={addButtonTitle}
+        aria-label={addButtonTitle}
       >
         <Plus className="h-6 w-6" />
       </button>
 
       {showClientModal && <ClientModal form={clientForm} setForm={setClientForm} editing={Boolean(editingClientId)} onSubmit={submitClient} onClose={() => setShowClientModal(false)} />}
+      {showPartnerModal && <PartnerModal form={partnerForm} setForm={setPartnerForm} editing={Boolean(editingPartnerId)} onSubmit={submitPartner} onClose={() => setShowPartnerModal(false)} />}
+      {showTransportCompanyModal && <TransportCompanyModal form={transportCompanyForm} setForm={setTransportCompanyForm} editing={Boolean(editingTransportCompanyId)} onSubmit={submitTransportCompany} onClose={() => setShowTransportCompanyModal(false)} />}
     </div>
   );
 }
 
+function PartnersTable({ partners, loading, onEdit, onDelete }: { partners: Partner[]; loading: boolean; onEdit: (item: Partner) => void; onDelete: (item: Partner) => void }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 p-5">
+        <h2 className="text-sm font-semibold text-slate-950">Партнёры</h2>
+        <p className="text-xs text-slate-500">Организации и люди, которые присылают письма, накладные и файлы.</p>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3 p-5">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton-block h-16" />)}</div>
+      ) : partners.length === 0 ? (
+        <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
+          <Building2 className="mb-3 h-8 w-8 text-slate-300" />
+          <p className="text-sm font-medium text-slate-950">Партнёров пока нет</p>
+          <p className="mt-1 text-xs text-slate-500">Нажми плюс справа снизу, чтобы добавить партнёра.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.08em] text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Партнёр</th>
+                <th className="px-5 py-3 font-semibold">Email</th>
+                <th className="px-5 py-3 font-semibold">Контакт</th>
+                <th className="px-5 py-3 font-semibold">Телефон</th>
+                <th className="px-5 py-3 font-semibold">Комментарий</th>
+                <th className="px-5 py-3 text-right font-semibold">Действия</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100">
+              {partners.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50/80">
+                  <td className="px-5 py-4 font-semibold text-slate-950">{item.name}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.email || '—'}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.contactPerson || '—'}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.phone || '—'}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.comment || '—'}</td>
+                  <td className="px-5 py-4">
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => onEdit(item)} className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                        Изменить
+                      </button>
+                      <button onClick={() => onDelete(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TransportCompaniesTable({ companies, loading, onEdit, onDelete }: { companies: TransportCompany[]; loading: boolean; onEdit: (item: TransportCompany) => void; onDelete: (item: TransportCompany) => void }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 p-5">
+        <h2 className="text-sm font-semibold text-slate-950">Транспортные компании</h2>
+        <p className="text-xs text-slate-500">Справочник ТК для заявок типа “Транспортная компания”.</p>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3 p-5">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton-block h-16" />)}</div>
+      ) : companies.length === 0 ? (
+        <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
+          <Building2 className="mb-3 h-8 w-8 text-slate-300" />
+          <p className="text-sm font-medium text-slate-950">Транспортных компаний пока нет</p>
+          <p className="mt-1 text-xs text-slate-500">Нажми плюс справа снизу, чтобы добавить ТК.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.08em] text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">ТК</th>
+                <th className="px-5 py-3 font-semibold">Адрес</th>
+                <th className="px-5 py-3 font-semibold">Контакт</th>
+                <th className="px-5 py-3 font-semibold">Телефон</th>
+                <th className="px-5 py-3 font-semibold">Комментарий</th>
+                <th className="px-5 py-3 text-right font-semibold">Действия</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100">
+              {companies.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50/80">
+                  <td className="px-5 py-4 font-semibold text-slate-950">{item.name}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.address}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.contactPerson || '—'}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.phone || '—'}</td>
+                  <td className="px-5 py-4 text-slate-600">{item.comment || '—'}</td>
+                  <td className="px-5 py-4">
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => onEdit(item)} className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                        Изменить
+                      </button>
+                      <button onClick={() => onDelete(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function PointCard({ point, onEdit, onDelete }: { point: Point; onEdit: () => void; onDelete: () => void }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700">
@@ -541,7 +880,7 @@ function Info({ label, value, full }: { label: string; value: string; full?: boo
 function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="w-full max-w-lg rounded-[28px] bg-white p-5 shadow-2xl">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
           <button onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50">
@@ -584,6 +923,37 @@ function PointModal({ form, setForm, editing, onSubmit, onClose }: { form: Point
     </ModalShell>
   );
 }
+
+function PartnerModal({ form, setForm, editing, onSubmit, onClose }: { form: PartnerForm; setForm: Dispatch<SetStateAction<PartnerForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
+  return (
+    <ModalShell title={editing ? 'Редактировать партнёра' : 'Добавить партнёра'} onClose={onClose}>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <input className={inputClass} placeholder="Название партнёра *" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+        <input className={inputClass} placeholder="Email отправителя" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+        <input className={inputClass} placeholder="Контактное лицо" value={form.contactPerson} onChange={(event) => setForm({ ...form, contactPerson: event.target.value })} />
+        <input className={inputClass} placeholder="Телефон" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+        <textarea className={`${inputClass} min-h-24 py-3`} placeholder="Комментарий" value={form.comment} onChange={(event) => setForm({ ...form, comment: event.target.value })} />
+        <button className={`w-full ${buttonPrimary}`}>{editing ? 'Сохранить' : 'Добавить партнёра'}</button>
+      </form>
+    </ModalShell>
+  );
+}
+
+function TransportCompanyModal({ form, setForm, editing, onSubmit, onClose }: { form: TransportCompanyForm; setForm: Dispatch<SetStateAction<TransportCompanyForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
+  return (
+    <ModalShell title={editing ? 'Редактировать ТК' : 'Добавить ТК'} onClose={onClose}>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <input className={inputClass} placeholder="Название ТК *" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+        <input className={inputClass} placeholder="Адрес ТК *" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
+        <input className={inputClass} placeholder="Контактное лицо" value={form.contactPerson} onChange={(event) => setForm({ ...form, contactPerson: event.target.value })} />
+        <input className={inputClass} placeholder="Телефон" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+        <textarea className={`${inputClass} min-h-24 py-3`} placeholder="Комментарий" value={form.comment} onChange={(event) => setForm({ ...form, comment: event.target.value })} />
+        <button className={`w-full ${buttonPrimary}`}>{editing ? 'Сохранить' : 'Добавить ТК'}</button>
+      </form>
+    </ModalShell>
+  );
+}
+
 
 function RegularClientModal({ form, setForm, editing, onSubmit, onClose }: { form: PointForm; setForm: Dispatch<SetStateAction<PointForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
   return (

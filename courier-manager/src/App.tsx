@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Package,
   MapPin,
@@ -26,6 +26,7 @@ import ReportsView from './views/ReportsView';
 import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
 import { type ChatMessage, getChatMessages, sendChatMessage } from './lib/api';
+import { formatLocalDateWithOptions, formatLocalTime, getLocalDateKey } from './lib/local-time';
 
 type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'couriers';
 
@@ -96,31 +97,22 @@ function buildArchiveCalendarDays(monthDate: Date): ArchiveCalendarDay[] {
 }
 
 function getTodayDate() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return getLocalDateKey();
 }
 
 function formatArchiveDate(date: string) {
   if (!date) return 'Сегодня';
-  const [year, month, day] = date.split('-').map(Number);
-  if (!year || !month || !day) return date;
-
-  return new Date(year, month - 1, day).toLocaleDateString('ru-RU', {
+  return formatLocalDateWithOptions(date, {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
-  });
+  }, date);
 }
 
 
 
 function formatChatTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return formatLocalTime(value, '');
 }
 
 function ManagerChatPanel() {
@@ -129,6 +121,7 @@ function ManagerChatPanel() {
   const [isChatLoading, setIsChatLoading] = useState(true);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [chatError, setChatError] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const managerName = localStorage.getItem('managerName') || 'Менеджер';
 
@@ -149,6 +142,12 @@ function ManagerChatPanel() {
     const timer = window.setInterval(loadChatMessages, 5000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    });
+  }, [messages]);
 
   const handleSendMessage = async () => {
     const text = draft.trim();
@@ -174,8 +173,8 @@ function ManagerChatPanel() {
   };
 
   return (
-    <aside className="hidden h-[calc(100vh-4rem)] w-[380px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:flex-col 2xl:w-[420px]">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-5">
+    <aside className="hidden h-screen w-[380px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:flex-col 2xl:w-[420px]">
+      <div className="flex h-16 items-center justify-between gap-3 border-b border-slate-200 px-5">
         <div>
           <div className="flex items-center gap-2">
             <MessageCircle className="h-5 w-5 text-slate-900" />
@@ -210,7 +209,7 @@ function ManagerChatPanel() {
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center">
-            <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-7">
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-7">
               <MessageCircle className="mx-auto mb-3 h-8 w-8 text-slate-300" />
               <p className="text-sm font-semibold text-slate-900">Сообщений пока нет</p>
               <p className="mt-1 text-xs text-slate-500">Напиши первое сообщение в общий чат.</p>
@@ -243,6 +242,7 @@ function ManagerChatPanel() {
             );
           })
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="border-t border-slate-100 bg-white p-5">
@@ -281,7 +281,7 @@ const menuItems = [
   { id: 'mails', label: 'Письма', icon: Mail },
   { id: 'hemotest', label: 'Гемотест', icon: MapPin },
   { id: 'sberbank', label: 'Сбербанк', icon: Landmark },
-  { id: 'clients', label: 'Клиенты', icon: Users },
+  { id: 'clients', label: 'Контрагенты', icon: Users },
   { id: 'reports', label: 'Отчёты', icon: BarChart3 },
   { id: 'couriers', label: 'Курьеры', icon: Users },
 ];
@@ -356,7 +356,7 @@ function App() {
       case 'sberbank':
         return 'Заявки и маршруты по направлению Сбербанк.';
       case 'clients':
-        return 'Клиенты, магазины, точки и будущие кабинеты руководителей.';
+        return 'Контрагенты, магазины, точки и будущие кабинеты руководителей.';
       case 'reports':
         return 'Операционные показатели и выгрузки по доставкам.';
       case 'couriers':
@@ -403,8 +403,9 @@ function App() {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      <div className="flex min-h-screen flex-col lg:pl-[280px]">
-        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
+      <div className="flex h-screen min-h-0 overflow-hidden lg:pl-[280px]">
+        <section className="flex min-w-0 flex-1 flex-col bg-slate-50">
+        <header className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <button type="button" onClick={() => setIsSidebarOpen(true)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden" aria-label="Открыть меню"><Menu className="h-5 w-5" /></button>
@@ -436,7 +437,7 @@ function App() {
                 </button>
 
                 {isArchiveCalendarOpen ? (
-                  <div className="absolute right-0 top-12 z-50 w-[304px] rounded-[24px] border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/15">
+                  <div className="absolute right-0 top-12 z-50 w-[304px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/15">
                     <div className="mb-3 flex items-center justify-between gap-2 px-1">
                       <button
                         type="button"
@@ -526,16 +527,15 @@ function App() {
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
           <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 lg:px-7">
             <div className="mx-auto max-w-[1180px] space-y-5">
               <div className="md:hidden"><h1 className="text-2xl font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="mt-1 text-sm text-slate-500">{getPageDescription()}</p></div>
               {renderView()}
             </div>
           </main>
+        </section>
 
-          <ManagerChatPanel />
-        </div>
+        <ManagerChatPanel />
       </div>
     </div>
   );

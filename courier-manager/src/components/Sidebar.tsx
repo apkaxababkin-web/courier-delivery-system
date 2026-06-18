@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Truck, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface MenuItem {
   id: string;
@@ -39,24 +39,26 @@ export default function Sidebar({
         }`}
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
-                <Truck className="h-5 w-5" />
+          <div className="flex h-16 items-center justify-between border-b border-slate-200 bg-[#F7FBFF] px-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-transparent">
+                <img src="/mig-icon-original.png?v=7" alt="МИГ" className="h-10 w-10 object-contain" />
               </div>
 
-              <div>
-                <h2 className="text-sm font-semibold tracking-tight text-slate-950">
-                  Courier Delivery
-                </h2>
-                <p className="text-xs text-slate-500">Manager Console</p>
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-semibold leading-5 tracking-tight text-slate-950">
+                  Курьерская служба
+                </p>
+                <p className="truncate text-[12px] leading-4 text-slate-500">
+                  МИГ
+                </p>
               </div>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 lg:hidden"
+              className="ml-3 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 lg:hidden"
             >
               <X className="h-4 w-4" />
             </button>
@@ -96,14 +98,6 @@ export default function Sidebar({
             </div>
           </nav>
 
-          <div className="border-t border-slate-200 p-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-950">Сегодня</p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                28 активных заявок • 7 новых • 14 курьеров онлайн.
-              </p>
-            </div>
-          </div>
         </div>
       </aside>
     </>

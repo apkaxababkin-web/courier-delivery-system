@@ -8,6 +8,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
+import { sendExpoPush } from "./expoPush";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
 import { createContext } from "./context";
@@ -62,6 +63,45 @@ function inputFromBody(body: any): { input: Record<string, unknown>; isBatch: bo
   return { input: unwrapTrpcInput(body), isBatch: false };
 }
 
+
+function truncatePushText(value: string, max = 120) {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+async function sendManagerChatPushToCouriers(message: {
+  id?: number | null;
+  senderName?: string | null;
+  senderRole?: string | null;
+  text?: string | null;
+}) {
+  try {
+    const allCouriers = await db.getAllCouriers();
+    const senderName = String(message.senderName || "Менеджер").trim() || "Менеджер";
+    const senderRole = String(message.senderRole || "manager").trim();
+
+    const targets = allCouriers.filter((courier) => {
+      const token = courier.pushToken || "";
+      const hasExpoToken = token.startsWith("ExponentPushToken") || token.startsWith("ExpoPushToken");
+      const isSenderCourier = senderRole === "courier" && courier.name === senderName;
+      return hasExpoToken && !isSenderCourier;
+    });
+    const body = truncatePushText(`${senderName}: ${String(message.text || "").trim()}`, 120);
+
+    console.log("[PUSH_CHAT] targets", targets.length, "message", message.id);
+
+    await Promise.allSettled(
+      targets.map((courier) =>
+        sendExpoPush(courier.pushToken, "Чат МИГ", body, {
+          type: "chat_message",
+          messageId: message.id,
+          senderRole: message.senderRole || "manager",
+        }),
+      ),
+    );
+  } catch (error) {
+    console.error("[PUSH_CHAT] failed", error);
+  }
+}
 
 async function ensureManagerChatTable(conn: any) {
   await conn.execute(sql`
@@ -153,6 +193,36 @@ async function startServer() {
     }
   });
 
+  
+function normalizeChatTimestamp(value: unknown) {
+  if (!value) return value;
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const hasTime = /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(trimmed);
+    const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/.test(trimmed);
+
+    if (hasTime && !hasTimezone) {
+      return `${trimmed.replace(" ", "T")}Z`;
+    }
+
+    return trimmed;
+  }
+
+  return value;
+}
+
+function normalizeChatMessageRow(row: Record<string, unknown>) {
+  return {
+    ...row,
+    createdAt: normalizeChatTimestamp(row.createdAt),
+  };
+}
+
   registerCompatRoutes(app);
 
   app.get("/api/health", (_req, res) => {
@@ -177,7 +247,7 @@ async function startServer() {
         LIMIT ${limit}
       `);
 
-      res.json(normalizeSqlRows(result).reverse());
+      res.json(normalizeSqlRows(result).reverse().map(normalizeChatMessageRow));
     } catch (error) {
       console.error("[manager.chat.messages] failed", error);
       const message = error instanceof Error ? error.message : "Failed to load chat messages";
@@ -207,7 +277,10 @@ async function startServer() {
         RETURNING "id", "senderName", "senderRole", "text", "createdAt"
       `);
 
-      res.json(normalizeSqlRows(result)[0] || { success: true });
+      const rawMessage = normalizeSqlRows(result)[0] || { success: true };
+      const message = normalizeChatMessageRow(rawMessage);
+      void sendManagerChatPushToCouriers(rawMessage);
+      res.json(message);
     } catch (error) {
       console.error("[manager.chat.send] failed", error);
       const message = error instanceof Error ? error.message : "Failed to send chat message";
@@ -336,7 +409,7 @@ async function startServer() {
           senderAddress: request.senderAddress || request.tcAddress || null,
           senderPhone: request.senderPhone || null,
           packageDescription: request.packageDescription || request.description || request.callReason || null,
-          placesCount: request.placesCount ?? 1,
+          placesCount: request.placesCount ?? null,
           deliveryTimeFrom: request.deliveryTimeFrom || null,
           deliveryTimeTo: request.deliveryTimeTo || null,
           specialInstructions: request.specialInstructions || null,

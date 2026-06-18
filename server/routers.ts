@@ -10,6 +10,23 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
+const BUSINESS_TIME_ZONE = "Asia/Irkutsk";
+
+function getBusinessDateKey(value: Date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+}
+
+
 
 async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
   try {
@@ -296,7 +313,7 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
 
-        const date = input.date ?? new Date().toISOString().slice(0, 10);
+        const date = input.date ?? getBusinessDateKey();
         return db.getTasksByDateWithCourier(date);
       }),
 

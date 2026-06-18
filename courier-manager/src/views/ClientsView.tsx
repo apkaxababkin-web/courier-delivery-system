@@ -15,6 +15,7 @@ import {
   Store,
 } from 'lucide-react';
 import * as api from '../lib/api';
+import { formatLocalDate } from '../lib/local-time';
 
 interface Client {
   id: number;
@@ -348,7 +349,7 @@ export default function ClientsView() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-sm font-semibold text-slate-950">Основная информация</h2>
               <p className="mt-1 text-xs text-slate-500">Базовая карточка клиента.</p>
@@ -368,7 +369,7 @@ export default function ClientsView() {
               ['Завершено', stats.completed, 'border-emerald-200 bg-emerald-50 text-emerald-700'],
               ['Ошибки', stats.failed, 'border-red-200 bg-red-50 text-red-700'],
             ].map(([label, value, className]) => (
-              <div key={label} className={`rounded-[22px] border p-4 shadow-sm ${className}`}>
+              <div key={label} className={`rounded-2xl border p-4 shadow-sm ${className}`}>
                 <p className="text-xs font-medium opacity-75">{label}</p>
                 <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
               </div>
@@ -376,7 +377,7 @@ export default function ClientsView() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-sm font-semibold text-slate-950">Точки и магазины клиента</h2>
@@ -393,7 +394,7 @@ export default function ClientsView() {
 
           <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
             {clientPoints.map((point) => (
-              <div key={point.id} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+              <div key={point.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
@@ -428,7 +429,7 @@ export default function ClientsView() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="text-sm font-semibold text-slate-950">Заявки клиента</h2>
             <p className="mt-1 text-xs text-slate-500">История и статусы заявок по выбранному клиенту.</p>
@@ -459,7 +460,7 @@ export default function ClientsView() {
                       <td className="px-5 py-4 text-slate-700">{task.recipientName}</td>
                       <td className="px-5 py-4 text-slate-600">{task.deliveryAddress}</td>
                       <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${taskStatusClass[task.status]}`}>{taskStatusLabel[task.status]}</span></td>
-                      <td className="px-5 py-4 text-slate-500">{new Date(task.createdAt).toLocaleDateString('ru-RU')}</td>
+                      <td className="px-5 py-4 text-slate-500">{formatLocalDate(task.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -470,7 +471,7 @@ export default function ClientsView() {
 
         {showPointForm && createPortal(
           <div className="modal-overlay">
-            <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
               <div className="mb-5 flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-semibold tracking-tight text-slate-950">Добавить точку</h3>
@@ -511,7 +512,7 @@ export default function ClientsView() {
 
         {showExportForm && createPortal(
           <div className="modal-overlay">
-            <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
               <div className="mb-5 flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-semibold tracking-tight text-slate-950">Выбор полей</h3>
@@ -557,7 +558,7 @@ export default function ClientsView() {
 
       {showForm && createPortal(
         <div className="modal-overlay">
-          <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold tracking-tight text-slate-950">{editingId ? 'Редактировать клиента' : 'Добавить клиента'}</h3>
@@ -597,7 +598,7 @@ export default function ClientsView() {
         document.body
       )}
 
-      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

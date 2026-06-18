@@ -1,4 +1,5 @@
 import type { Request, StatusFilter } from './types';
+import { toLocalDateKey } from '../../../lib/local-time';
 
 export function getFilteredRequests(
   requests: Request[],
@@ -14,9 +15,7 @@ export function getFilteredRequests(
 
     // selected day
     if (selectedDate) {
-      const requestDate = new Date(request.createdAt)
-        .toISOString()
-        .slice(0, 10);
+      const requestDate = toLocalDateKey(request.createdAt);
 
       if (requestDate !== selectedDate) {
         return false;

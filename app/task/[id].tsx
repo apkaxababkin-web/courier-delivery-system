@@ -18,7 +18,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { skipToken } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useToast } from "react-native-toast-notifications";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -33,6 +33,32 @@ type Palette = {
   soft: string;
   shadow: string;
 };
+
+type RequestAttachment = {
+  id: number;
+  requestId: number;
+  originalName: string;
+  fileUrl: string;
+  mimeType?: string | null;
+  sizeBytes: number;
+  createdAt: string;
+};
+
+const API_ORIGIN = "https://couriermig.ru";
+
+function attachmentUrl(fileUrl: string) {
+  if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) return fileUrl;
+  return `${API_ORIGIN}${fileUrl.startsWith("/") ? "" : "/"}${fileUrl}`;
+}
+
+function formatFileSize(sizeBytes?: number | null) {
+  const size = Number(sizeBytes || 0);
+
+  if (!size) return "";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} КБ`;
+
+  return `${(size / 1024 / 1024).toFixed(2)} МБ`;
+}
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
@@ -102,11 +128,56 @@ export default function TaskDetailScreen() {
   const [placesInput, setPlacesInput] = useState("");
   const [commentsInput, setCommentsInput] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [attachments, setAttachments] = useState<RequestAttachment[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
   const utils = trpc.useUtils();
 
   const { data: task, isLoading } = trpc.tasks.byId.useQuery(token ? { token, id: taskId } : skipToken);
   const { data: couriersList } = trpc.couriers.list.useQuery(token ? { token } : skipToken);
+
+  useEffect(() => {
+    const requestId = Number((task as any)?.requestId || (task as any)?.sourceRequestId || 0);
+
+    if (!requestId) {
+      setAttachments([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAttachments() {
+      try {
+        setAttachmentsLoading(true);
+        const response = await fetch(`${API_ORIGIN}/api/manager/requests/${requestId}/attachments`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error?.message || "Не удалось загрузить файлы");
+        }
+
+        if (!cancelled) {
+          setAttachments(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("[attachments] load failed", error);
+
+        if (!cancelled) {
+          setAttachments([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setAttachmentsLoading(false);
+        }
+      }
+    }
+
+    void loadAttachments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [task]);
 
   const assignMutation = trpc.tasks.assignCourier.useMutation({
     onSuccess: () => {
@@ -170,6 +241,14 @@ export default function TaskDetailScreen() {
   const handleCallPhone = (phone: string | null | undefined) => {
     if (!phone) return;
     Linking.openURL(`tel:${phone.replace(/\s|\(|\)|-/g, "")}`);
+  };
+
+  const handleOpenAttachment = async (attachment: RequestAttachment) => {
+    try {
+      await Linking.openURL(attachmentUrl(attachment.fileUrl));
+    } catch {
+      Alert.alert("Ошибка", "Не удалось открыть файл");
+    }
   };
 
   const handleSetStatus = (newStatus: "in_progress" | "completed" | "cancelled") => {
@@ -322,6 +401,48 @@ export default function TaskDetailScreen() {
           <SectionTitle colors={colors}>Комментарий заявки</SectionTitle>
           <Text style={{ color: taskComment === "—" ? colors.muted : colors.foreground, fontSize: 12, lineHeight: 20, fontWeight: "700" }}>{taskComment}</Text>
         </GlassCard>
+
+        {(attachmentsLoading || attachments.length > 0) && (
+          <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
+            <SectionTitle colors={colors}>Файлы для курьера</SectionTitle>
+
+            {attachmentsLoading && attachments.length === 0 ? (
+              <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>Загрузка файлов...</Text>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {attachments.map((attachment) => (
+                  <TouchableOpacity
+                    key={attachment.id}
+                    activeOpacity={0.75}
+                    onPress={() => handleOpenAttachment(attachment)}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: palette.border,
+                      backgroundColor: palette.soft,
+                      borderRadius: 10,
+                      paddingVertical: 11,
+                      paddingHorizontal: 12,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <View style={{ minWidth: 0, flex: 1 }}>
+                      <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 12, fontWeight: "900" }}>
+                        {attachment.originalName || "Файл"}
+                      </Text>
+                      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 3 }}>
+                        {formatFileSize(attachment.sizeBytes) || "Файл"}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "900" }}>Открыть</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </GlassCard>
+        )}
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
           <SectionTitle colors={colors}>Комментарий курьера</SectionTitle>

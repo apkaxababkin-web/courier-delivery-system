@@ -34,7 +34,7 @@ export function TasksStats({ stats, selectedStatus, onStatusChange }: TasksStats
             key={card.key}
             type="button"
             onClick={() => onStatusChange(card.key)}
-            className={`rounded-[22px] border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+            className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
               isActive ? 'border-slate-950 ring-4 ring-slate-950/5' : 'border-slate-200'
             }`}
           >

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import type { StatusFilter } from '../model/types';
+import { formatLocalDateWithOptions, getLocalDateKey, toLocalDateKey } from '../../../lib/local-time';
 
 type CalendarDay =
   | { key: string; day: null; date: null }
@@ -24,11 +25,7 @@ const MONTHS = [
 const WEEK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 function getTodayDate() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return getLocalDateKey();
 }
 
 function parseDateKey(date: string) {
@@ -39,20 +36,17 @@ function parseDateKey(date: string) {
 }
 
 function toDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return toLocalDateKey(date);
 }
 
 function formatDateLabel(date: string) {
   if (!date) return 'Выбрать дату';
 
-  return parseDateKey(date).toLocaleDateString('ru-RU', {
+  return formatLocalDateWithOptions(date, {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
-  });
+  }, date);
 }
 
 interface TasksToolbarProps {
@@ -120,7 +114,7 @@ export function TasksToolbar({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-visible rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-5 p-5 lg:p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-center">
@@ -158,7 +152,7 @@ export function TasksToolbar({
                   </button>
 
                   {isCalendarOpen ? (
-                    <div className="absolute left-0 top-14 z-30 w-[304px] rounded-[24px] border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/10">
+                    <div className="absolute left-0 top-14 z-30 w-[304px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/10">
                       <div className="mb-3 flex items-center justify-between gap-2 px-1">
                         <button
                           type="button"

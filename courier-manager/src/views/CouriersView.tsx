@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bike, BellOff, Copy, KeyRound, MapPin, Phone, Plus, RefreshCcw, Search, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
+import { Bike, BellOff, Copy, Edit2, KeyRound, MapPin, Phone, Plus, RefreshCcw, Search, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 
 type Courier = {
   id: number;
@@ -20,6 +20,14 @@ type CourierFormData = {
   vehicleType: string;
 };
 
+type CourierEditFormData = {
+  name: string;
+  username: string;
+  phone: string;
+  vehicleType: string;
+  isActive: boolean;
+};
+
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 const emptyForm: CourierFormData = {
@@ -28,6 +36,14 @@ const emptyForm: CourierFormData = {
   password: '',
   phone: '',
   vehicleType: 'car',
+};
+
+const emptyEditForm: CourierEditFormData = {
+  name: '',
+  username: '',
+  phone: '',
+  vehicleType: 'car',
+  isActive: true,
 };
 
 const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white';
@@ -67,6 +83,8 @@ export default function CouriersView() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<{ name: string; username: string; password: string } | null>(null);
+  const [editingCourier, setEditingCourier] = useState<Courier | null>(null);
+  const [editFormData, setEditFormData] = useState<CourierEditFormData>(emptyEditForm);
   const [resetCourier, setResetCourier] = useState<Courier | null>(null);
   const [resetPassword, setResetPassword] = useState('');
 
@@ -134,6 +152,63 @@ export default function CouriersView() {
     }
   };
 
+  const openEditCourier = (courier: Courier) => {
+    setEditingCourier(courier);
+    setEditFormData({
+      name: courier.name || '',
+      username: courier.username || '',
+      phone: courier.phone || '',
+      vehicleType: courier.vehicleType || 'car',
+      isActive: courier.isActive !== false,
+    });
+  };
+
+  const closeEditCourier = () => {
+    setEditingCourier(null);
+    setEditFormData(emptyEditForm);
+  };
+
+  const handleUpdateCourier = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!editingCourier) return;
+
+    if (!editFormData.name.trim() || !editFormData.username.trim()) {
+      alert('Укажите имя и логин курьера');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const payload = {
+        name: editFormData.name.trim(),
+        username: editFormData.username.trim().toLowerCase(),
+        phone: editFormData.phone.trim(),
+        vehicleType: editFormData.vehicleType,
+        isActive: editFormData.isActive,
+      };
+
+      const response = await fetch(`${API_URL}/api/manager/couriers/${editingCourier.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error?.message || data?.error || 'Ошибка при сохранении курьера');
+      }
+
+      closeEditCourier();
+      await loadCouriers();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Ошибка при сохранении курьера');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const copyCredentials = async (credentials: { name: string; username: string; password: string }) => {
     const text = `Доступ для курьера ${credentials.name}\nЛогин: ${credentials.username}\nПароль: ${credentials.password}\nАдрес входа: https://courier.couriermig.ru`;
     await navigator.clipboard.writeText(text);
@@ -158,7 +233,7 @@ export default function CouriersView() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Курьеры</h1>
@@ -167,15 +242,8 @@ export default function CouriersView() {
         <button onClick={() => setShowForm(true)} className={primaryButtonClass}><Plus className="h-4 w-4" />Выдать доступ курьеру</button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <MetricCard label="Активных" value={activeCouriers.length} />
-        <MetricCard label="Отключено" value={disabledCount} />
-        <MetricCard label="Доставок" value={totalDeliveries} />
-        <MetricCard label="Назначения" value={activeCouriers.length ? 'Видимы' : '—'} />
-      </div>
-
       {createdCredentials && (
-        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-950">Доступ создан</p>
@@ -191,7 +259,7 @@ export default function CouriersView() {
         </div>
       )}
 
-      <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -215,7 +283,7 @@ export default function CouriersView() {
         ) : (
           <div className="grid gap-4 p-5 lg:grid-cols-2 xl:grid-cols-3">
             {filteredCouriers.map((courier) => (
-              <div key={courier.id} className="rounded-3xl border border-slate-200 bg-slate-50/70 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md">
+              <div key={courier.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm"><Bike className="h-5 w-5" /></div>
@@ -238,8 +306,8 @@ export default function CouriersView() {
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs leading-5 text-slate-500">Логин выдаётся менеджером. Пароль повторно не отображается. Сброс пароля подготовлен как UI-workflow без backend-изменений.</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => openEditCourier(courier)} className={tinyButtonClass}><Edit2 className="h-3.5 w-3.5" />Редактировать</button>
                     <button type="button" onClick={() => openResetModal(courier)} className={tinyButtonClass}><RefreshCcw className="h-3.5 w-3.5" />Сброс пароля</button>
                     <button type="button" onClick={() => handleDeactivateCourier(courier)} className={tinyButtonClass}><Trash2 className="h-3.5 w-3.5" />Отключить</button>
                   </div>
@@ -252,7 +320,7 @@ export default function CouriersView() {
 
       {showForm && createPortal(
         <div className="modal-overlay">
-          <div className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
             <div className="mb-5 flex items-center justify-between gap-4"><div><h3 className="text-lg font-semibold tracking-tight text-slate-950">Выдать доступ курьеру</h3><p className="mt-1 text-sm text-slate-500">Создайте логин и пароль для входа в курьерское приложение.</p></div><button onClick={() => setShowForm(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-950"><X size={18} /></button></div>
             <form onSubmit={handleAddCourier} className="space-y-4">
               <div><label className="mb-2 block text-sm font-medium text-slate-700">Имя курьера *</label><input value={formData.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Например: Батор Цыренов" className={inputClass} required /></div>
@@ -270,9 +338,91 @@ export default function CouriersView() {
           </div>
         </div>, document.body)}
 
+      {editingCourier && createPortal(
+        <div className="modal-overlay">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold tracking-tight text-slate-950">Редактировать курьера</h3>
+                <p className="mt-1 text-sm text-slate-500">Измените данные доступа и карточку курьера.</p>
+              </div>
+              <button onClick={closeEditCourier} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-950"><X size={18} /></button>
+            </div>
+
+            <form onSubmit={handleUpdateCourier} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Имя курьера *</label>
+                <input
+                  value={editFormData.name}
+                  onChange={(event) => setEditFormData((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="Например: Батор Цыренов"
+                  className={inputClass}
+                  required
+                />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Логин *</label>
+                  <input
+                    value={editFormData.username}
+                    onChange={(event) => setEditFormData((prev) => ({ ...prev, username: event.target.value.trim().toLowerCase() }))}
+                    placeholder="bator"
+                    className={inputClass}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Телефон</label>
+                  <input
+                    value={editFormData.phone}
+                    onChange={(event) => setEditFormData((prev) => ({ ...prev, phone: event.target.value }))}
+                    placeholder="+7..."
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Транспорт</label>
+                  <select
+                    value={editFormData.vehicleType}
+                    onChange={(event) => setEditFormData((prev) => ({ ...prev, vehicleType: event.target.value }))}
+                    className={inputClass}
+                  >
+                    <option value="car">Авто</option>
+                    <option value="scooter">Скутер</option>
+                    <option value="bicycle">Велосипед</option>
+                    <option value="foot">Пеший</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Статус</label>
+                  <select
+                    value={editFormData.isActive ? 'active' : 'disabled'}
+                    onChange={(event) => setEditFormData((prev) => ({ ...prev, isActive: event.target.value === 'active' }))}
+                    className={inputClass}
+                  >
+                    <option value="active">Активен</option>
+                    <option value="disabled">Отключён</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="submit" disabled={saving} className={`flex-1 ${primaryButtonClass}`}>{saving ? 'Сохранение...' : 'Сохранить'}</button>
+                <button type="button" onClick={closeEditCourier} className={`flex-1 ${secondaryButtonClass}`}>Отмена</button>
+              </div>
+            </form>
+          </div>
+        </div>, document.body)}
+
       {resetCourier && createPortal(
         <div className="modal-overlay">
-          <div className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
             <div className="mb-5 flex items-center justify-between gap-4"><div><h3 className="text-lg font-semibold tracking-tight text-slate-950">Сброс пароля</h3><p className="mt-1 text-sm text-slate-500">Подготовка нового доступа для {resetCourier.name}.</p></div><button onClick={closeResetModal} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-950"><X size={18} /></button></div>
             <div className="space-y-4">
               <CredentialBox label="Логин" value={resetCourier.username} />
@@ -286,10 +436,6 @@ export default function CouriersView() {
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: number | string }) {
-  return <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value}</p></div>;
-}
-
 function CredentialBox({ label, value }: { label: string; value: string }) {
   return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-2 break-all text-sm font-semibold text-slate-950">{value}</p></div>;
 }
@@ -299,5 +445,5 @@ function InfoBox({ icon, label, value, large = false }: { icon: React.ReactNode;
 }
 
 function CouriersSkeleton() {
-  return <div className="grid gap-4 p-5 lg:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="rounded-3xl border border-slate-200 bg-slate-50/70 p-5"><div className="flex items-center gap-3"><div className="skeleton-block h-12 w-12 rounded-2xl" /><div className="flex-1 space-y-2"><div className="skeleton-line h-4 w-32" /><div className="skeleton-line h-3 w-24" /></div></div><div className="mt-5 grid grid-cols-2 gap-3"><div className="skeleton-block h-20" /><div className="skeleton-block h-20" /></div><div className="mt-3 grid grid-cols-2 gap-3"><div className="skeleton-block h-20" /><div className="skeleton-block h-20" /></div></div>)}</div>;
+  return <div className="grid gap-4 p-5 lg:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5"><div className="flex items-center gap-3"><div className="skeleton-block h-12 w-12 rounded-2xl" /><div className="flex-1 space-y-2"><div className="skeleton-line h-4 w-32" /><div className="skeleton-line h-3 w-24" /></div></div><div className="mt-5 grid grid-cols-2 gap-3"><div className="skeleton-block h-20" /><div className="skeleton-block h-20" /></div><div className="mt-3 grid grid-cols-2 gap-3"><div className="skeleton-block h-20" /><div className="skeleton-block h-20" /></div></div>)}</div>;
 }

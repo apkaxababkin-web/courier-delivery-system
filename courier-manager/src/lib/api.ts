@@ -139,6 +139,30 @@ export interface ClientRegularClient {
   updatedAt?: string;
 }
 
+export interface Partner {
+  id: number;
+  name: string;
+  email?: string | null;
+  contactPerson?: string | null;
+  phone?: string | null;
+  comment?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TransportCompany {
+  id: number;
+  name: string;
+  address: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  comment?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 async function restJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     credentials: 'include',
@@ -199,6 +223,58 @@ export async function updateClientRegularClient(id: number, item: Partial<Client
 
 export async function deleteClientRegularClient(id: number): Promise<void> {
   await restJson<{ success: boolean }>(`/api/manager/regular-clients/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ─── Partners API ───────────────────────────────────────────────────────────
+
+export async function getPartners(): Promise<Partner[]> {
+  return await restJson<Partner[]>('/api/manager/partners');
+}
+
+export async function createPartner(partner: Omit<Partner, 'id' | 'createdAt' | 'updatedAt'>): Promise<Partner> {
+  return await restJson<Partner>('/api/manager/partners', {
+    method: 'POST',
+    body: JSON.stringify(partner),
+  });
+}
+
+export async function updatePartner(id: number, partner: Partial<Partner>): Promise<Partner> {
+  return await restJson<Partner>(`/api/manager/partners/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(partner),
+  });
+}
+
+export async function deletePartner(id: number): Promise<void> {
+  await restJson<{ success: boolean }>(`/api/manager/partners/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ─── Transport Companies API ────────────────────────────────────────────────
+
+export async function getTransportCompanies(): Promise<TransportCompany[]> {
+  return await restJson<TransportCompany[]>('/api/manager/transport-companies');
+}
+
+export async function createTransportCompany(company: Omit<TransportCompany, 'id' | 'createdAt' | 'updatedAt'>): Promise<TransportCompany> {
+  return await restJson<TransportCompany>('/api/manager/transport-companies', {
+    method: 'POST',
+    body: JSON.stringify(company),
+  });
+}
+
+export async function updateTransportCompany(id: number, company: Partial<TransportCompany>): Promise<TransportCompany> {
+  return await restJson<TransportCompany>(`/api/manager/transport-companies/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(company),
+  });
+}
+
+export async function deleteTransportCompany(id: number): Promise<void> {
+  await restJson<{ success: boolean }>(`/api/manager/transport-companies/${id}`, {
     method: 'DELETE',
   });
 }
@@ -467,7 +543,7 @@ export async function post(endpoint: string, data: any): Promise<any> {
   return payload;
 }
 
-export async function createRequest(request: Omit<Request, 'id' | 'createdAt' | 'updatedAt' | 'status'>): Promise<{ id: number; taskId?: number; success: boolean }> {
+export async function createRequest(request: Omit<Request, 'id' | 'updatedAt' | 'status'>): Promise<{ id: number; taskId?: number; success: boolean }> {
   return await trpcPost('requests.create', request as unknown as JsonRecord, { id: 0, success: false });
 }
 
@@ -482,6 +558,48 @@ export async function getRequestById(id: number): Promise<Request | null> {
 
 export async function updateRequestStatus(id: number, status: Request['status']): Promise<void> {
   await trpcPost('requests.updateStatus', { id, status }, { success: true });
+}
+
+export interface RequestAttachment {
+  id: number;
+  requestId: number;
+  originalName: string;
+  storedName: string;
+  fileUrl: string;
+  mimeType?: string | null;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export async function getRequestAttachments(requestId: number): Promise<RequestAttachment[]> {
+  return await restJson<RequestAttachment[]>(`/api/manager/requests/${requestId}/attachments`);
+}
+
+export async function uploadRequestAttachment(requestId: number, file: File): Promise<RequestAttachment> {
+  const response = await fetch(`/api/manager/requests/${requestId}/attachments`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name || 'file'),
+      'X-File-Type': file.type || 'application/octet-stream',
+    },
+    body: file,
+  });
+
+  const data = await readJson(response);
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || data?.error || 'Failed to upload request attachment');
+  }
+
+  return data as RequestAttachment;
+}
+
+export async function deleteRequestAttachment(id: number): Promise<void> {
+  await restJson<{ success: boolean }>(`/api/manager/request-attachments/${id}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function assignRequestCourier(id: number, courierId: number | null): Promise<void> {

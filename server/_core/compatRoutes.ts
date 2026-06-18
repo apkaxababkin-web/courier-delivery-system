@@ -1,11 +1,16 @@
-import type { Express, Request, Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
 import { sendExpoPush } from "./expoPush";
+import fs from "node:fs/promises";
+import path from "node:path";
+import crypto from "node:crypto";
 
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import {
   clientPoints,
   clientRegularClients,
+  partners,
+  transportCompanies,
   couriers,
   hemotestPickups,
   hemotestPickupPoints,
@@ -27,6 +32,45 @@ import {
 } from "../../drizzle/schema";
 import * as db from "../db";
 import { verifyCourierToken } from "../routers";
+
+const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
+const MAX_REQUEST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+function sqlRows(result: any) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.rows)) return result.rows;
+  return [];
+}
+
+function safeAttachmentName(name: string) {
+  const fallback = "file";
+  const cleaned = String(name || fallback)
+    .replace(/[\\/\0]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+
+  return cleaned || fallback;
+}
+
+function attachmentPublicUrl(id: number, storedName: string) {
+  return `/api/request-attachments/${id}/${encodeURIComponent(storedName)}`;
+}
+
+async function ensureRequestAttachmentsTable(conn: any) {
+  await conn.execute(sql`
+    CREATE TABLE IF NOT EXISTS "requestAttachments" (
+      "id" serial PRIMARY KEY,
+      "requestId" integer NOT NULL,
+      "originalName" text NOT NULL,
+      "storedName" text NOT NULL,
+      "fileUrl" text NOT NULL,
+      "mimeType" varchar(255),
+      "sizeBytes" integer NOT NULL,
+      "createdAt" timestamp DEFAULT now() NOT NULL
+    )
+  `);
+}
 
 function trpcJson(data: unknown) {
   return { result: { data: { json: data } } };
@@ -539,6 +583,38 @@ export function registerCompatRoutes(app: Express) {
     }
   });
 
+  app.put("/api/manager/couriers/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) throw new Error("courier id is required");
+
+      const name = String(req.body?.name || "").trim();
+      const username = String(req.body?.username || "").trim().toLowerCase();
+      const phone = String(req.body?.phone || "").trim();
+      const vehicleType = String(req.body?.vehicleType || "car").trim();
+      const isActive = req.body?.isActive === false ? false : true;
+
+      if (!name) throw new Error("name is required");
+      if (!username) throw new Error("username is required");
+
+      await db.updateCourier(id, {
+        name,
+        username,
+        phone: phone || null,
+        vehicleType: vehicleType as any,
+        isActive,
+        updatedAt: new Date(),
+      } as any);
+
+      broadcastLive("couriers_changed", { courierId: id });
+      broadcastLive("tasks_changed", { courierId: id });
+
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to update manager courier");
+    }
+  });
+
   app.delete("/api/manager/couriers/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -928,6 +1004,371 @@ export function registerCompatRoutes(app: Express) {
       broadcastLive("requests_changed", { taskId, requestId, courierId });
       res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to assign manager task courier"); }
+  });
+
+
+  app.get("/api/manager/requests/:id/attachments", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      await ensureRequestAttachmentsTable(conn);
+
+      const requestId = Number(req.params.id);
+      if (!requestId) throw new Error("request id is required");
+
+      const result = await conn.execute(sql`
+        SELECT
+          "id",
+          "requestId",
+          "originalName",
+          "storedName",
+          "fileUrl",
+          "mimeType",
+          "sizeBytes",
+          "createdAt"
+        FROM "requestAttachments"
+        WHERE "requestId" = ${requestId}
+        ORDER BY "createdAt" ASC, "id" ASC
+      `);
+
+      res.json(sqlRows(result));
+    } catch (error) {
+      sendError(res, error, "Failed to load request attachments");
+    }
+  });
+
+  app.post(
+    "/api/manager/requests/:id/attachments",
+    express.raw({ type: "*/*", limit: "25mb" }),
+    async (req, res) => {
+      try {
+        const conn = await db.getDb();
+        if (!conn) throw new Error("Database not available");
+
+        await ensureRequestAttachmentsTable(conn);
+
+        const requestId = Number(req.params.id);
+        if (!requestId) throw new Error("request id is required");
+
+        const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+        if (body.length === 0) throw new Error("empty file");
+        if (body.length > MAX_REQUEST_ATTACHMENT_BYTES) throw new Error("file is too large");
+
+        const originalName = safeAttachmentName(
+          decodeURIComponent(String(req.header("x-file-name") || "file")),
+        );
+        const mimeType = String(req.header("content-type") || req.header("x-file-type") || "application/octet-stream").slice(0, 255);
+        const ext = path.extname(originalName).replace(/[^a-zA-Z0-9.]/g, "").slice(0, 16);
+        const storedName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
+        const requestDir = path.join(REQUEST_ATTACHMENTS_DIR, String(requestId));
+
+        await fs.mkdir(requestDir, { recursive: true });
+        await fs.writeFile(path.join(requestDir, storedName), body);
+
+        const inserted = await conn.execute(sql`
+          INSERT INTO "requestAttachments" (
+            "requestId",
+            "originalName",
+            "storedName",
+            "fileUrl",
+            "mimeType",
+            "sizeBytes"
+          )
+          VALUES (
+            ${requestId},
+            ${originalName},
+            ${storedName},
+            ${attachmentPublicUrl(requestId, storedName)},
+            ${mimeType},
+            ${body.length}
+          )
+          RETURNING
+            "id",
+            "requestId",
+            "originalName",
+            "storedName",
+            "fileUrl",
+            "mimeType",
+            "sizeBytes",
+            "createdAt"
+        `);
+
+        broadcastLive("requests_changed", { requestId });
+        res.json(sqlRows(inserted)[0]);
+      } catch (error) {
+        sendError(res, error, "Failed to upload request attachment");
+      }
+    },
+  );
+
+  app.delete("/api/manager/request-attachments/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      await ensureRequestAttachmentsTable(conn);
+
+      const id = Number(req.params.id);
+      if (!id) throw new Error("attachment id is required");
+
+      const existing = await conn.execute(sql`
+        SELECT "id", "requestId", "storedName"
+        FROM "requestAttachments"
+        WHERE "id" = ${id}
+        LIMIT 1
+      `);
+      const attachment = sqlRows(existing)[0];
+
+      if (attachment) {
+        await conn.execute(sql`DELETE FROM "requestAttachments" WHERE "id" = ${id}`);
+
+        try {
+          await fs.unlink(path.join(REQUEST_ATTACHMENTS_DIR, String(attachment.requestId), String(attachment.storedName)));
+        } catch {
+          // File may already be absent; DB delete is enough.
+        }
+
+        broadcastLive("requests_changed", { requestId: attachment.requestId });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to delete request attachment");
+    }
+  });
+
+
+  // ─── Partners ──────────────────────────────────────────────────────────────
+
+  app.get("/api/manager/partners", async (_req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const rows = await conn
+        .select()
+        .from(partners)
+        .orderBy(partners.name, partners.id);
+
+      res.json(rows);
+    } catch (error) {
+      sendError(res, error, "Failed to load partners");
+    }
+  });
+
+  app.post("/api/manager/partners", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const input = inputFrom(req);
+      const name = String(input.name || "").trim();
+
+      if (!name) {
+        res.status(400).json({ error: "Укажите название партнёра" });
+        return;
+      }
+
+      const inserted = await conn
+        .insert(partners)
+        .values({
+          name,
+          email: input.email ? String(input.email).trim() : null,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          comment: input.comment ? String(input.comment).trim() : null,
+          isActive: input.isActive === false ? false : true,
+        })
+        .returning();
+
+      res.json(inserted[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to create partner");
+    }
+  });
+
+  app.put("/api/manager/partners/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      const input = inputFrom(req);
+      const name = String(input.name || "").trim();
+
+      if (!id || !name) {
+        res.status(400).json({ error: "Укажите ID и название партнёра" });
+        return;
+      }
+
+      const updated = await conn
+        .update(partners)
+        .set({
+          name,
+          email: input.email ? String(input.email).trim() : null,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          comment: input.comment ? String(input.comment).trim() : null,
+          isActive: input.isActive === false ? false : true,
+          updatedAt: new Date(),
+        })
+        .where(eq(partners.id, id))
+        .returning();
+
+      res.json(updated[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to update partner");
+    }
+  });
+
+  app.delete("/api/manager/partners/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      if (!id) {
+        res.status(400).json({ error: "Некорректный ID партнёра" });
+        return;
+      }
+
+      await conn.delete(partners).where(eq(partners.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to delete partner");
+    }
+  });
+
+  // ─── Transport Companies ───────────────────────────────────────────────────
+
+  app.get("/api/manager/transport-companies", async (_req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const rows = await conn
+        .select()
+        .from(transportCompanies)
+        .orderBy(transportCompanies.name, transportCompanies.id);
+
+      res.json(rows);
+    } catch (error) {
+      sendError(res, error, "Failed to load transport companies");
+    }
+  });
+
+  app.post("/api/manager/transport-companies", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const input = inputFrom(req);
+      const name = String(input.name || "").trim();
+      const address = String(input.address || "").trim();
+
+      if (!name || !address) {
+        res.status(400).json({ error: "Укажите название и адрес ТК" });
+        return;
+      }
+
+      const inserted = await conn
+        .insert(transportCompanies)
+        .values({
+          name,
+          address,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          comment: input.comment ? String(input.comment).trim() : null,
+          isActive: input.isActive === false ? false : true,
+        })
+        .returning();
+
+      res.json(inserted[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to create transport company");
+    }
+  });
+
+  app.put("/api/manager/transport-companies/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      const input = inputFrom(req);
+      const name = String(input.name || "").trim();
+      const address = String(input.address || "").trim();
+
+      if (!id || !name || !address) {
+        res.status(400).json({ error: "Укажите ID, название и адрес ТК" });
+        return;
+      }
+
+      const updated = await conn
+        .update(transportCompanies)
+        .set({
+          name,
+          address,
+          contactPerson: input.contactPerson ? String(input.contactPerson).trim() : null,
+          phone: input.phone ? String(input.phone).trim() : null,
+          comment: input.comment ? String(input.comment).trim() : null,
+          isActive: input.isActive === false ? false : true,
+          updatedAt: new Date(),
+        })
+        .where(eq(transportCompanies.id, id))
+        .returning();
+
+      res.json(updated[0]);
+    } catch (error) {
+      sendError(res, error, "Failed to update transport company");
+    }
+  });
+
+  app.delete("/api/manager/transport-companies/:id", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const id = Number(req.params.id);
+      if (!id) {
+        res.status(400).json({ error: "Некорректный ID ТК" });
+        return;
+      }
+
+      await conn.delete(transportCompanies).where(eq(transportCompanies.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      sendError(res, error, "Failed to delete transport company");
+    }
+  });
+
+
+  app.get("/api/request-attachments/:requestId/:storedName", async (req, res) => {
+    try {
+      const requestId = Number(req.params.requestId);
+      if (!requestId) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+
+      const storedName = safeAttachmentName(req.params.storedName);
+      const filePath = path.resolve(REQUEST_ATTACHMENTS_DIR, String(requestId), storedName);
+      const allowedRoot = path.resolve(REQUEST_ATTACHMENTS_DIR, String(requestId));
+
+      if (!filePath.startsWith(allowedRoot + path.sep)) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+
+      res.sendFile(filePath, (error) => {
+        if (error && !res.headersSent) {
+          res.status(404).json({ error: "Not found" });
+        }
+      });
+    } catch {
+      res.status(404).json({ error: "Not found" });
+    }
   });
 
   app.get("/api/trpc/requests.all", async (_req, res) => {

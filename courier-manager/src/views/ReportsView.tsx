@@ -35,7 +35,7 @@ const reportRows = [
 
 export default function ReportsView() {
   return (
-    <div className="space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Отчёты</h1>
@@ -55,7 +55,7 @@ export default function ReportsView() {
           const Icon = metric.icon;
 
           return (
-            <div key={metric.label} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium text-slate-500">{metric.label}</p>
@@ -76,7 +76,7 @@ export default function ReportsView() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
             <div>
               <h2 className="text-sm font-semibold text-slate-950">Доступные отчёты</h2>
@@ -124,7 +124,7 @@ export default function ReportsView() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
               <BarChart3 className="h-5 w-5" />

@@ -140,8 +140,6 @@ input:hover, select:hover, textarea:hover { border-color: #cbd5e1; }
 .max-w-4xl textarea { min-height: 3.25rem !important; height: 3.25rem !important; border-radius: 0.95rem !important; padding: 0.55rem 0.875rem !important; font-size: 0.9375rem !important; }
 .max-w-4xl .h-10 { height: 2.5rem !important; width: 2.5rem !important; }
 .max-w-4xl .h-11 { height: 2.5rem !important; }
-.max-w-4xl .rounded-2xl { border-radius: 0.95rem !important; }
-.max-w-4xl .rounded-\[24px\] { border-radius: 1.125rem !important; }
 .max-w-4xl .text-xl { font-size: 1.125rem !important; }
 .max-w-4xl .text-sm { font-size: 0.9375rem !important; }
 
@@ -161,4 +159,29 @@ input:hover, select:hover, textarea:hover { border-color: #cbd5e1; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
+}
+
+*/
+.rounded-\[28px\],
+.rounded-3xl,
+.rounded-\[24px\] {
+  border-radius: 24px !important;
+}
+
+.rounded-\[22px\] {
+  border-radius: 20px !important;
+}
+
+.rounded-2xl {
+  border-radius: 16px !important;
+}
+
+.rounded-xl,
+.rounded-lg {
+  border-radius: 14px !important;
+}
+
+/* keep circles/pills circular */
+.rounded-full {
+  border-radius: 9999px !important;
 }
