@@ -25,6 +25,7 @@ import MailsView from './views/MailsView';
 import ReportsView from './views/ReportsView';
 import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
+import ClientPortalView from './views/ClientPortalView';
 import { type ChatMessage, getChatMessages, sendChatMessage } from './lib/api';
 import { formatLocalDateWithOptions, formatLocalTime, getLocalDateKey } from './lib/local-time';
 
@@ -287,6 +288,14 @@ const menuItems = [
 ];
 
 function App() {
+  const isClientPortal =
+    window.location.pathname.startsWith('/client') ||
+    new URLSearchParams(window.location.search).has('client');
+
+  if (isClientPortal) {
+    return <ClientPortalView />;
+  }
+
   const [activeView, setActiveView] = useState<ViewType>('tasks');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [managerName, setManagerName] = useState('');
