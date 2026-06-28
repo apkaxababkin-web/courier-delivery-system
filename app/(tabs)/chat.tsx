@@ -7,26 +7,27 @@ import {
   Pressable,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { MessageCircle, Paperclip, Send } from "lucide-react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { useColors } from "@/hooks/use-colors";
-import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { DESIGN_PREVIEW_TOKEN } from "@/lib/design-preview";
 
 type ChatMessage = {
   id: number;
-  authorType: "manager" | "courier";
-  authorId: number | null;
-  authorName: string;
+  senderRole: "manager" | "courier" | string;
+  senderName: string;
+  senderId?: number | string | null;
+  authorType?: "manager" | "courier" | string;
+  authorId?: number | string | null;
   text: string;
   createdAt: string;
 };
@@ -51,7 +52,10 @@ export default function ChatScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const tabBarHeight = useBottomTabBarHeight();
+  const inputBottomGap = Platform.OS === "web"
+    ? 0
+    : Math.max(tabBarHeight - insets.bottom, 0);
   const { token, courier } = useCourierAuth();
 
   const [draft, setDraft] = useState("");
@@ -71,7 +75,7 @@ export default function ChatScreen() {
     try {
       if (showLoader) setIsLoading(true);
 
-      const response = await fetch(`${getApiBaseUrl()}/api/chat/messages?limit=120`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/manager/chat/messages?limit=120`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
@@ -81,7 +85,11 @@ export default function ChatScreen() {
         throw new Error(data?.error?.message || "Не удалось загрузить чат");
       }
 
-      setMessages(Array.isArray(data) ? data : []);
+      if (!Array.isArray(data)) {
+        throw new Error("Сервер вернул неверный формат сообщений");
+      }
+
+      setMessages(data);
       setError(null);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Ошибка загрузки чата";
@@ -100,13 +108,6 @@ export default function ChatScreen() {
     loadMessages(true);
   }, [isReady, loadMessages]);
 
-  useMobileLiveSync({
-    enabled: isReady,
-    onSync: useCallback(() => {
-      loadMessages(false);
-    }, [loadMessages]),
-  });
-
   useEffect(() => {
     if (messages.length === 0) return;
     const timer = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
@@ -119,13 +120,17 @@ export default function ChatScreen() {
 
     setIsSending(true);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/chat/messages`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/manager/chat/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          senderName: courier?.name || "Курьер",
+          senderRole: "courier",
+        }),
       });
 
       const data = await readJson(response);
@@ -145,7 +150,7 @@ export default function ChatScreen() {
 
   if (!isReady) {
     return (
-      <ScreenContainer className="p-0">
+      <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
         <HeaderBarV2 title="Чат" subtitle="Общий чат" onProfilePress={() => router.push("/profile" as never)} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
           <MessageCircle size={30} color={colors.primary} strokeWidth={2} />
@@ -154,24 +159,19 @@ export default function ChatScreen() {
             Общий чат доступен после входа курьера
           </Text>
         </View>
-      </ScreenContainer>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScreenContainer
-      className="p-0"
-      style={{
-        height: Platform.OS === "web" ? windowHeight : undefined,
-        backgroundColor: colors.background,
-      }}
-    >
+    <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
       <HeaderBarV2 title="Чат" subtitle="Общий чат МИГ" onProfilePress={() => router.push("/profile" as never)} />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-        style={{ flex: 1, minHeight: 0, paddingBottom: Platform.OS === "web" ? 76 : 64 + Math.max(insets.bottom, 12) }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        enabled
+        keyboardVerticalOffset={Platform.OS === "ios" ? Math.max(insets.top, 0) : 0}
+        style={{ flex: 1, minHeight: 0 }}
       >
         {isLoading ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
@@ -184,7 +184,17 @@ export default function ChatScreen() {
             data={messages}
             keyExtractor={(item) => String(item.id)}
             style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}
-            contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", paddingHorizontal: 10, paddingTop: 12, paddingBottom: 12 }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: "flex-end",
+              paddingHorizontal: 10,
+              paddingTop: 12,
+              paddingBottom: Math.max(insets.bottom + 12, 20),
+            }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            scrollIndicatorInsets={{ bottom: Math.max(insets.bottom + 12, 20) }}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
             ListEmptyComponent={
               <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
                 <MessageCircle size={26} color={colors.primary} strokeWidth={2} />
@@ -195,7 +205,10 @@ export default function ChatScreen() {
               </View>
             }
             renderItem={({ item }) => {
-              const own = item.authorType === "courier" && item.authorId === courier?.id;
+              const own =
+                (item.authorType === "courier" && String(item.authorId || "") === String(courier?.id || "")) ||
+                (item.senderRole === "courier" && item.senderId != null && String(item.senderId) === String(courier?.id || "")) ||
+                (item.senderRole === "courier" && item.senderName === courier?.name);
 
               return (
                 <View
@@ -222,7 +235,7 @@ export default function ChatScreen() {
                   >
                     {!own ? (
                       <Text numberOfLines={1} style={{ color: colors.primary, fontSize: 11, lineHeight: 16, fontWeight: "600", marginBottom: 2 }}>
-                        {item.authorType === "manager" ? `Менеджер • ${item.authorName}` : `Курьер • ${item.authorName}`}
+                        {item.senderRole === "manager" ? "Менеджер" : "Курьер"}{item.senderName ? ` • ${item.senderName}` : ""}
                       </Text>
                     ) : null}
                     <Text style={{ color: own ? "#F5F9FF" : colors.foreground, fontSize: 12.5, lineHeight: 18, fontWeight: "400" }}>
@@ -244,7 +257,20 @@ export default function ChatScreen() {
           </Text>
         ) : null}
 
-        <View style={{ minHeight: 58, flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 8, paddingTop: 7, paddingBottom: 8, borderTopWidth: 1, borderTopColor: border, backgroundColor: colors.background }}>
+        <View
+          style={{
+            minHeight: 58,
+            flexDirection: "row",
+            alignItems: "flex-end",
+            paddingHorizontal: 8,
+            paddingTop: 7,
+            paddingBottom: Math.max(insets.bottom, 8),
+            marginBottom: inputBottomGap,
+            borderTopWidth: 1,
+            borderTopColor: border,
+            backgroundColor: colors.background,
+          }}
+        >
           <View style={{ flex: 1, minHeight: 42, maxHeight: 94, flexDirection: "row", alignItems: "flex-end", borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: colors.surface }}>
             <Pressable style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
               <Paperclip size={19} color={colors.muted} strokeWidth={2} />
@@ -267,6 +293,6 @@ export default function ChatScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }

@@ -3,7 +3,7 @@ import "@/global.css";
 import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { AppState, Platform } from "react-native";
@@ -59,6 +59,7 @@ function AuthRedirect() {
 function SessionValidator() {
   const { token, isAuthenticated, loading, logout } = useCourierAuth();
   const router = useRouter();
+  const didRegisterPushRef = useRef(false);
   const registerPushTokenMutation = trpc.couriers.registerPushToken.useMutation();
 
   const { error } = trpc.courierAuth.me.useQuery(
@@ -71,7 +72,13 @@ function SessionValidator() {
   );
 
   useEffect(() => {
-    if (Platform.OS === "web" || !token || !isAuthenticated || loading) return;
+    if (Platform.OS === "web" || !token || !isAuthenticated || loading) {
+      didRegisterPushRef.current = false;
+      return;
+    }
+
+    if (didRegisterPushRef.current) return;
+    didRegisterPushRef.current = true;
 
     const registerPushToken = async () => {
       try {
@@ -91,12 +98,13 @@ function SessionValidator() {
         await registerPushTokenMutation.mutateAsync({ token, pushToken: pushToken.data });
         console.log("[Session] Push token registered");
       } catch (pushError) {
+        didRegisterPushRef.current = false;
         console.warn("[Session] Failed to register push token", pushError);
       }
     };
 
     registerPushToken();
-  }, [token, isAuthenticated, loading, registerPushTokenMutation]);
+  }, [token, isAuthenticated, loading]);
 
   useEffect(() => {
     if (!error || !isAuthenticated) return;

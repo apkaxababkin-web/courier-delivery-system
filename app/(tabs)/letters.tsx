@@ -1,16 +1,19 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { useRouter } from "expo-router";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NetworkBanner } from "@/components/network-banner";
 import { trpc } from "@/lib/trpc";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useColors } from "@/hooks/use-colors";
-import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { DESIGN_PREVIEW_TOKEN, designPreviewMails } from "@/lib/design-preview";
-import { CalendarDays, CheckCircle2, Circle, FileText, Search, UserRound, X } from "lucide-react-native";
+import { getApiBaseUrl } from "@/constants/oauth";
+import { createCourierMobileClient } from "@/shared/mobileCourierClient";
+import { CalendarDays, CheckCircle2, Circle, Search, UserRound, X } from "lucide-react-native";
 
 function formatDateTimeInput(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -55,10 +58,18 @@ function shortTime(value?: string | Date | null) {
 }
 
 export default function LettersScreen() {
+  const { height: windowHeight } = useWindowDimensions();
   const colors = useColors();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const bottomTabClearance = Platform.OS === "web"
+    ? 76
+    : Math.min(Math.max(tabBarHeight, 64 + insets.bottom), 120);
+  const deliverBarBottom = bottomTabClearance + 12;
   const { token } = useCourierAuth();
   const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
+  const mobileClient = useMemo(() => createCourierMobileClient(getApiBaseUrl()), []);
   const { isOnline } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
   const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
@@ -71,6 +82,7 @@ export default function LettersScreen() {
   const [recipientName, setRecipientName] = useState("");
   const [deliveredAtInput, setDeliveredAtInput] = useState(formatDateTimeInput(new Date()));
   const [deliveryTimeError, setDeliveryTimeError] = useState("");
+  const [snapshotMails, setSnapshotMails] = useState<any[]>([]);
   const longPressHandledRef = useRef(false);
 
   const isDeliveryModalOpen = selectedMailId !== null;
@@ -78,9 +90,47 @@ export default function LettersScreen() {
     { token: token || "" },
     { enabled: !!token && !isDesignPreview, refetchInterval: isDeliveryModalOpen || isDesignPreview ? false : 5000 },
   );
-  const mails = isDesignPreview ? designPreviewMails : mailsRaw;
+  const loadSnapshotMails = useCallback(async () => {
+    if (!token || isDesignPreview) return;
+    try {
+      const snapshot = await mobileClient.realtime(token);
+      setSnapshotMails(Array.isArray(snapshot.mails) ? snapshot.mails : []);
+    } catch (error) {
+      console.warn("[Letters] Realtime mails fallback failed", error);
+    }
+  }, [isDesignPreview, mobileClient, token]);
 
-  useMobileLiveSync({ enabled: !isDeliveryModalOpen && !isDesignPreview, onSync: useCallback(() => refetch(), [refetch]) });
+  useEffect(() => {
+    void loadSnapshotMails();
+  }, [loadSnapshotMails]);
+
+  const normalizedMailsRaw = Array.isArray(mailsRaw)
+    ? mailsRaw
+    : Array.isArray((mailsRaw as any)?.json)
+      ? (mailsRaw as any).json
+      : Array.isArray((mailsRaw as any)?.result?.data?.json)
+        ? (mailsRaw as any).result.data.json
+        : Array.isArray((mailsRaw as any)?.data?.json)
+          ? (mailsRaw as any).data.json
+          : [];
+
+  const mails = isDesignPreview
+    ? designPreviewMails
+    : normalizedMailsRaw.length > 0
+      ? normalizedMailsRaw
+      : snapshotMails;
+
+  useEffect(() => {
+    console.log("[Letters] state", {
+      tokenPresent: !!token,
+      mailsRawType: Array.isArray(mailsRaw) ? "array" : typeof mailsRaw,
+      mailsRawKeys: mailsRaw && typeof mailsRaw === "object" ? Object.keys(mailsRaw as any) : [],
+      normalizedMailsRaw: normalizedMailsRaw.length,
+      snapshotMails: snapshotMails.length,
+      mails: Array.isArray(mails) ? mails.length : -1,
+      isDesignPreview,
+    });
+  }, [token, mailsRaw, normalizedMailsRaw, snapshotMails, mails, isDesignPreview]);
 
   const deliverMutation = (trpc.mails as any).deliver.useMutation({
     onSuccess: () => refetch(),
@@ -104,7 +154,7 @@ export default function LettersScreen() {
       const delivered = mail.status === "delivered";
 
       if (!delivered) {
-        return selectedDateKey === todayKey;
+        return true;
       }
 
       const deliveredKey = String(mail.deliveredAt || "").slice(0, 10);
@@ -123,6 +173,13 @@ export default function LettersScreen() {
       }
       rows.push({ type: "mail", mail });
     });
+    console.log("[Letters] grouped", {
+      input: mails.length,
+      rows: rows.length,
+      search: q,
+      selectedDateKey,
+    });
+
     return rows;
   }, [mails, search, selectedDate]);
 
@@ -178,6 +235,7 @@ export default function LettersScreen() {
   };
 
   const selectionMode = selectedMailIds.length > 0 && selectedMailId === null;
+  const selectionPanelClearance = selectionMode ? 82 : 20;
 
   return (
     <ScreenContainer className="p-0">
@@ -203,11 +261,40 @@ export default function LettersScreen() {
         </View>
       </View>
 
+      <View style={{ paddingHorizontal: 16, paddingVertical: 6, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: border }}>
+        <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>
+          Писем загружено: {mails.length} · строк списка: {groupedMails.length}
+        </Text>
+      </View>
+
       <FlatList
         data={groupedMails}
         keyExtractor={(item: any, index) => item.type === "header" ? `h-${item.title}-${index}` : `m-${item.mail.id}`}
-        contentContainerStyle={{ paddingBottom: 150, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: border }}
-        ListFooterComponent={<View style={{ height: 90 }} />}
+        style={{
+          height: Math.max(windowHeight - 190, 420),
+          flexGrow: 0,
+          backgroundColor: colors.background,
+        }}
+        contentContainerStyle={{
+          paddingBottom: Math.max(bottomTabClearance + selectionPanelClearance, 180),
+          backgroundColor: colors.background,
+          borderTopWidth: 1,
+          borderTopColor: border,
+        }}
+        scrollIndicatorInsets={{ bottom: Math.max(bottomTabClearance + selectionPanelClearance, 180) }}
+        ListFooterComponent={<View style={{ height: Math.max(selectionPanelClearance, 80) }} />}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
+        initialNumToRender={50}
+        maxToRenderPerBatch={50}
+        windowSize={10}
+        ListEmptyComponent={
+          <View style={{ padding: 20 }}>
+            <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "700" }}>
+              Писем нет в списке. mails={mails.length}, rows={groupedMails.length}
+            </Text>
+          </View>
+        }
         renderItem={({ item }: any) => {
           if (item.type === "header") {
             if (item.title === "Сегодня") return null;
@@ -241,16 +328,40 @@ export default function LettersScreen() {
                 openDeliveryModal([mail.id]);
               }}
               style={({ pressed }) => ({
-                minHeight: 73,
-                backgroundColor: selected ? "rgba(59,130,246,0.10)" : pressed ? colors.surface : colors.background,
+                minHeight: 76,
+                backgroundColor: selected ? "rgba(59,130,246,0.12)" : pressed ? colors.surface : colors.background,
                 flexDirection: "row",
                 borderBottomWidth: 1,
                 borderBottomColor: border,
                 opacity: pressed ? 0.82 : 1,
               })}
             >
-              <View style={{ width: 48, alignItems: "center", justifyContent: "center", borderRightWidth: 1, borderRightColor: border }}>
-                <FileText size={21} color={colors.muted} strokeWidth={2} />
+              <View style={{ width: 54, alignItems: "center", justifyContent: "center", borderRightWidth: 1, borderRightColor: border }}>
+                {!delivered ? (
+                  <Pressable
+                    onPress={() => {
+                      setSelectedMailId(null);
+                      toggleMailSelection(mail.id);
+                    }}
+                    hitSlop={12}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: selected ? "rgba(59,130,246,0.16)" : "transparent",
+                    }}
+                  >
+                    {selected ? (
+                      <CheckCircle2 size={24} color={colors.primary} strokeWidth={2.6} />
+                    ) : (
+                      <Circle size={24} color={colors.muted} strokeWidth={2.2} />
+                    )}
+                  </Pressable>
+                ) : (
+                  <CheckCircle2 size={23} color={colors.success} strokeWidth={2.3} />
+                )}
               </View>
               <View style={{ flex: 1, paddingVertical: 10, paddingLeft: 12, paddingRight: 14 }}>
                 <View style={{ flexDirection: "row", alignItems: "baseline" }}>
@@ -265,13 +376,9 @@ export default function LettersScreen() {
                     {mail.recipientName || "—"}
                     <Text style={{ color: colors.muted, fontWeight: "400" }}>  {mail.deliveryAddress || "—"}</Text>
                   </Text>
-                  {selected ? (
-                    <CheckCircle2 size={17} color={colors.primary} strokeWidth={2.4} />
-                  ) : delivered ? (
-                    <CheckCircle2 size={17} color={colors.success} strokeWidth={2.2} />
-                  ) : (
-                    <Circle size={17} color={colors.primary} strokeWidth={2.2} />
-                  )}
+                  {!delivered && !selectionMode ? (
+                    <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "700" }}>Вручить</Text>
+                  ) : null}
                 </View>
                 {delivered ? (
                   <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3, fontSize: 11, lineHeight: 16 }}>
@@ -294,29 +401,34 @@ export default function LettersScreen() {
             position: "absolute",
             left: 12,
             right: 12,
-            bottom: 94,
-            zIndex: 20,
-            minHeight: 54,
+            bottom: deliverBarBottom,
+            zIndex: 999,
+            minHeight: 58,
             flexDirection: "row",
             alignItems: "center",
             paddingHorizontal: 14,
             backgroundColor: colors.surface,
-            borderRadius: 12,
+            borderRadius: 16,
             borderWidth: 1,
             borderColor: border,
+            shadowColor: "#000",
+            shadowOpacity: 0.16,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 24,
           }}
         >
           <Pressable onPress={() => setSelectedMailIds([])} hitSlop={8}>
             <X size={20} color={colors.muted} />
           </Pressable>
           <Text style={{ flex: 1, color: colors.foreground, fontSize: 13, fontWeight: "700", marginLeft: 12 }}>
-            Выбрано: {selectedMailIds.length}
+            Выбрано писем: {selectedMailIds.length}
           </Text>
           <Pressable
             onPress={() => openDeliveryModal(selectedMailIds)}
-            style={{ minHeight: 36, paddingHorizontal: 18, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}
+            style={{ minHeight: 40, paddingHorizontal: 18, borderRadius: 10, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}
           >
-            <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Вручить</Text>
+            <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>Вручить</Text>
           </Pressable>
         </View>
       ) : null}

@@ -1,4 +1,4 @@
-import { Platform, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { CheckCircle2, CircleDot, Clock3, Plus, XCircle } from "lucide-react-native";
 
 type OperationRowProps = {
@@ -29,11 +29,6 @@ type OperationRowProps = {
   onPress: () => void;
 };
 
-const uiFont = Platform.select({
-  ios: "SF Pro Text",
-  android: "sans-serif",
-  web: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-});
 
 function StatusIcon({ status, color }: { status: string; color: string }) {
   if (status === "completed") return <CheckCircle2 size={20} color={color} strokeWidth={2.5} />;
@@ -53,12 +48,12 @@ function AddressLine({
   colors: OperationRowProps["colors"];
 }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", minHeight: 19, minWidth: 0 }}>
-      <Text numberOfLines={1} style={{ color: colors.foreground, fontFamily: uiFont, fontSize: 12, lineHeight: 19, fontWeight: "600", flexShrink: 1 }}>
+    <View style={{ minHeight: 19, minWidth: 0 }}>
+      <Text numberOfLines={2} style={{ color: colors.foreground, fontSize: 13, lineHeight: 17, fontWeight: "700" }}>
         {name || "—"}
       </Text>
       {address ? (
-        <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: uiFont, fontSize: 12, lineHeight: 19, fontWeight: "400", flexShrink: 1, marginLeft: 8 }}>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: colors.muted, fontSize: 11, lineHeight: 15, fontWeight: "500", marginTop: 1 }}>
           {address}
         </Text>
       ) : null}
@@ -90,24 +85,46 @@ export function OperationRow({
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 128,
+        minHeight: 108,
+        position: "relative",
         flexDirection: "row",
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
         paddingLeft: 0,
-        paddingRight: 14,
+        paddingRight: 16,
         backgroundColor: pressed ? colors.surface : "transparent",
         opacity: pressed ? 0.9 : 1,
       })}
     >
       <View
+        pointerEvents="none"
         style={{
-          width: 48,
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 1,
+          backgroundColor: colors.border,
+          zIndex: 2,
+        }}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: 44,
+          top: 0,
+          bottom: 0,
+          width: 1,
+          backgroundColor: colors.border,
+          zIndex: 2,
+        }}
+      />
+      <View
+        style={{
+          width: 44,
           alignSelf: "stretch",
           alignItems: "center",
           justifyContent: "center",
-          borderRightWidth: 1,
-          borderRightColor: colors.border,
+          borderRightWidth: 0,
         }}
       >
         <View style={{ alignItems: "center", justifyContent: "center" }}>
@@ -119,16 +136,16 @@ export function OperationRow({
         style={{
           flex: 1,
           minWidth: 0,
-          paddingVertical: 12,
-          marginLeft: 13,
+          paddingVertical: 8,
+          marginLeft: 11,
           justifyContent: "space-between",
         }}
       >
         <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
-          <View style={{ flex: 1, minWidth: 0, justifyContent: "space-between", paddingRight: 10 }}>
+          <View style={{ flex: 1, minWidth: 0, justifyContent: "space-between", paddingRight: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center", minHeight: 20 }}>
               <TypeIcon size={14} color={typeColor} strokeWidth={2.2} />
-              <Text numberOfLines={1} style={{ color: typeColor, fontFamily: uiFont, fontSize: 11.5, lineHeight: 20, fontWeight: "600", marginLeft: 6 }}>
+              <Text numberOfLines={1} style={{ color: typeColor, fontSize: 11, lineHeight: 18, fontWeight: "600", marginLeft: 6 }}>
                 {typeLabel}
               </Text>
             </View>
@@ -138,26 +155,26 @@ export function OperationRow({
             {secondaryName ? (
               <AddressLine name={secondaryName} address={secondaryAddress} colors={colors} />
             ) : (
-              <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: uiFont, fontSize: 11, lineHeight: 19, fontWeight: "400" }}>
+              <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: "400" }}>
                 {trailingMeta ? <Text style={{ color: colors.foreground, fontWeight: "600" }}>{trailingMeta}  ·  </Text> : null}
                 {detailLine || "—"}
               </Text>
             )}
 
-            <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: uiFont, fontSize: 11, lineHeight: 19, fontWeight: "400" }}>
+            <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: "400" }}>
               {courier || "Без курьера"}
             </Text>
           </View>
 
-          <View style={{ width: 62, alignItems: "flex-end", justifyContent: "space-between" }}>
-            <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: uiFont, fontSize: 11, lineHeight: 20, fontWeight: "400" }}>
+          <View style={{ width: 88, alignItems: "flex-end", justifyContent: "space-between" }}>
+            <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: "400" }}>
               {requestNumber ? `№${requestNumber}` : "—"}
             </Text>
-            <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: uiFont, fontSize: 11, lineHeight: 19, fontWeight: "400" }}>
+            <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: "400" }}>
               {time || "—"}
             </Text>
             <View style={{ minHeight: 19 }} />
-            <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: uiFont, fontSize: 11, lineHeight: 19, fontWeight: "400" }}>
+            <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: "400" }}>
               {places || ""}
             </Text>
           </View>

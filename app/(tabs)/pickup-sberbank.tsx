@@ -1,15 +1,14 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useRouter } from "expo-router";
 import { skipToken } from "@tanstack/react-query";
-import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { NetworkBanner } from "@/components/network-banner";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import { useCallback, useState } from "react";
-import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { PickupOperationList } from "@/components/pickup-operation-list";
 import { performSuccessHaptic } from "@/lib/vibration-preference";
@@ -40,6 +39,7 @@ export default function SberbankScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const { token } = useCourierAuth();
   const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
   const { isOnline } = useNetworkStatus();
@@ -56,14 +56,6 @@ export default function SberbankScreen() {
   const { data: pickedCountRaw = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(queryInput);
   const pickedCount = Number(pickedCountRaw) || pickupPoints.filter((point) => point.isPicked).length;
 
-  useMobileLiveSync({
-    enabled: !isDesignPreview,
-    onSync: useCallback(() => {
-      if (!token) return;
-      return Promise.all([refetch(), refetchCount()]);
-    }, [token, refetch, refetchCount]),
-  });
-
   const toggleMutation = trpc.sberbank.togglePickup.useMutation({
     onSuccess: () => {
       refetch();
@@ -79,7 +71,7 @@ export default function SberbankScreen() {
   };
 
   return (
-    <ScreenContainer className="p-0">
+    <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
       <NetworkBanner visible={!isOnline} />
 
       <HeaderBarV2
@@ -107,8 +99,8 @@ export default function SberbankScreen() {
 
       {pickupPoints.length > 0 ? (
         <ScrollView
-          style={{ flex: 1, backgroundColor: colors.background }}
-          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 110, 140), flexGrow: 1 }}
+          style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}
+          contentContainerStyle={{ paddingBottom: Math.max(tabBarHeight + 24, insets.bottom + 32), flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
         >
           <PickupOperationList points={pickupPoints} colors={colors} fallbackName="Точка Сбербанк" disabled={toggleMutation.isPending} onToggle={handleTogglePickup} />
@@ -122,6 +114,6 @@ export default function SberbankScreen() {
           <Text style={{ color: colors.muted }}>Нет точек сбора</Text>
         </View>
       )}
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }

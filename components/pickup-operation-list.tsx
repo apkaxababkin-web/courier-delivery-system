@@ -51,14 +51,25 @@ export function PickupOperationList({
             key={point.id}
             disabled={disabled}
             onPress={() => onToggle(point.id)}
-            style={({ pressed }) => ({
-              minHeight: 72,
-              flexDirection: "row",
-              backgroundColor: pressed ? colors.surface : colors.background,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-              opacity: disabled ? 0.55 : 1,
-            })}
+            style={({ pressed }) => {
+              const pickedBackground = "rgba(34, 197, 94, 0.10)";
+              const pickedPressedBackground = "rgba(34, 197, 94, 0.16)";
+
+              return {
+                minHeight: 72,
+                flexDirection: "row",
+                backgroundColor: point.isPicked
+                  ? pressed
+                    ? pickedPressedBackground
+                    : pickedBackground
+                  : pressed
+                    ? colors.surface
+                    : colors.background,
+                borderBottomWidth: 1,
+                borderBottomColor: point.isPicked ? "rgba(34, 197, 94, 0.28)" : colors.border,
+                opacity: disabled ? 0.55 : 1,
+              };
+            }}
           >
             <View
               style={{

@@ -121,7 +121,7 @@ export default function ProfileModal() {
     };
 
     registerPushToken();
-  }, [token, notificationsEnabled, registerPushTokenMutation]);
+  }, [token, notificationsEnabled]);
 
   const handleLogin = async () => {
     const cleanUsername = username.trim();

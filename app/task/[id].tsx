@@ -22,6 +22,7 @@ import { useState, type ReactNode } from "react";
 import { useToast } from "react-native-toast-notifications";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBadge } from "@/components/status-badge";
 import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
@@ -366,16 +367,37 @@ export default function TaskDetailScreen() {
   const taskComment = parsedTaskInfo.comment || "—";
   const paymentStatusLabel = parsedTaskInfo.paymentLabel;
   const courierComment = task.courierComments || "";
+  const taskType = task.requestType || task.taskType;
+  const isCourierCall = taskType === "courier_call";
+  const customerCompany =
+    task.senderCompany ||
+    task.recipientCompany ||
+    task.senderName ||
+    task.recipientName ||
+    "Заказчик";
+  const customerAddress =
+    task.senderAddress ||
+    task.deliveryAddress ||
+    task.recipientAddress ||
+    "";
+  const customerPhone =
+    task.senderPhone ||
+    task.recipientPhone ||
+    "";
 
   return (
-    <ScreenContainer
+    <SafeAreaView
       edges={["top", "left", "right", "bottom"]}
-      className="p-0"
       style={{
+        flex: 1,
         backgroundColor: colors.background,
-        height: Platform.OS === "web" ? windowHeight : undefined,
       }}
     >
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.background }}
+        contentContainerStyle={{ flexGrow: 1, backgroundColor: colors.background }}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={{ backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: palette.border, paddingHorizontal: 12, paddingVertical: 9 }}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={{ width: 42, height: 42, alignItems: "center", justifyContent: "center" }}>
@@ -391,21 +413,17 @@ export default function TaskDetailScreen() {
         </View>
       </View>
 
-      <ScrollView
-        style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}
-        contentContainerStyle={{ paddingBottom: 12, backgroundColor: colors.background }}
-        showsVerticalScrollIndicator={false}
-      >
+
         {[
           {
-            label: "ОТПРАВИТЕЛЬ",
-            name: task.senderName || "—",
-            address: task.senderAddress,
-            phone: task.senderPhone,
+            label: isCourierCall ? "ЗАКАЗЧИК" : "ОТПРАВИТЕЛЬ",
+            name: isCourierCall ? customerCompany : task.senderName || task.senderCompany || "—",
+            address: isCourierCall ? customerAddress : task.senderAddress,
+            phone: isCourierCall ? customerPhone : task.senderPhone,
           },
           {
             label: "ПОЛУЧАТЕЛЬ",
-            name: task.recipientName || "—",
+            name: task.recipientName || task.recipientCompany || "—",
             address: task.deliveryAddress,
             phone: task.recipientPhone,
           },
@@ -489,17 +507,16 @@ export default function TaskDetailScreen() {
             <Text style={{ color: colors.muted, fontSize: 10.5, marginLeft: 6 }}>{formatCreatedAt((task as any).createdAt)}</Text>
           </View>
         </View>
-      </ScrollView>
+        <View style={{ flexGrow: 1, minHeight: 12 }} />
 
       <View
         style={{
-          flexShrink: 0,
           backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: palette.border,
           paddingHorizontal: 16,
-          paddingTop: 10,
-          paddingBottom: 12,
+          paddingTop: 8,
+          paddingBottom: 34,
         }}
       >
         <View style={{ flexDirection: "row", gap: 6 }}>
@@ -510,6 +527,7 @@ export default function TaskDetailScreen() {
         <View style={{ height: 7 }} />
         <ActionButton label="Выполнено" icon="done" onPress={() => handleSetStatus("completed")} disabled={isCancelled} done active={isCompleted} />
       </View>
+      </ScrollView>
 
       <Modal visible={courierPickerVisible} transparent animationType="slide" onRequestClose={() => setCourierPickerVisible(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
@@ -577,7 +595,7 @@ export default function TaskDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
@@ -625,7 +643,8 @@ function ActionButton({ label, icon, onPress, disabled, muted, done, active }: {
         borderColor,
         borderWidth: 1,
         borderRadius: 10,
-        paddingVertical: done ? 11 : 9,
+        minHeight: done ? 44 : 36,
+        paddingVertical: done ? 9 : 8,
         alignItems: "center" as const,
         justifyContent: "center" as const,
         flexDirection: "row" as const,
@@ -634,7 +653,7 @@ function ActionButton({ label, icon, onPress, disabled, muted, done, active }: {
       })}
     >
       <Icon size={done ? 20 : 18} color={iconColor} strokeWidth={2.2} />
-      <Text style={{ color: textColor, fontWeight: "600", fontSize: done ? 13 : 11.5 }}>{label}</Text>
+      <Text numberOfLines={1} style={{ color: textColor, fontWeight: "700", fontSize: done ? 14 : 11.5, lineHeight: done ? 18 : 15, includeFontPadding: true }}>{label}</Text>
     </Pressable>
   );
 }

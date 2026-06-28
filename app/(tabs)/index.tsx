@@ -1,8 +1,10 @@
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import {
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Swipeable } from "react-native-gesture-handler";
 
 import { NetworkBanner } from "@/components/network-banner";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
@@ -35,26 +38,45 @@ import {
   Truck,
   Mail,
 } from "lucide-react-native";
+import { formatLocalDateWithOptions, toLocalDateKey } from "@/app/lib/local-date";
 
-const toLocalDateKey = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-};
 
 const getTaskDateKey = (task: any) => {
-  const value = task.scheduledAt || task.createdAt;
+  const isDone = task?.status === "completed" || task?.status === "cancelled";
+  const value = isDone
+    ? task.completedAt || task.scheduledAt || task.createdAt
+    : task.scheduledAt || task.createdAt;
+
   if (!value) return "";
-
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-
+  if (Number.isNaN(date.getTime())) return "";
   return toLocalDateKey(date);
 };
 
 const isActiveBoardTask = (task: any) => task.status !== "completed" && task.status !== "cancelled";
+
+const cleanCardComment = (value?: string | null) => {
+  if (!value) return "";
+
+  return value
+    .split("\n")
+    .map((line) => line.replace(/\[request:\d+\]\s*/gi, "").trim())
+    .filter(Boolean)
+    .filter((line) => !/^Тип заявки:/i.test(line))
+    .filter((line) => !/^Оплата:/i.test(line))
+    .filter((line) => !/^Сумма:/i.test(line))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const getCardDetailLine = (task: any) => {
+  const comment = cleanCardComment(task.comments) || cleanCardComment(task.specialInstructions);
+  if (comment) return comment;
+
+  return task.recipientName || task.senderName || undefined;
+};
+
 
 export default function TaskListScreen() {
   const colors = useColors();
@@ -65,6 +87,7 @@ export default function TaskListScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
   const mobileClient = useMemo(() => createCourierMobileClient(getApiBaseUrl()), []);
   const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
 
@@ -83,15 +106,7 @@ export default function TaskListScreen() {
     queryFn: async () => {
       if (!token) return [];
 
-      if (isSelectedDateToday) {
-        try {
-          const snapshot = await mobileClient.realtime(token);
-          const realtimeTasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
-
-          if (realtimeTasks.length > 0) return realtimeTasks;
-        } catch {}
-      }
-
+      console.log("[TasksScreen] loading selected date from server:", selectedDateKey);
       return mobileClient.tasksAll(token, selectedDateKey);
     },
     staleTime: 0,
@@ -115,6 +130,17 @@ export default function TaskListScreen() {
       return refetch();
     }, [token, refetch]),
   });
+
+  const handleRefresh = useCallback(async () => {
+    if (isDesignPreview) return;
+
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, isDesignPreview]);
 
   useEffect(() => {
     if (!token || authLoading || isDesignPreview) return;
@@ -228,6 +254,63 @@ export default function TaskListScreen() {
       refetch();
     }, [refetch, isDesignPreview]),
   );
+
+  const handleSwipeCompleteTask = useCallback(async (item: any) => {
+    if (isDesignPreview) return;
+
+    if (!token) {
+      Alert.alert("Ошибка", "Нет активной сессии курьера");
+      return;
+    }
+
+    if (item.status === "completed" || item.status === "cancelled") return;
+
+    const taskId = Number(item.id);
+    if (!Number.isFinite(taskId)) {
+      Alert.alert("Ошибка", "Некорректный номер заявки");
+      return;
+    }
+
+    try {
+      setCompletingTaskId(taskId);
+      await mobileClient.setTaskStatus(token, taskId, "completed");
+      await refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось выполнить заявку";
+      Alert.alert("Ошибка", message);
+    } finally {
+      setCompletingTaskId((current) => (current === taskId ? null : current));
+    }
+  }, [isDesignPreview, mobileClient, refetch, token]);
+
+  const renderSwipeCompleteAction = useCallback((item: any) => {
+    const taskId = Number(item.id);
+    const disabled = completingTaskId === taskId;
+
+    return (
+      <View style={{ width: 112, backgroundColor: "#16A34A", justifyContent: "center" }}>
+        <Pressable
+          disabled={disabled}
+          onPress={() => handleSwipeCompleteTask(item)}
+          style={({ pressed }) => ({
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 10,
+            opacity: disabled || pressed ? 0.72 : 1,
+          })}
+        >
+          {disabled ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={{ color: "#fff", fontSize: 12, lineHeight: 16, fontWeight: "800" }}>
+              Выполнено
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    );
+  }, [completingTaskId, handleSwipeCompleteTask]);
 
   const getDaysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -393,15 +476,19 @@ export default function TaskListScreen() {
 
     if (type === "pickup_from_tc") {
       const isToTc = String(item.comments || "").includes("получатель → ТК");
+      const tcName = item.tcName || item.senderName || item.senderCompany || "Транспортная компания";
+      const tcAddress = item.tcAddress || item.senderAddress || "";
+      const recipientName = item.recipientName || item.recipientCompany || "Получатель";
+      const recipientAddress = item.deliveryAddress || item.recipientAddress || "";
 
       return {
         isNuts: false,
-        leftTitle: isToTc ? "Откуда" : "ТК",
-        leftName: isToTc ? (item.recipientName || "Получатель") : (item.tcName || "ТК"),
-        leftAddress: isToTc ? (item.deliveryAddress || item.recipientAddress || "") : (item.tcAddress || ""),
-        rightTitle: isToTc ? "ТК" : "Куда",
-        rightName: isToTc ? (item.tcName || "ТК") : (item.recipientName || "Получатель"),
-        rightAddress: isToTc ? (item.tcAddress || "") : (item.deliveryAddress || item.recipientAddress || ""),
+        leftTitle: isToTc ? "Откуда" : "",
+        leftName: isToTc ? recipientName : tcName,
+        leftAddress: isToTc ? recipientAddress : tcAddress,
+        rightTitle: isToTc ? "" : "Куда",
+        rightName: isToTc ? tcName : recipientName,
+        rightAddress: isToTc ? tcAddress : recipientAddress,
       };
     }
 
@@ -569,7 +656,7 @@ export default function TaskListScreen() {
                 <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "800" }}>‹</Text>
               </TouchableOpacity>
               <Text style={{ fontSize: 12, fontWeight: "800", color: colors.foreground }}>
-                {selectedDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
+                {formatLocalDateWithOptions(selectedDate, { month: "long", year: "numeric" }, "")}
               </Text>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}>
                 <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "800" }}>›</Text>
@@ -589,7 +676,7 @@ export default function TaskListScreen() {
             <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 10, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4, fontWeight: "700" }}>Выбранная дата:</Text>
               <Text style={{ fontSize: 12, fontWeight: "800", color: colors.foreground }}>
-                {selectedDate.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                {formatLocalDateWithOptions(selectedDate, { weekday: "long", year: "numeric", month: "long", day: "numeric" }, "")}
               </Text>
             </View>
 
@@ -605,16 +692,6 @@ export default function TaskListScreen() {
         </Pressable>
       </Modal>
 
-        <View style={{ backgroundColor: "#FACC15", paddingHorizontal: 8, paddingVertical: 5 }}>
-          <Text style={{ color: "#111827", fontSize: 10, lineHeight: 14, fontWeight: "700" }}>
-            BUILD LAYOUT FIX 14a8ef2
-          </Text>
-          <Text style={{ color: "#111827", fontSize: 10, lineHeight: 14, fontWeight: "700" }}>
-            raw {tasksData.length} / filtered {filteredTasks.length} / sorted {sortedTasks.length} / tokenPresent {String(!!token)} / authLoading{" "}
-            {String(authLoading)} / isLoading {String(isLoading)} / {selectedDateKey} / filterMode {filterMode}
-          </Text>
-        </View>
-
         {isLoading && sortedTasks.length === 0 ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -623,7 +700,15 @@ export default function TaskListScreen() {
           <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
             <ScrollView
               style={{ flex: 1, backgroundColor: colors.background }}
-              contentContainerStyle={{ paddingTop: 10, paddingHorizontal: 12, paddingBottom: 160 }}
+              contentContainerStyle={{ paddingTop: 0, paddingHorizontal: 0, paddingBottom: 160 }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={colors.primary}
+                  colors={[colors.primary]}
+                />
+              }
               showsVerticalScrollIndicator={false}
             >
               {sortedTasks.length === 0 ? (
@@ -647,13 +732,12 @@ export default function TaskListScreen() {
                         .join(" · ")
                     : undefined;
                   const nutsSum = nutsTask ? getNutsSumLabel(item) : null;
+                  const cardDetailLine = getCardDetailLine(item);
                   const TypeIcon = getTaskTypeIcon(item);
 
                   return (
                     <View key={`${String(item.id)}-${index}`} collapsable={false}>
-                      <Text style={{ color: "#DC2626", fontSize: 10, lineHeight: 14, fontWeight: "900" }}>
-                        CARD DEBUG #{index + 1} id={item.id}
-                      </Text>
+                      {item.status === "completed" || item.status === "cancelled" ? (
                       <OperationRow
                         colors={colors}
                         status={item.status}
@@ -666,7 +750,7 @@ export default function TaskListScreen() {
                         primaryAddress={nutsTask ? item.deliveryAddress || item.recipientAddress : info.leftAddress}
                         secondaryName={!nutsTask && !courierCallTask ? info.rightName : undefined}
                         secondaryAddress={!nutsTask && !courierCallTask ? info.rightAddress : undefined}
-                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : courierCallTask ? item.comments || "Забрать у отправителя" : undefined}
+                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : cardDetailLine}
                         places={getPlacesLabel(item)}
                         courier={getCourierLabel(item)}
                         trailingMeta={nutsTask ? nutsSum : undefined}
@@ -674,6 +758,33 @@ export default function TaskListScreen() {
                         isLast={index === sortedTasks.length - 1}
                         onPress={() => router.push(`/task/${item.id}` as never)}
                       />
+                      ) : (
+                        <Swipeable
+                          overshootLeft={false}
+                          renderLeftActions={() => renderSwipeCompleteAction(item)}
+                        >
+                      <OperationRow
+                        colors={colors}
+                        status={item.status}
+                        statusColor={getTaskStatusColor(item.status)}
+                        typeLabel={getTaskTypeLabel(item)}
+                        typeColor={getTaskTypeColor(item)}
+                        TypeIcon={TypeIcon}
+                        requestNumber={getDisplayRequestId(item)}
+                        primaryName={nutsTask ? item.recipientName || "Получатель" : info.leftName}
+                        primaryAddress={nutsTask ? item.deliveryAddress || item.recipientAddress : info.leftAddress}
+                        secondaryName={!nutsTask && !courierCallTask ? info.rightName : undefined}
+                        secondaryAddress={!nutsTask && !courierCallTask ? info.rightAddress : undefined}
+                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : cardDetailLine}
+                        places={getPlacesLabel(item)}
+                        courier={getCourierLabel(item)}
+                        trailingMeta={nutsTask ? nutsSum : undefined}
+                        time={getTaskTimeLabel(item)}
+                        isLast={index === sortedTasks.length - 1}
+                        onPress={() => router.push(`/task/${item.id}` as never)}
+                      />
+                        </Swipeable>
+                      )}
                     </View>
                   );
                 })
