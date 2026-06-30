@@ -1,14 +1,16 @@
-import { ScrollView, Text, View } from "react-native";
+import { AppState, ScrollView, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import EventSource from "react-native-sse";
+import { getApiBaseUrl } from "@/constants/oauth";
 import { skipToken } from "@tanstack/react-query";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { NetworkBanner } from "@/components/network-banner";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { PickupOperationList } from "@/components/pickup-operation-list";
 import { performSuccessHaptic } from "@/lib/vibration-preference";
@@ -64,6 +66,94 @@ export default function HemotestScreen() {
       performSuccessHaptic().catch(() => undefined);
     },
   });
+
+  const refreshHemotest = useCallback(() => {
+    if (!token || isDesignPreview) return;
+    void refetch();
+    void refetchCount();
+  }, [token, isDesignPreview, refetch, refetchCount]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshHemotest();
+
+      const interval = setInterval(refreshHemotest, 5000);
+
+      return () => clearInterval(interval);
+    }, [refreshHemotest])
+  );
+
+  useEffect(() => {
+    if (!token || isDesignPreview) return;
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshHemotest();
+    });
+
+    return () => subscription.remove();
+  }, [token, isDesignPreview, refetch, refetchCount]);
+
+  useEffect(() => {
+    if (!token || isDesignPreview) return;
+
+    let closed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let eventSource: any = null;
+
+    const connect = () => {
+      if (closed) return;
+
+      try {
+        eventSource = new EventSource(`${getApiBaseUrl()}/api/live`, {
+          pollingInterval: 0,
+        });
+
+        eventSource.addEventListener("connected", () => {
+          console.log("[HemotestLiveSync] connected");
+        });
+
+        eventSource.addEventListener("hemotest_changed", () => {
+          console.log("[HemotestLiveSync] hemotest_changed");
+          refreshHemotest();
+        });
+
+        eventSource.addEventListener("data_changed", () => {
+          console.log("[HemotestLiveSync] data_changed");
+          refreshHemotest();
+        });
+
+        eventSource.addEventListener("error", (error: unknown) => {
+          console.warn("[HemotestLiveSync] error:", error);
+
+          try {
+            eventSource?.close();
+          } catch {}
+
+          if (!closed) {
+            reconnectTimer = setTimeout(connect, 3000);
+          }
+        });
+      } catch (error) {
+        console.warn("[HemotestLiveSync] connect failed:", error);
+
+        if (!closed) {
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+
+      try {
+        eventSource?.close();
+      } catch {}
+    };
+  }, [token, isDesignPreview, refetch, refetchCount]);
 
   const handleTogglePickup = (pointId: number) => {
     if (isDesignPreview) return;

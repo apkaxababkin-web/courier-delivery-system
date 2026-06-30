@@ -2,10 +2,13 @@ import { Tabs } from "expo-router";
 import { Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import type { ComponentProps } from "react";
+import EventSource from "react-native-sse";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { useColors } from "@/hooks/use-colors";
+import { getApiBaseUrl } from "@/constants/oauth";
+import { useCourierAuth } from "@/lib/courier-auth";
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
@@ -42,6 +45,56 @@ export default function TabLayout() {
   const tabBarHeight = 64 + bottomSafeArea;
   const activeColor = dark ? "#8EBEFF" : "#1D6FF2";
   const inactiveColor = dark ? "#8B96A6" : "#64748B";
+  const { token } = useCourierAuth();
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+
+  const loadChatUnreadCount = useCallback(async () => {
+    if (!token) {
+      setChatUnreadCount(0);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/chat/unread-count`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const data = await response.json();
+      setChatUnreadCount(Number(data?.count || 0));
+    } catch {}
+  }, [token]);
+
+  useEffect(() => {
+    void loadChatUnreadCount();
+
+    const interval = setInterval(() => {
+      void loadChatUnreadCount();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [loadChatUnreadCount]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    let eventSource: any = null;
+
+    try {
+      eventSource = new EventSource(`${getApiBaseUrl()}/api/live`, { pollingInterval: 0 });
+      eventSource.addEventListener("chat_changed", () => {
+        void loadChatUnreadCount();
+      });
+      eventSource.addEventListener("chat_read", () => {
+        void loadChatUnreadCount();
+      });
+    } catch {}
+
+    return () => {
+      try {
+        eventSource?.close();
+      } catch {}
+    };
+  }, [token, loadChatUnreadCount]);
 
   return (
     <Tabs
@@ -92,7 +145,15 @@ export default function TabLayout() {
       <Tabs.Screen name="pickup-gemotest" options={{ title: "Гемотест", tabBarIcon: ({ color, focused }) => <TabIcon name="biotech" color={color} focused={focused} /> }} />
       <Tabs.Screen name="pickup-sberbank" options={{ title: "Сбербанк", tabBarIcon: ({ color, focused }) => <TabIcon name="account-balance" color={color} focused={focused} /> }} />
       <Tabs.Screen name="letters" options={{ title: "Письма", tabBarIcon: ({ color, focused }) => <TabIcon name="description" color={color} focused={focused} /> }} />
-      <Tabs.Screen name="chat" options={{ title: "Чат", tabBarIcon: ({ color, focused }) => <TabIcon name="chat-bubble-outline" color={color} focused={focused} /> }} />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: "Чат",
+          tabBarBadge: chatUnreadCount > 0 ? (chatUnreadCount > 99 ? "99+" : chatUnreadCount) : undefined,
+          tabBarBadgeStyle: { backgroundColor: "#EF4444", color: "#FFFFFF", fontSize: 10, fontWeight: "700" },
+          tabBarIcon: ({ color, focused }) => <TabIcon name="chat-bubble-outline" color={color} focused={focused} />,
+        }}
+      />
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
