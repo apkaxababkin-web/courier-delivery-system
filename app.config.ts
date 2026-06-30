@@ -2,7 +2,7 @@
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
 
-const rawBundleId = "space.manus.courier.app.t20260415204516";
+const rawBundleId = "com.couriermig.app";
 const bundleId =
   rawBundleId
     .replace(/[-_]/g, ".")
@@ -28,7 +28,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.0",
+  version: "1.0.1",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -38,6 +38,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: false,
     bundleIdentifier: env.iosBundleId,
+      buildNumber: "2",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
