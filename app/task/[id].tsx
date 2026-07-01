@@ -18,7 +18,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { skipToken } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useToast } from "react-native-toast-notifications";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -46,6 +46,8 @@ import {
   UserRound,
   XCircle,
 } from "lucide-react-native";
+import EventSource from "react-native-sse";
+import { getApiBaseUrl } from "@/constants/oauth";
 
 type Palette = {
   border: string;
@@ -124,6 +126,7 @@ function getTaskTypeLabel(task: any) {
   if (type === "nuts" || type === "warehouse_pickup") return "Орехи";
   if (type === "courier_call") return "Вызов курьера";
   if (type === "pickup_from_tc") return "Получение в ТК";
+  if (type === "simple") return "Заявка";
   return "Заявка";
 }
 
@@ -172,7 +175,7 @@ function ClickableLine({ value, onPress, muted = false }: { value?: string | nul
 }
 
 export default function TaskDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, number } = useLocalSearchParams<{ id: string; number?: string }>();
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const colors = useColors();
@@ -200,6 +203,79 @@ export default function TaskDetailScreen() {
   const { data: taskRaw, isLoading } = trpc.tasks.byId.useQuery(token && !isDesignPreview ? { token, id: taskId } : skipToken);
   const task = isDesignPreview ? designPreviewTasks.find((item) => item.id === taskId) : taskRaw;
   const { data: couriersList } = trpc.couriers.list.useQuery(token && !isDesignPreview ? { token } : skipToken);
+
+  useEffect(() => {
+    if (!token || isDesignPreview || !taskId) return;
+
+    let closed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let eventSource: any = null;
+
+    const refreshTask = () => {
+      void utils.tasks.byId.invalidate();
+      void utils.tasks.all.invalidate();
+      void utils.tasks.history.invalidate();
+    };
+
+    const connect = () => {
+      if (closed) return;
+
+      try {
+        eventSource = new EventSource(`${getApiBaseUrl()}/api/live`, {
+          pollingInterval: 0,
+        } as any);
+
+        eventSource.addEventListener("connected", () => {
+          console.log("[TaskDetailLiveSync] connected");
+        });
+
+        eventSource.addEventListener("tasks_changed", () => {
+          console.log("[TaskDetailLiveSync] tasks_changed");
+          refreshTask();
+        });
+
+        eventSource.addEventListener("requests_changed", () => {
+          console.log("[TaskDetailLiveSync] requests_changed");
+          refreshTask();
+        });
+
+        eventSource.addEventListener("data_changed", () => {
+          console.log("[TaskDetailLiveSync] data_changed");
+          refreshTask();
+        });
+
+        eventSource.addEventListener("error", (error: unknown) => {
+          console.warn("[TaskDetailLiveSync] error:", error);
+
+          try {
+            eventSource?.close();
+          } catch {}
+
+          if (!closed) {
+            reconnectTimer = setTimeout(connect, 3000);
+          }
+        });
+      } catch (error) {
+        console.warn("[TaskDetailLiveSync] connect failed:", error);
+
+        if (!closed) {
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+
+      try {
+        eventSource?.close();
+      } catch {}
+    };
+  }, [token, isDesignPreview, taskId, utils]);
 
   const assignMutation = trpc.tasks.assignCourier.useMutation({
     onSuccess: () => {
@@ -369,6 +445,26 @@ export default function TaskDetailScreen() {
   const courierComment = task.courierComments || "";
   const taskType = task.requestType || task.taskType;
   const isCourierCall = taskType === "courier_call";
+  const isSimpleRequest = taskType === "simple";
+  const simpleRequestName =
+    task.senderName ||
+    task.recipientName ||
+    task.senderCompany ||
+    task.recipientCompany ||
+    "Заявка";
+  const simpleRequestAddress =
+    task.senderAddress ||
+    task.deliveryAddress ||
+    task.recipientAddress ||
+    "";
+  const simpleRequestPhone =
+    task.senderPhone ||
+    task.recipientPhone ||
+    "";
+  const visibleRequestNumber =
+    typeof number === "string" && number.trim()
+      ? number.trim()
+      : getDisplayRequestId(task);
   const customerCompany =
     task.senderCompany ||
     task.recipientCompany ||
@@ -384,6 +480,27 @@ export default function TaskDetailScreen() {
     task.senderPhone ||
     task.recipientPhone ||
     "";
+
+  const firstPartyName = isCourierCall ? customerCompany : task.senderName || task.senderCompany || "—";
+  const firstPartyAddress = isCourierCall ? customerAddress : task.senderAddress;
+  const firstPartyPhone = isCourierCall ? customerPhone : task.senderPhone;
+
+  const secondPartyName = task.recipientName || task.recipientCompany || "—";
+  const secondPartyAddress = task.deliveryAddress;
+  const secondPartyPhone = task.recipientPhone;
+
+  const normalizeDetailText = (value?: string | null) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+
+  const detailPartiesAreSame =
+    !!normalizeDetailText(firstPartyName) &&
+    !!normalizeDetailText(secondPartyName) &&
+    normalizeDetailText(firstPartyName) === normalizeDetailText(secondPartyName) &&
+    normalizeDetailText(firstPartyAddress || "") === normalizeDetailText(secondPartyAddress || "");
+
 
   return (
     <SafeAreaView
@@ -404,7 +521,7 @@ export default function TaskDetailScreen() {
             <ArrowLeft size={25} color={colors.foreground} strokeWidth={2.2} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: "center" }}>
-            <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground }}>Заявка №{getDisplayRequestId(task)}</Text>
+            <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground }}>Заявка №{visibleRequestNumber}</Text>
             <Text style={{ color: colors.primary, fontSize: 11.5, fontWeight: "500", marginTop: 2 }}>{getTaskTypeLabel(task)}</Text>
           </View>
           <View style={{ width: 42, height: 42, alignItems: "center", justifyContent: "center" }}>
@@ -414,20 +531,30 @@ export default function TaskDetailScreen() {
       </View>
 
 
-        {[
-          {
-            label: isCourierCall ? "ЗАКАЗЧИК" : "ОТПРАВИТЕЛЬ",
-            name: isCourierCall ? customerCompany : task.senderName || task.senderCompany || "—",
-            address: isCourierCall ? customerAddress : task.senderAddress,
-            phone: isCourierCall ? customerPhone : task.senderPhone,
-          },
-          {
-            label: "ПОЛУЧАТЕЛЬ",
-            name: task.recipientName || task.recipientCompany || "—",
-            address: task.deliveryAddress,
-            phone: task.recipientPhone,
-          },
-        ].map((party) => (
+        {(isSimpleRequest
+          ? [
+              {
+                label: "ГДЕ ЗАБРАТЬ",
+                name: simpleRequestName,
+                address: simpleRequestAddress,
+                phone: simpleRequestPhone,
+              },
+            ]
+          : [
+              {
+                label: isCourierCall ? "ЗАКАЗЧИК" : "ОТПРАВИТЕЛЬ",
+                name: isCourierCall ? customerCompany : task.senderName || task.senderCompany || "—",
+                address: isCourierCall ? customerAddress : task.senderAddress,
+                phone: isCourierCall ? customerPhone : task.senderPhone,
+              },
+              {
+                label: "ПОЛУЧАТЕЛЬ",
+                name: task.recipientName || task.recipientCompany || "—",
+                address: task.deliveryAddress,
+                phone: task.recipientPhone,
+              },
+            ]
+        ).map((party) => (
           <View key={party.label} style={{ paddingHorizontal: 16, paddingTop: 15, borderBottomWidth: 1, borderBottomColor: palette.border }}>
             <Text style={{ color: colors.muted, fontSize: 10.5, fontWeight: "600", marginBottom: 10 }}>{party.label}</Text>
             <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700", marginBottom: 7 }}>{party.name}</Text>

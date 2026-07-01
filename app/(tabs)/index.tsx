@@ -41,6 +41,24 @@ import {
 import { formatLocalDateWithOptions, toLocalDateKey } from "@/app/lib/local-date";
 
 
+const normalizeCardText = (value?: string | null) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const isSameCardSide = (
+  leftName?: string | null,
+  leftAddress?: string | null,
+  rightName?: string | null,
+  rightAddress?: string | null,
+) => {
+  const left = [normalizeCardText(leftName), normalizeCardText(leftAddress)].filter(Boolean).join("|");
+  const right = [normalizeCardText(rightName), normalizeCardText(rightAddress)].filter(Boolean).join("|");
+
+  return !!left && !!right && left === right;
+};
+
 const getTaskDateKey = (task: any) => {
   const isDone = task?.status === "completed" || task?.status === "cancelled";
   const value = isDone
@@ -234,6 +252,36 @@ export default function TaskListScreen() {
     filterMode,
   ]);
 
+  const displayNumberByTaskId = useMemo(() => {
+    const selectedKey = toLocalDateKey(selectedDate);
+
+    const dayTasks = (tasksData as any[]).filter((task: any) => {
+      const taskDateKey = getTaskDateKey(task);
+
+      if (!isSelectedDateToday && taskDateKey !== selectedKey) {
+        return false;
+      }
+
+      if (isSelectedDateToday && !isActiveBoardTask(task) && taskDateKey && taskDateKey !== selectedKey) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const ordered = [...dayTasks].sort((a: any, b: any) => Number(a.id) - Number(b.id));
+    const map = new Map<number, number>();
+
+    ordered.forEach((task: any, index: number) => {
+      const id = Number(task.id);
+      if (Number.isFinite(id)) {
+        map.set(id, index + 1);
+      }
+    });
+
+    return map;
+  }, [tasksData, selectedDate, isSelectedDateToday]);
+
   const myTasksCount = useMemo(() => {
     if (!tasksData.length) return 0;
     return tasksData.filter((task: any) => {
@@ -333,7 +381,7 @@ export default function TaskListScreen() {
       const comments = String(item.comments || "");
       return comments.includes("получатель → ТК") ? "Отправка в ТК" : "Получение в ТК";
     }
-    if (type === "simple") return "Простая заявка";
+    if (type === "simple") return "Заявка";
 
     return "Заявка";
   };
@@ -435,6 +483,54 @@ export default function TaskListScreen() {
     return `${Math.round(amount).toLocaleString("ru-RU")} ₽`;
   };
 
+  const getPaymentMeta = (item: any) => {
+    const type = item.requestType || item.taskType;
+
+    if (type === "nuts" || type === "warehouse_pickup") {
+      return getNutsSumLabel(item);
+    }
+
+    if (type !== "delivery") return null;
+
+    const method = String(item.paymentMethod || item.paymentStatus || "").toLowerCase();
+
+    if (
+      method === "paid" ||
+      method === "оплачено" ||
+      item.isPaid === true ||
+      item.paid === true
+    ) {
+      return "оплачено";
+    }
+
+    const rawAmount =
+      item.paymentAmount ??
+      item.paymentSum ??
+      item.deliveryPrice ??
+      item.deliveryCost ??
+      item.price ??
+      item.amount ??
+      item.cashAmount ??
+      item.toPay;
+
+    const amount = Number(rawAmount);
+
+    if (Number.isFinite(amount) && amount > 0) {
+      return `${Math.round(amount).toLocaleString("ru-RU")} ₽`;
+    }
+
+    const commentMatch = String(item.comments || item.description || "").match(/(?:сумма|оплата|к оплате)[:\s]*([0-9][0-9\s.,]*)/i);
+
+    if (commentMatch?.[1]) {
+      const parsed = Number(commentMatch[1].replace(/\s/g, "").replace(",", "."));
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return `${Math.round(parsed).toLocaleString("ru-RU")} ₽`;
+      }
+    }
+
+    return null;
+  };
+
   const getTaskTimeLabel = (item: any) => {
     const from = item.deliveryTimeFrom || item.timeFrom || item.scheduledTimeFrom;
     const to = item.deliveryTimeTo || item.timeTo || item.scheduledTimeTo;
@@ -449,6 +545,11 @@ export default function TaskListScreen() {
   const isCourierCallTask = (item: any) => {
     const type = item.requestType || item.taskType;
     return type === "courier_call";
+  };
+
+  const isSimpleRequestTask = (item: any) => {
+    const type = item.requestType || item.taskType;
+    return type === "simple";
   };
 
   const getFooterParts = (item: any) => {
@@ -489,6 +590,18 @@ export default function TaskListScreen() {
         rightTitle: isToTc ? "" : "Куда",
         rightName: isToTc ? tcName : recipientName,
         rightAddress: isToTc ? tcAddress : recipientAddress,
+      };
+    }
+
+    if (type === "simple") {
+      return {
+        isNuts: false,
+        leftTitle: "Где забрать",
+        leftName: item.senderName || item.recipientName || item.senderCompany || item.recipientCompany || "Заявка",
+        leftAddress: item.senderAddress || item.deliveryAddress || item.recipientAddress || "",
+        rightTitle: "",
+        rightName: "",
+        rightAddress: "",
       };
     }
 
@@ -726,14 +839,33 @@ export default function TaskListScreen() {
                   const info = getMainCardInfo(item);
                   const nutsTask = isNutsTask(item);
                   const courierCallTask = isCourierCallTask(item);
+                  const simpleRequestTask = isSimpleRequestTask(item);
                   const nutsItems = nutsTask
                     ? getNutsOrderItems(item)
                         .map((order) => `${order.label} (${order.quantity} ${order.unit})`)
                         .join(" · ")
                     : undefined;
-                  const nutsSum = nutsTask ? getNutsSumLabel(item) : null;
+                  const paymentMeta = getPaymentMeta(item);
                   const cardDetailLine = getCardDetailLine(item);
+                  const routeIsDuplicate = isSameCardSide(info.leftName, info.leftAddress, info.rightName, info.rightAddress);
+                  const visibleDetailLine = routeIsDuplicate ? undefined : cardDetailLine;
                   const TypeIcon = getTaskTypeIcon(item);
+                  const showSecondary =
+                    !nutsTask &&
+                    !courierCallTask &&
+                    !routeIsDuplicate;
+
+                  const displayRequestNumber =
+                    displayNumberByTaskId.get(Number(item.id)) ?? getDisplayRequestId(item);
+
+                  const openTaskDetails = () =>
+                    router.push({
+                      pathname: "/task/[id]",
+                      params: {
+                        id: String(item.id),
+                        number: String(displayRequestNumber),
+                      },
+                    } as never);
 
                   return (
                     <View key={`${String(item.id)}-${index}`} collapsable={false}>
@@ -745,18 +877,18 @@ export default function TaskListScreen() {
                         typeLabel={getTaskTypeLabel(item)}
                         typeColor={getTaskTypeColor(item)}
                         TypeIcon={TypeIcon}
-                        requestNumber={getDisplayRequestId(item)}
+                        requestNumber={displayRequestNumber}
                         primaryName={nutsTask ? item.recipientName || "Получатель" : info.leftName}
                         primaryAddress={nutsTask ? item.deliveryAddress || item.recipientAddress : info.leftAddress}
-                        secondaryName={!nutsTask && !courierCallTask ? info.rightName : undefined}
-                        secondaryAddress={!nutsTask && !courierCallTask ? info.rightAddress : undefined}
-                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : cardDetailLine}
+                        secondaryName={showSecondary ? info.rightName : undefined}
+                        secondaryAddress={showSecondary ? info.rightAddress : undefined}
+                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : visibleDetailLine}
                         places={getPlacesLabel(item)}
                         courier={getCourierLabel(item)}
-                        trailingMeta={nutsTask ? nutsSum : undefined}
+                        trailingMeta={paymentMeta}
                         time={getTaskTimeLabel(item)}
                         isLast={index === sortedTasks.length - 1}
-                        onPress={() => router.push(`/task/${item.id}` as never)}
+                        onPress={openTaskDetails}
                       />
                       ) : (
                         <Swipeable
@@ -770,18 +902,18 @@ export default function TaskListScreen() {
                         typeLabel={getTaskTypeLabel(item)}
                         typeColor={getTaskTypeColor(item)}
                         TypeIcon={TypeIcon}
-                        requestNumber={getDisplayRequestId(item)}
+                        requestNumber={displayRequestNumber}
                         primaryName={nutsTask ? item.recipientName || "Получатель" : info.leftName}
                         primaryAddress={nutsTask ? item.deliveryAddress || item.recipientAddress : info.leftAddress}
-                        secondaryName={!nutsTask && !courierCallTask ? info.rightName : undefined}
-                        secondaryAddress={!nutsTask && !courierCallTask ? info.rightAddress : undefined}
-                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : cardDetailLine}
+                        secondaryName={showSecondary ? info.rightName : undefined}
+                        secondaryAddress={showSecondary ? info.rightAddress : undefined}
+                        detailLine={nutsTask ? nutsItems || "Заказ не указан" : visibleDetailLine}
                         places={getPlacesLabel(item)}
                         courier={getCourierLabel(item)}
-                        trailingMeta={nutsTask ? nutsSum : undefined}
+                        trailingMeta={paymentMeta}
                         time={getTaskTimeLabel(item)}
                         isLast={index === sortedTasks.length - 1}
-                        onPress={() => router.push(`/task/${item.id}` as never)}
+                        onPress={openTaskDetails}
                       />
                         </Swipeable>
                       )}
