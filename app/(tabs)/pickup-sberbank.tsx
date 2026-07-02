@@ -76,7 +76,7 @@ export default function SberbankScreen() {
     useCallback(() => {
       refreshSberbank();
 
-      const interval = setInterval(refreshSberbank, 5000);
+      const interval = setInterval(refreshSberbank, 2000);
 
       return () => clearInterval(interval);
     }, [refreshSberbank])
@@ -90,7 +90,7 @@ export default function SberbankScreen() {
     });
 
     return () => subscription.remove();
-  }, [token, isDesignPreview, refetch, refetchCount]);
+  }, [token, isDesignPreview, refreshSberbank]);
 
   useEffect(() => {
     if (!token || isDesignPreview) return;
@@ -109,6 +109,12 @@ export default function SberbankScreen() {
 
         eventSource.addEventListener("connected", () => {
           console.log("[SberbankLiveSync] connected");
+          refreshSberbank();
+        });
+
+        eventSource.addEventListener("open", () => {
+          console.log("[SberbankLiveSync] opened");
+          refreshSberbank();
         });
 
         eventSource.addEventListener("sberbank_changed", () => {
@@ -118,6 +124,10 @@ export default function SberbankScreen() {
 
         eventSource.addEventListener("data_changed", () => {
           console.log("[SberbankLiveSync] data_changed");
+          refreshSberbank();
+        });
+
+        eventSource.addEventListener("ping", () => {
           refreshSberbank();
         });
 
@@ -152,7 +162,7 @@ export default function SberbankScreen() {
         eventSource?.close();
       } catch {}
     };
-  }, [token, isDesignPreview, refetch, refetchCount]);
+  }, [token, isDesignPreview, refreshSberbank]);
 
   const handleTogglePickup = (pointId: number) => {
     if (isDesignPreview) return;

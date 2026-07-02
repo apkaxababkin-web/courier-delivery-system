@@ -48,9 +48,12 @@ import {
   type InsertRequest,
   managers,
   chatMessages,
+  chatMessageReactions,
+  chatReadStates,
   type Manager,
   type InsertManager,
   type ChatMessage,
+  type ChatMessageReaction,
   type InsertChatMessage,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -122,6 +125,26 @@ export async function updateMailDelivery(
     .where(eq(mails.waybillNumber, waybillNumber));
   const result = await db.select().from(mails).where(eq(mails.waybillNumber, waybillNumber));
   return result[0];
+}
+
+export async function undoMailDelivery(mailId: number): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const updated = await db
+    .update(mails)
+    .set({
+      status: "not_delivered",
+      recipientSignature: null,
+      courierId: null,
+      deliveredAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(mails.id, mailId))
+    .returning();
+
+  if (!updated[0]) throw new Error("Mail not found");
+  return updated[0];
 }
 
 export async function bulkCreateMails(mailList: InsertMail[]): Promise<void> {
@@ -362,31 +385,53 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
   if (!db) return [];
 
   // Treat selected date as local courier day in Ulan-Ude / Irkutsk time (UTC+8).
-  // Example: 2026-06-02 local starts at 2026-06-01T16:00:00.000Z.
+  // Active tasks are shown by scheduledAt/createdAt.
+  // Completed/cancelled tasks are shown by completedAt/updatedAt,
+  // so a task created yesterday but completed today stays in today's history.
   const localUtcOffsetHours = 8;
   const localStart = new Date(`${dateStr}T00:00:00.000Z`);
   const startOfDay = new Date(localStart.getTime() - localUtcOffsetHours * 60 * 60 * 1000);
   const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
-  
+
   const allTasks = await db
     .select()
     .from(tasks)
     .where(
       or(
         and(
-          gte(tasks.scheduledAt, startOfDay),
-          lte(tasks.scheduledAt, endOfDay)
+          inArray(tasks.status, ["assigned", "in_progress"]),
+          or(
+            and(
+              gte(tasks.scheduledAt, startOfDay),
+              lte(tasks.scheduledAt, endOfDay)
+            ),
+            and(
+              sql`${tasks.scheduledAt} IS NULL`,
+              gte(tasks.createdAt, startOfDay),
+              lte(tasks.createdAt, endOfDay)
+            )
+          )
         ),
         and(
-          sql`${tasks.scheduledAt} IS NULL`,
-          gte(tasks.createdAt, startOfDay),
-          lte(tasks.createdAt, endOfDay)
+          inArray(tasks.status, ["completed", "cancelled"]),
+          or(
+            and(
+              sql`${tasks.completedAt} IS NOT NULL`,
+              gte(tasks.completedAt, startOfDay),
+              lte(tasks.completedAt, endOfDay)
+            ),
+            and(
+              sql`${tasks.completedAt} IS NULL`,
+              gte(tasks.updatedAt, startOfDay),
+              lte(tasks.updatedAt, endOfDay)
+            )
+          )
         )
       )
     )
     .orderBy(desc(tasks.createdAt))
     .limit(500);
-  
+
   const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
   const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
   return allTasks.map((t: Task) => ({
@@ -747,6 +792,18 @@ export async function updateCourierUrgencyThresholds(
   }
 }
 
+
+const COURIER_TIME_ZONE = "Asia/Irkutsk";
+
+function formatCourierDate(targetDate: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: COURIER_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(targetDate);
+}
+
 // ─── Hemotest Pickup Points ────────────────────────────────────────────────────
 
 export type HemotestPickupWithStatus = HemotestPickupPoint & {
@@ -763,7 +820,7 @@ export async function getHemotestPickupPointsForDate(
   const db = await getDb();
   if (!db) return [];
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = formatCourierDate(targetDate); // YYYY-MM-DD in courier timezone
 
   // APK must see the same Hemotest lists that manager creates for this date.
   const lists = await db
@@ -778,13 +835,16 @@ export async function getHemotestPickupPointsForDate(
     .select()
     .from(hemotestListItems)
     .innerJoin(hemotestPickupPoints, eq(hemotestListItems.pointId, hemotestPickupPoints.id))
-    .where(inArray(hemotestListItems.listId, listIds));
+    .where(inArray(hemotestListItems.listId, listIds))
+    .orderBy(hemotestListItems.id);
 
   const pointsById = new Map<number, HemotestPickupPoint>();
   for (const row of listItems as Array<{ hemotestPickupPoints: HemotestPickupPoint }>) {
-    pointsById.set(row.hemotestPickupPoints.id, row.hemotestPickupPoints);
+    if (!pointsById.has(row.hemotestPickupPoints.id)) {
+      pointsById.set(row.hemotestPickupPoints.id, row.hemotestPickupPoints);
+    }
   }
-  const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const points = Array.from(pointsById.values());
 
   // Pickups are shared operational state: every courier must see who picked each point.
   const pickups = await db
@@ -822,7 +882,7 @@ export async function toggleHemotestPickup(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = formatCourierDate(targetDate); // YYYY-MM-DD in courier timezone
   
   // Check if pickup record exists
   const existing = await db
@@ -835,8 +895,8 @@ export async function toggleHemotestPickup(
     .limit(1);
   
   if (existing.length > 0) {
-    // Toggle the status
     const pickup = existing[0];
+
     await db
       .update(hemotestPickups)
       .set({
@@ -847,7 +907,6 @@ export async function toggleHemotestPickup(
       })
       .where(eq(hemotestPickups.id, pickup.id));
   } else {
-    // Create new pickup record as picked
     await db.insert(hemotestPickups).values({
       courierId,
       pointId,
@@ -884,7 +943,7 @@ export async function getSberbankPickupPointsForDate(
   const db = await getDb();
   if (!db) return [];
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = formatCourierDate(targetDate); // YYYY-MM-DD in courier timezone
 
   // APK must see the same Sberbank lists that manager creates for this exact date.
   const lists = await db
@@ -899,13 +958,16 @@ export async function getSberbankPickupPointsForDate(
     .select()
     .from(sberbankListItems)
     .innerJoin(sberbankPickupPoints, eq(sberbankListItems.pointId, sberbankPickupPoints.id))
-    .where(inArray(sberbankListItems.listId, listIds));
+    .where(inArray(sberbankListItems.listId, listIds))
+    .orderBy(sberbankListItems.id);
 
   const pointsById = new Map<number, SberbankPickupPoint>();
   for (const row of listItems as Array<{ sberbankPickupPoints: SberbankPickupPoint }>) {
-    pointsById.set(row.sberbankPickupPoints.id, row.sberbankPickupPoints);
+    if (!pointsById.has(row.sberbankPickupPoints.id)) {
+      pointsById.set(row.sberbankPickupPoints.id, row.sberbankPickupPoints);
+    }
   }
-  const points = Array.from(pointsById.values()).sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const points = Array.from(pointsById.values());
 
   // Pickups are shared operational state: every courier must see who picked each point.
   const pickups = await db
@@ -943,7 +1005,7 @@ export async function toggleSberbankPickup(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = formatCourierDate(targetDate); // YYYY-MM-DD in courier timezone
   
   // Check if pickup record exists
   const existing = await db
@@ -956,8 +1018,8 @@ export async function toggleSberbankPickup(
     .limit(1);
   
   if (existing.length > 0) {
-    // Toggle the status
     const pickup = existing[0];
+
     await db
       .update(sberbankPickups)
       .set({
@@ -968,7 +1030,6 @@ export async function toggleSberbankPickup(
       })
       .where(eq(sberbankPickups.id, pickup.id));
   } else {
-    // Create new pickup record as picked
     await db.insert(sberbankPickups).values({
       courierId,
       pointId,
@@ -1040,7 +1101,7 @@ export async function seedDemoSberbankPoints(): Promise<void> {
 
 // ─── Chat helpers ─────────────────────────────────────────────────────────────
 
-export async function getChatMessages(limit = 100): Promise<ChatMessage[]> {
+export async function getChatMessages(limit = 100): Promise<Array<ChatMessage & { reactions?: Array<{ emoji: string; count: number }> }>> {
   const conn = await getDb();
   if (!conn) return [];
 
@@ -1053,7 +1114,28 @@ export async function getChatMessages(limit = 100): Promise<ChatMessage[]> {
     .orderBy(desc(chatMessages.createdAt))
     .limit(safeLimit);
 
-  return rows.reverse();
+  const orderedRows = rows.reverse();
+  const messageIds = orderedRows.map((message: ChatMessage) => message.id);
+
+  if (messageIds.length === 0) return orderedRows;
+
+  const reactionRows = await conn
+    .select()
+    .from(chatMessageReactions)
+    .where(inArray(chatMessageReactions.messageId, messageIds));
+
+  const reactionMap = new Map<number, Map<string, number>>();
+
+  for (const reaction of reactionRows as ChatMessageReaction[]) {
+    const byEmoji = reactionMap.get(reaction.messageId) ?? new Map<string, number>();
+    byEmoji.set(reaction.emoji, (byEmoji.get(reaction.emoji) ?? 0) + 1);
+    reactionMap.set(reaction.messageId, byEmoji);
+  }
+
+  return orderedRows.map((message: ChatMessage) => ({
+    ...message,
+    reactions: Array.from(reactionMap.get(message.id)?.entries() ?? []).map(([emoji, count]) => ({ emoji, count })),
+  }));
 }
 
 export async function createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
@@ -1068,6 +1150,19 @@ export async function createChatMessage(message: InsertChatMessage): Promise<Cha
   return result[0];
 }
 
+export async function updateChatMessage(id: number, text: string): Promise<ChatMessage | null> {
+  const conn = await getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const result = await conn
+    .update(chatMessages)
+    .set({ text, editedAt: new Date(), updatedAt: new Date() })
+    .where(sql`${chatMessages.id} = ${id} and ${chatMessages.deletedAt} is null`)
+    .returning();
+
+  return result[0] ?? null;
+}
+
 export async function deleteChatMessage(id: number): Promise<void> {
   const conn = await getDb();
   if (!conn) throw new Error("Database not available");
@@ -1076,6 +1171,107 @@ export async function deleteChatMessage(id: number): Promise<void> {
     .update(chatMessages)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
     .where(eq(chatMessages.id, id));
+}
+
+export async function getChatUnreadCountForCourier(courierId: number): Promise<number> {
+  const conn = await getDb();
+  if (!conn) return 0;
+
+  const state = await conn
+    .select()
+    .from(chatReadStates)
+    .where(sql`${chatReadStates.authorType} = 'courier' and ${chatReadStates.authorId} = ${courierId}`)
+    .limit(1);
+
+  const lastReadMessageId = state[0]?.lastReadMessageId ?? 0;
+
+  const result = await conn.execute(sql`
+    select count(*)::int as count
+    from "chatMessages"
+    where "deletedAt" is null
+      and id > ${lastReadMessageId}
+      and not ("authorType" = 'courier' and "authorId" = ${courierId})
+  `);
+
+  return Number(result[0]?.count ?? 0);
+}
+
+export async function markChatReadForCourier(courierId: number, authorName: string): Promise<{ lastReadMessageId: number }> {
+  const conn = await getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const maxResult = await conn.execute(sql`
+    select coalesce(max(id), 0)::int as id
+    from "chatMessages"
+    where "deletedAt" is null
+  `);
+
+  const lastReadMessageId = Number(maxResult[0]?.id ?? 0);
+
+  const existing = await conn
+    .select()
+    .from(chatReadStates)
+    .where(sql`${chatReadStates.authorType} = 'courier' and ${chatReadStates.authorId} = ${courierId}`)
+    .limit(1);
+
+  if (existing[0]) {
+    await conn
+      .update(chatReadStates)
+      .set({ lastReadMessageId, authorName, updatedAt: new Date() })
+      .where(eq(chatReadStates.id, existing[0].id));
+  } else {
+    await conn.insert(chatReadStates).values({
+      authorType: "courier",
+      authorId: courierId,
+      authorName,
+      lastReadMessageId,
+    });
+  }
+
+  return { lastReadMessageId };
+}
+
+export async function toggleChatReaction(data: {
+  messageId: number;
+  authorType: "manager" | "courier";
+  authorId: number | null;
+  authorName: string;
+  emoji: string;
+}): Promise<{ active: boolean }> {
+  const conn = await getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const existing = await conn
+    .select()
+    .from(chatMessageReactions)
+    .where(sql`
+      ${chatMessageReactions.messageId} = ${data.messageId}
+      and ${chatMessageReactions.authorType} = ${data.authorType}
+      and ${chatMessageReactions.emoji} = ${data.emoji}
+      and (
+        (${chatMessageReactions.authorId} is null and ${data.authorId} is null)
+        or ${chatMessageReactions.authorId} = ${data.authorId}
+      )
+    `)
+    .limit(1);
+
+  if (existing[0]) {
+    await conn
+      .delete(chatMessageReactions)
+      .where(eq(chatMessageReactions.id, existing[0].id));
+
+    return { active: false };
+  }
+
+  await conn.insert(chatMessageReactions).values({
+    messageId: data.messageId,
+    authorType: data.authorType,
+    authorId: data.authorId,
+    authorName: data.authorName,
+    emoji: data.emoji,
+  });
+
+  return { active: true };
 }
 
 // ─── Client helpers ──────────────────────────────────────────────────────────

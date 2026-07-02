@@ -77,7 +77,7 @@ export default function HemotestScreen() {
     useCallback(() => {
       refreshHemotest();
 
-      const interval = setInterval(refreshHemotest, 5000);
+      const interval = setInterval(refreshHemotest, 2000);
 
       return () => clearInterval(interval);
     }, [refreshHemotest])
@@ -91,7 +91,7 @@ export default function HemotestScreen() {
     });
 
     return () => subscription.remove();
-  }, [token, isDesignPreview, refetch, refetchCount]);
+  }, [token, isDesignPreview, refreshHemotest]);
 
   useEffect(() => {
     if (!token || isDesignPreview) return;
@@ -110,6 +110,12 @@ export default function HemotestScreen() {
 
         eventSource.addEventListener("connected", () => {
           console.log("[HemotestLiveSync] connected");
+          refreshHemotest();
+        });
+
+        eventSource.addEventListener("open", () => {
+          console.log("[HemotestLiveSync] opened");
+          refreshHemotest();
         });
 
         eventSource.addEventListener("hemotest_changed", () => {
@@ -119,6 +125,10 @@ export default function HemotestScreen() {
 
         eventSource.addEventListener("data_changed", () => {
           console.log("[HemotestLiveSync] data_changed");
+          refreshHemotest();
+        });
+
+        eventSource.addEventListener("ping", () => {
           refreshHemotest();
         });
 
@@ -153,7 +163,7 @@ export default function HemotestScreen() {
         eventSource?.close();
       } catch {}
     };
-  }, [token, isDesignPreview, refetch, refetchCount]);
+  }, [token, isDesignPreview, refreshHemotest]);
 
   const handleTogglePickup = (pointId: number) => {
     if (isDesignPreview) return;

@@ -10,6 +10,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { broadcastLive } from "./liveEvents";
+import { syncTaskForRequestId } from "./requestTaskSync";
 import { appRouter, verifyCourierToken } from "../routers";
 import { createContext } from "./context";
 import { mails, requests, tasks, taskStatusHistory } from "../../drizzle/schema";
@@ -136,6 +137,30 @@ async function startServer() {
     }
   });
 
+  app.post("/api/trpc/mails.undoDelivery", async (req, res) => {
+    try {
+      const { input, isBatch } = inputFromBody(req.body);
+      const authHeader = req.headers.authorization;
+      const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      const token = String(input.token ?? bearerToken ?? "");
+      const payload = await verifyCourierToken(token);
+      if (!payload) throw new Error("Invalid courier token");
+
+      const mailId = Number(input.mailId || input.id || 0);
+      if (!mailId) throw new Error("mailId is required");
+
+      const mail = await db.undoMailDelivery(mailId);
+      broadcastLive("mails_changed", { mailId: mail.id, undo: true });
+
+      const response = { success: true, mail };
+      res.json(isBatch ? trpcBatchJson(response) : trpcJson(response));
+    } catch (error) {
+      console.error("Failed to undo mail delivery", error);
+      const message = error instanceof Error ? error.message : "Failed to undo mail delivery";
+      res.status(500).json({ error: { message } });
+    }
+  });
+
   registerCompatRoutes(app);
 
   app.get("/api/health", (_req, res) => {
@@ -251,26 +276,8 @@ async function startServer() {
       if (!updated[0]) throw new Error("Request not found");
 
       const request = updated[0] as any;
-      const marker = `[request:${id}]`;
 
-      await conn.update(tasks)
-        .set({
-          recipientName: String(request.recipientName || request.senderName || "Получатель не указан"),
-          recipientPhone: String(request.recipientPhone || request.senderPhone || ""),
-          deliveryAddress: String(request.deliveryAddress || request.recipientAddress || request.senderAddress || request.tcAddress || "Адрес не указан"),
-          senderName: request.senderName || request.senderCompany || request.tcName || null,
-          senderAddress: request.senderAddress || request.tcAddress || null,
-          senderPhone: request.senderPhone || null,
-          packageDescription: request.packageDescription || request.description || request.callReason || null,
-          placesCount: request.placesCount ?? 1,
-          deliveryTimeFrom: request.deliveryTimeFrom || null,
-          deliveryTimeTo: request.deliveryTimeTo || null,
-          specialInstructions: request.specialInstructions || null,
-          comments: [marker, request.description, request.callReason, request.comments, request.specialInstructions].filter(Boolean).join("\\n"),
-          items: request.items || null,
-          updatedAt: new Date(),
-        })
-        .where(sql`${tasks.comments} like ${`%${marker}%`}`);
+      await syncTaskForRequestId(id);
 
       broadcastLive("requests_changed", { requestId: id });
       broadcastLive("tasks_changed", { requestId: id });

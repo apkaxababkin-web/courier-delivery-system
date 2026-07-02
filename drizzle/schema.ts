@@ -618,10 +618,38 @@ export const chatMessages = pgTable("chatMessages", {
   authorId: integer("authorId"),
   authorName: varchar("authorName", { length: 255 }).notNull(),
   text: text("text").notNull(),
+  replyToMessageId: integer("replyToMessageId"),
+  editedAt: timestamp("editedAt"),
   deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const chatReadStates = pgTable("chatReadStates", {
+  id: serial("id").primaryKey(),
+  authorType: varchar("authorType", { length: 20 }).notNull(),
+  authorId: integer("authorId"),
+  authorName: varchar("authorName", { length: 255 }).notNull(),
+  lastReadMessageId: integer("lastReadMessageId").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type ChatReadState = typeof chatReadStates.$inferSelect;
+export type InsertChatReadState = typeof chatReadStates.$inferInsert;
+
+export const chatMessageReactions = pgTable("chatMessageReactions", {
+  id: serial("id").primaryKey(),
+  messageId: integer("messageId").notNull(),
+  authorType: varchar("authorType", { length: 20 }).notNull(),
+  authorId: integer("authorId"),
+  authorName: varchar("authorName", { length: 255 }).notNull(),
+  emoji: varchar("emoji", { length: 16 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
+export type ChatMessageReaction = typeof chatMessageReactions.$inferSelect;
+export type InsertChatMessageReaction = typeof chatMessageReactions.$inferInsert;

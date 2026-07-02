@@ -733,6 +733,8 @@ export const appRouter = router({
           type: "hemotest_list_created",
           listId: list.id,
         });
+        broadcastLive("hemotest_changed", { type: "list_created", listId: list.id });
+        broadcastLive("data_changed", { type: "hemotest_list_created", listId: list.id });
         return list;
       }),
 
@@ -755,6 +757,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.addPointToHemotestList(input.listId, input.pointId);
+        broadcastLive("hemotest_changed", { type: "list_item_added", listId: input.listId, pointId: input.pointId });
+        broadcastLive("data_changed", { type: "hemotest_list_item_added", listId: input.listId, pointId: input.pointId });
         return { success: true };
       }),
 
@@ -849,6 +853,8 @@ export const appRouter = router({
           type: "sberbank_list_created",
           listId: list.id,
         });
+        broadcastLive("sberbank_changed", { type: "list_created", listId: list.id });
+        broadcastLive("data_changed", { type: "sberbank_list_created", listId: list.id });
         return list;
       }),
 
@@ -877,6 +883,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.addPointToSberbankList(input.listId, input.pointId);
+        broadcastLive("sberbank_changed", { type: "list_item_added", listId: input.listId, pointId: input.pointId });
+        broadcastLive("data_changed", { type: "sberbank_list_item_added", listId: input.listId, pointId: input.pointId });
         return { success: true };
       }),
 
@@ -969,7 +977,7 @@ export const appRouter = router({
     create: publicProcedure
       .input(z.object({
         waybillNumber: z.string().min(1),
-        recipientName: z.string().min(1),
+        recipientName: z.string().optional().default(""),
         deliveryAddress: z.string().min(1),
         recipientPhone: z.string().default(""),
       }))
@@ -1044,8 +1052,8 @@ export const appRouter = router({
           "simple",
         ]),
         clientId: z.number().optional(),
-        recipientName: z.string().min(1),
-        recipientPhone: z.string().min(1),
+        recipientName: z.string().optional().default(""),
+        recipientPhone: z.string().optional().default(""),
         recipientAddress: z.string().optional(),
         recipientCompany: z.string().optional(),
         recipientCity: z.string().optional(),

@@ -49,9 +49,42 @@ export function requestMarker(id: number) {
   return `[request:${id}]`;
 }
 
-function taskFromRequest(request: DeliveryRequest): InsertTask {
-  const fallbackAddress = request.deliveryAddress || request.recipientAddress || request.senderAddress || request.tcAddress || "Адрес не указан";
-  const fallbackName = request.recipientName || request.recipientCompany || request.senderName || request.senderCompany || "Получатель не указан";
+function taskFromRequest(request: DeliveryRequest, client?: { name?: string | null; address?: string | null; phone?: string | null } | null): InsertTask {
+  const isSimpleRequest = request.requestType === "simple";
+
+  const pickupName =
+    request.senderName ||
+    request.senderCompany ||
+    request.recipientName ||
+    request.recipientCompany ||
+    "Место забора";
+
+  const pickupAddress =
+    request.senderAddress ||
+    request.deliveryAddress ||
+    request.recipientAddress ||
+    request.tcAddress ||
+    "Адрес не указан";
+
+  const clientName =
+    client?.name ||
+    request.recipientName ||
+    request.recipientCompany ||
+    "Клиент не указан";
+
+  const clientAddress =
+    client?.address ||
+    request.deliveryAddress ||
+    request.recipientAddress ||
+    "";
+
+  const fallbackAddress = isSimpleRequest
+    ? pickupAddress
+    : request.deliveryAddress || request.recipientAddress || request.senderAddress || request.tcAddress || "Адрес не указан";
+
+  const fallbackName = isSimpleRequest
+    ? clientName
+    : request.recipientName || request.recipientCompany || request.senderName || request.senderCompany || "Получатель не указан";
   const comments = [
     requestMarker(request.id),
     request.requestType ? `Тип заявки: ${request.requestType}` : null,
@@ -69,12 +102,12 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
     status: normalizeTaskStatus(request.status),
     taskType: taskTypeFromRequest(request.requestType),
     recipientName: fallbackName,
-    recipientPhone: request.recipientPhone || request.senderPhone || "",
-    recipientAddress: request.recipientAddress ?? null,
+    recipientPhone: isSimpleRequest ? client?.phone || request.recipientPhone || "" : request.recipientPhone || request.senderPhone || "",
+    recipientAddress: isSimpleRequest ? clientAddress || null : request.recipientAddress ?? null,
     deliveryAddress: fallbackAddress,
     deliveryCity: request.deliveryCity || request.recipientCity || request.senderCity || null,
-    senderName: request.senderName || request.senderCompany || request.tcName || null,
-    senderAddress: request.senderAddress || request.tcAddress || null,
+    senderName: isSimpleRequest ? pickupName : request.senderName || request.senderCompany || request.tcName || null,
+    senderAddress: isSimpleRequest ? pickupAddress : request.senderAddress || request.tcAddress || null,
     senderPhone: request.senderPhone ?? null,
     packageDescription: request.packageDescription || request.description || request.callReason || null,
     packageType: request.packageType ?? "small",
@@ -105,7 +138,8 @@ export async function syncTaskForRequest(request: DeliveryRequest): Promise<numb
       .where(sql`${tasks.comments} like ${`%${marker}%`}`)
       .orderBy(asc(tasks.id));
 
-    const taskData = taskFromRequest(request);
+    const client = request.clientId ? await db.getClientById(request.clientId) : null;
+    const taskData = taskFromRequest(request, client);
     const existingTask = existingTasks[0];
 
     if (existingTask) {

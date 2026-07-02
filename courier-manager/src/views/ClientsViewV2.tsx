@@ -60,10 +60,11 @@ export default function ClientsViewV2() {
     try {
       setLoading(true);
       const data = await api.getAllClients();
-      setClients(data || []);
+      const safeClients = Array.isArray(data) ? data : [];
+      setClients(safeClients);
 
       if (selected) {
-        const fresh = (data || []).find((client) => client.id === selected.id);
+        const fresh = safeClients.find((client) => client.id === selected.id);
         if (fresh) {
           setSelected(fresh);
           await loadClientDetails(fresh);
@@ -83,8 +84,11 @@ export default function ClientsViewV2() {
       api.getClientRegularClients(client.id),
     ]);
 
-    setPoints([primaryPoint(client), ...dbPoints]);
-    setRegularClients(dbRegularClients);
+    const safePoints = Array.isArray(dbPoints) ? dbPoints : [];
+    const safeRegularClients = Array.isArray(dbRegularClients) ? dbRegularClients : [];
+
+    setPoints([primaryPoint(client), ...safePoints]);
+    setRegularClients(safeRegularClients);
   }
 
   async function openClient(client: Client) {
@@ -254,9 +258,10 @@ export default function ClientsViewV2() {
 
   const filtered = useMemo(() => {
     const value = query.toLowerCase().trim();
-    if (!value) return clients;
+    const safeClients = Array.isArray(clients) ? clients : [];
+    if (!value) return safeClients;
 
-    return clients.filter((client) =>
+    return safeClients.filter((client) =>
       [client.name, client.address, client.phone, client.contactPerson, client.email]
         .filter(Boolean)
         .join(' ')

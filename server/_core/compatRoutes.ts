@@ -52,6 +52,20 @@ function unwrapBatchInput(obj: Record<string, unknown>): Record<string, unknown>
   return obj;
 }
 
+async function sendChatPushToCouriers(message: any) {
+  const text =
+    message?.text ||
+    message?.message ||
+    message?.content ||
+    message?.body ||
+    "Новое сообщение в чате";
+
+  await sendPushToAllCouriers("Чат МИГ", String(text), {
+    type: "chat_message",
+    messageId: message?.id,
+  });
+}
+
 async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
   try {
     const allCouriers = await db.getAllCouriers();
@@ -499,6 +513,39 @@ export function registerCompatRoutes(app: Express) {
   });
 
 
+  app.get("/api/chat/unread-count", async (req, res) => {
+    try {
+      const courierId = await courierIdFromReq(req);
+      if (!courierId) {
+        res.json({ count: 0 });
+        return;
+      }
+
+      const count = await db.getChatUnreadCountForCourier(courierId);
+      res.json({ count });
+    } catch (error) {
+      sendError(res, error, "Failed to load unread count");
+    }
+  });
+
+  app.post("/api/chat/read", async (req, res) => {
+    try {
+      const courierId = await courierIdFromReq(req);
+      if (!courierId) {
+        res.status(401).json({ error: { message: "Unauthorized" } });
+        return;
+      }
+
+      const courier = await db.getCourierById(courierId);
+      const result = await db.markChatReadForCourier(courierId, courier?.name || "Курьер");
+
+      broadcastLive("chat_read", { courierId, lastReadMessageId: result.lastReadMessageId });
+      res.json({ success: true, ...result });
+    } catch (error) {
+      sendError(res, error, "Failed to mark chat as read");
+    }
+  });
+
   app.get("/api/chat/messages", async (req, res) => {
     try {
       const limit = Number(req.query.limit || 100);
@@ -523,6 +570,17 @@ export function registerCompatRoutes(app: Express) {
         return;
       }
 
+      const replyToMessageIdRaw = input.replyToMessageId ?? input.replyToId ?? null;
+      let replyToMessageId: number | null = null;
+      if (replyToMessageIdRaw != null) {
+        const parsedReplyToMessageId = Number(replyToMessageIdRaw);
+        if (!Number.isFinite(parsedReplyToMessageId) || parsedReplyToMessageId <= 0) {
+          res.status(400).json({ error: { message: "Invalid reply message id" } });
+          return;
+        }
+        replyToMessageId = parsedReplyToMessageId;
+      }
+
       const courierId = await courierIdFromReq(req);
       let authorType: "manager" | "courier" = "manager";
       let authorId: number | null = null;
@@ -541,13 +599,95 @@ export function registerCompatRoutes(app: Express) {
         authorId,
         authorName,
         text,
+        replyToMessageId: replyToMessageId || null,
       });
 
       broadcastLive("chat_changed", { messageId: message.id });
+      void sendChatPushToCouriers(message);
 
       res.json(message);
     } catch (error) {
       sendError(res, error, "Failed to send chat message");
+    }
+  });
+
+  app.patch("/api/chat/messages/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: { message: "Invalid message id" } });
+        return;
+      }
+
+      const input = inputFrom(req);
+      const text = String(input.text || "").trim();
+
+      if (!text) {
+        res.status(400).json({ error: { message: "Message text is required" } });
+        return;
+      }
+
+      if (text.length > 2000) {
+        res.status(400).json({ error: { message: "Message is too long" } });
+        return;
+      }
+
+      const message = await db.updateChatMessage(id, text);
+      if (!message) {
+        res.status(404).json({ error: { message: "Message not found" } });
+        return;
+      }
+
+      broadcastLive("chat_changed", { messageId: id, edited: true });
+
+      res.json(message);
+    } catch (error) {
+      sendError(res, error, "Failed to update chat message");
+    }
+  });
+
+  app.post("/api/chat/messages/:id/reactions", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: { message: "Invalid message id" } });
+        return;
+      }
+
+      const input = inputFrom(req);
+      const emoji = String(input.emoji || "").trim();
+      const allowedEmoji = new Set(["👍", "✅", "👀", "🙏", "🔥", "❤️", "😂", "😮"]);
+
+      if (!allowedEmoji.has(emoji)) {
+        res.status(400).json({ error: { message: "Invalid reaction" } });
+        return;
+      }
+
+      const courierId = await courierIdFromReq(req);
+      let authorType: "manager" | "courier" = "manager";
+      let authorId: number | null = null;
+      let authorName = String(input.authorName || "").trim() || "Менеджер";
+
+      if (courierId) {
+        const courier = await db.getCourierById(courierId);
+        authorType = "courier";
+        authorId = courierId;
+        authorName = courier?.name || "Курьер";
+      }
+
+      const result = await db.toggleChatReaction({
+        messageId: id,
+        authorType,
+        authorId,
+        authorName,
+        emoji,
+      });
+
+      broadcastLive("chat_changed", { messageId: id, reaction: emoji });
+
+      res.json({ success: true, ...result });
+    } catch (error) {
+      sendError(res, error, "Failed to toggle chat reaction");
     }
   });
 

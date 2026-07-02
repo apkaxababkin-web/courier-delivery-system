@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { FlatList, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import EventSource from "react-native-sse";
 import { NetworkBanner } from "@/components/network-banner";
 import { trpc } from "@/lib/trpc";
 import { useCourierAuth } from "@/lib/courier-auth";
@@ -57,6 +58,29 @@ function shortTime(value?: string | Date | null) {
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+function dateKey(value?: string | Date | null) {
+  if (!value) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  if (typeof value === "string") {
+    const isoMatch = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch?.[1]) return isoMatch[1];
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function LettersScreen() {
   const { height: windowHeight } = useWindowDimensions();
   const colors = useColors();
@@ -83,6 +107,8 @@ export default function LettersScreen() {
   const [deliveredAtInput, setDeliveredAtInput] = useState(formatDateTimeInput(new Date()));
   const [deliveryTimeError, setDeliveryTimeError] = useState("");
   const [snapshotMails, setSnapshotMails] = useState<any[]>([]);
+  const [detailMailId, setDetailMailId] = useState<number | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const longPressHandledRef = useRef(false);
 
   const isDeliveryModalOpen = selectedMailId !== null;
@@ -103,6 +129,90 @@ export default function LettersScreen() {
   useEffect(() => {
     void loadSnapshotMails();
   }, [loadSnapshotMails]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const dismissKeyboardIfOpen = useCallback(() => {
+    if (!keyboardVisible) return false;
+    Keyboard.dismiss();
+    return true;
+  }, [keyboardVisible]);
+
+  useEffect(() => {
+    if (!token || isDesignPreview) return;
+
+    let closed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let eventSource: any = null;
+
+    const refreshLetters = () => {
+      void refetch();
+      void loadSnapshotMails();
+    };
+
+    const connect = () => {
+      if (closed) return;
+
+      try {
+        eventSource = new EventSource(`${getApiBaseUrl()}/api/live`, {
+          pollingInterval: 0,
+        });
+
+        eventSource.addEventListener("connected", () => {
+          console.log("[LettersLiveSync] connected");
+        });
+
+        eventSource.addEventListener("mails_changed", () => {
+          console.log("[LettersLiveSync] mails_changed");
+          refreshLetters();
+        });
+
+        eventSource.addEventListener("data_changed", () => {
+          console.log("[LettersLiveSync] data_changed");
+          refreshLetters();
+        });
+
+        eventSource.addEventListener("error", (error: unknown) => {
+          console.warn("[LettersLiveSync] error:", error);
+
+          try {
+            eventSource?.close();
+          } catch {}
+
+          if (!closed) {
+            reconnectTimer = setTimeout(connect, 3000);
+          }
+        });
+      } catch (error) {
+        console.warn("[LettersLiveSync] connect failed:", error);
+
+        if (!closed) {
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+
+      try {
+        eventSource?.close();
+      } catch {}
+    };
+  }, [token, isDesignPreview, refetch, loadSnapshotMails]);
+
 
   const normalizedMailsRaw = Array.isArray(mailsRaw)
     ? mailsRaw
@@ -138,8 +248,8 @@ export default function LettersScreen() {
 
   const groupedMails = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const selectedDateKey = selectedDate.toISOString().slice(0, 10);
-    const todayKey = new Date().toISOString().slice(0, 10);
+
+    const todayKey = dateKey();
 
     const filtered = mails.filter((mail: any) => {
       const matchesSearch =
@@ -152,36 +262,71 @@ export default function LettersScreen() {
       if (!matchesSearch) return false;
 
       const delivered = mail.status === "delivered";
+      if (!delivered) return true;
 
-      if (!delivered) {
-        return true;
-      }
+      const deliveredKey = dateKey(mail.deliveredAt || mail.updatedAt);
+      return deliveredKey === todayKey;
+    });
 
-      const deliveredKey = String(mail.deliveredAt || "").slice(0, 10);
+    const sorted = [...filtered].sort((a: any, b: any) => {
+      const aDelivered = a.status === "delivered";
+      const bDelivered = b.status === "delivered";
+      if (aDelivered !== bDelivered) return aDelivered ? 1 : -1;
 
-      return deliveredKey === selectedDateKey;
+      const aTime = new Date(aDelivered ? a.deliveredAt || a.updatedAt || a.createdAt : a.createdAt).getTime();
+      const bTime = new Date(bDelivered ? b.deliveredAt || b.updatedAt || b.createdAt : b.createdAt).getTime();
+
+      return Number.isNaN(bTime - aTime) ? 0 : bTime - aTime;
     });
 
     const rows: Array<{ type: "header"; title: string } | { type: "mail"; mail: any }> = [];
-    let current = "";
-    filtered.forEach((mail: any) => {
+    let deliveredHeaderAdded = false;
+
+    sorted.forEach((mail: any) => {
       const delivered = mail.status === "delivered";
-      const label = delivered ? groupLabel(mail.deliveredAt) : "Сегодня";
-      if (label !== current) {
-        current = label;
-        rows.push({ type: "header", title: label });
+
+      if (delivered && !deliveredHeaderAdded) {
+        deliveredHeaderAdded = true;
+        rows.push({ type: "header", title: "Вручено" });
       }
+
       rows.push({ type: "mail", mail });
-    });
-    console.log("[Letters] grouped", {
-      input: mails.length,
-      rows: rows.length,
-      search: q,
-      selectedDateKey,
     });
 
     return rows;
-  }, [mails, search, selectedDate]);
+  }, [mails, search]);
+
+  const detailMail = useMemo(() => {
+    if (detailMailId === null) return null;
+    return mails.find((mail: any) => mail.id === detailMailId) || null;
+  }, [detailMailId, mails]);
+
+  const undoDelivery = useCallback(async (mailId: number) => {
+    if (dismissKeyboardIfOpen()) return;
+    if (isDesignPreview || !token) return;
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/trpc/mails.undoDelivery`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ token, mailId }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Не удалось отменить вручение");
+      }
+
+      setSelectedMailIds((current) => current.filter((id) => id !== mailId));
+      await refetch();
+      await loadSnapshotMails();
+    } catch (error) {
+      console.warn("[Letters] undo delivery failed", error);
+    }
+  }, [dismissKeyboardIfOpen, isDesignPreview, token, refetch, loadSnapshotMails]);
 
   const callRecipient = async (phone?: string | null) => {
     const normalizedPhone = normalizePhoneForDial(phone);
@@ -261,12 +406,6 @@ export default function LettersScreen() {
         </View>
       </View>
 
-      <View style={{ paddingHorizontal: 16, paddingVertical: 6, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: border }}>
-        <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>
-          Писем загружено: {mails.length} · строк списка: {groupedMails.length}
-        </Text>
-      </View>
-
       <FlatList
         data={groupedMails}
         keyExtractor={(item: any, index) => item.type === "header" ? `h-${item.title}-${index}` : `m-${item.mail.id}`}
@@ -283,7 +422,9 @@ export default function LettersScreen() {
         }}
         scrollIndicatorInsets={{ bottom: Math.max(bottomTabClearance + selectionPanelClearance, 180) }}
         ListFooterComponent={<View style={{ height: Math.max(selectionPanelClearance, 80) }} />}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        onScrollBeginDrag={() => Keyboard.dismiss()}
         removeClippedSubviews={false}
         initialNumToRender={50}
         maxToRenderPerBatch={50}
@@ -298,7 +439,7 @@ export default function LettersScreen() {
         renderItem={({ item }: any) => {
           if (item.type === "header") {
             if (item.title === "Сегодня") return null;
-            return <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", paddingHorizontal: 16, paddingTop: 9, paddingBottom: 6 }}>{item.title}</Text>;
+            return <Text style={{ color: item.title === "Вручено" ? colors.success : colors.muted, fontSize: 11, fontWeight: "800", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>{item.title}</Text>;
           }
 
           const mail = item.mail;
@@ -309,6 +450,7 @@ export default function LettersScreen() {
           return (
             <Pressable
               onLongPress={() => {
+                if (dismissKeyboardIfOpen()) return;
                 if (delivered) return;
                 longPressHandledRef.current = true;
                 setSelectedMailId(null);
@@ -316,16 +458,16 @@ export default function LettersScreen() {
               }}
               delayLongPress={350}
               onPress={() => {
-                if (delivered) return;
+                if (dismissKeyboardIfOpen()) return;
                 if (longPressHandledRef.current) {
                   longPressHandledRef.current = false;
                   return;
                 }
-                if (selectionMode) {
+                if (selectionMode && !delivered) {
                   toggleMailSelection(mail.id);
                   return;
                 }
-                openDeliveryModal([mail.id]);
+                setDetailMailId(mail.id);
               }}
               style={({ pressed }) => ({
                 minHeight: 76,
@@ -340,6 +482,7 @@ export default function LettersScreen() {
                 {!delivered ? (
                   <Pressable
                     onPress={() => {
+                      if (dismissKeyboardIfOpen()) return;
                       setSelectedMailId(null);
                       toggleMailSelection(mail.id);
                     }}
@@ -376,16 +519,34 @@ export default function LettersScreen() {
                     {mail.recipientName || "—"}
                     <Text style={{ color: colors.muted, fontWeight: "400" }}>  {mail.deliveryAddress || "—"}</Text>
                   </Text>
-                  {!delivered && !selectionMode ? (
-                    <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "700" }}>Вручить</Text>
+                  {!selectionMode ? (
+                    <Pressable
+                      onPress={() => {
+                        if (delivered) {
+                          void undoDelivery(mail.id);
+                        } else {
+                          if (dismissKeyboardIfOpen()) return;
+                          openDeliveryModal([mail.id]);
+                        }
+                      }}
+                      hitSlop={10}
+                      style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8, backgroundColor: delivered ? "rgba(34,197,94,0.14)" : "rgba(59,130,246,0.10)" }}
+                    >
+                      <Text style={{ color: delivered ? colors.success : colors.primary, fontSize: 11, fontWeight: "800" }}>
+                        {delivered ? "Отмена" : "Вручить"}
+                      </Text>
+                    </Pressable>
                   ) : null}
                 </View>
                 {delivered ? (
-                  <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3, fontSize: 11, lineHeight: 16 }}>
-                    Получил: {mail.recipientSignature || mail.recipientName || "—"}{mail.courierName ? `  ·  ${mail.courierName}` : ""}
+                  <Text numberOfLines={1} style={{ color: colors.success, marginTop: 3, fontSize: 11, lineHeight: 16, fontWeight: "700" }}>
+                    Вручено: {mail.recipientSignature || mail.recipientName || "—"}{mail.courierName ? `  ·  ${mail.courierName}` : ""}
                   </Text>
                 ) : hasPhone ? (
-                  <Pressable onPress={() => callRecipient(mail.recipientPhone)}>
+                  <Pressable onPress={() => {
+                    if (dismissKeyboardIfOpen()) return;
+                    void callRecipient(mail.recipientPhone);
+                  }}>
                     <Text style={{ color: colors.primary, marginTop: 3, fontSize: 11, lineHeight: 16 }}>{mail.recipientPhone}</Text>
                   </Pressable>
                 ) : null}
@@ -432,6 +593,65 @@ export default function LettersScreen() {
           </Pressable>
         </View>
       ) : null}
+
+      <Modal visible={detailMail !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent>
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)", padding: 16, paddingBottom: 86 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: border }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+              <Text style={{ flex: 1, color: colors.foreground, fontSize: 16, fontWeight: "800" }}>
+                Письмо №-{detailMail?.waybillNumber || "—"}
+              </Text>
+              <Pressable onPress={() => setDetailMailId(null)} hitSlop={10}>
+                <X size={20} color={colors.muted} />
+              </Pressable>
+            </View>
+
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 8 }}>Получатель</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{detailMail?.recipientName || "—"}</Text>
+
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 12 }}>Телефон</Text>
+            <Text style={{ color: colors.primary, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{detailMail?.recipientPhone || "—"}</Text>
+
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 12 }}>Полный адрес</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 21, marginTop: 3 }}>{detailMail?.deliveryAddress || "—"}</Text>
+
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginTop: 12 }}>Статус</Text>
+            <Text style={{ color: detailMail?.status === "delivered" ? colors.success : colors.primary, fontSize: 14, lineHeight: 20, marginTop: 3, fontWeight: "800" }}>
+              {detailMail?.status === "delivered" ? "Вручено" : "Не вручено"}
+            </Text>
+
+            {detailMail?.status === "delivered" ? (
+              <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 6 }}>
+                Получил: {detailMail?.recipientSignature || "—"} · {shortTime(detailMail?.deliveredAt)}
+              </Text>
+            ) : null}
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+              <Pressable onPress={() => setDetailMailId(null)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: soft, alignItems: "center", borderWidth: 1, borderColor: border }}>
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>Закрыть</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  if (!detailMail) return;
+                  const id = detailMail.id;
+                  setDetailMailId(null);
+                  if (detailMail.status === "delivered") {
+                    void undoDelivery(id);
+                  } else {
+                    openDeliveryModal([id]);
+                  }
+                }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: detailMail?.status === "delivered" ? colors.success : colors.primary, alignItems: "center" }}
+              >
+                <Text style={{ color: "white", fontSize: 12, fontWeight: "800" }}>
+                  {detailMail?.status === "delivered" ? "Отмена" : "Вручить"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={selectedMailId !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent>
         <KeyboardAvoidingView

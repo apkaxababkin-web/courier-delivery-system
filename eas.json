@@ -27,10 +27,20 @@
         "EXPO_PUBLIC_APP_ID": "courier-app",
         "EXPO_PUBLIC_OWNER_OPEN_ID": "owner-id",
         "EXPO_PUBLIC_OWNER_NAME": "Courier Service"
+      },
+      "ios": {
+        "credentialsSource": "local"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6784248367",
+        "ascApiKeyPath": "/home/administrator333/ios-credentials-manual/AuthKey_3WYLZGWPYU.p8",
+        "ascApiKeyId": "3WYLZGWPYU",
+        "ascApiKeyIssuerId": "1306e806-0488-43f5-bc8c-7115fe1df5f6"
+      }
+    }
   }
 }
