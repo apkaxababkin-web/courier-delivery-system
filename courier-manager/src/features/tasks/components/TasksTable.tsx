@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileText, Loader2, Trash2 } from 'lucide-react';
 import type { Request } from '../model/types';
 import { getStatusLabel, getStatusBadgeClass, getStatusIcon } from '../model/stats';
@@ -222,6 +222,16 @@ function CourierAssignSelect({
   onChange: (value: number | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const closeFloatingUi = () => setOpen(false);
+
+    window.addEventListener('mig-close-floating-ui', closeFloatingUi);
+
+    return () => {
+      window.removeEventListener('mig-close-floating-ui', closeFloatingUi);
+    };
+  }, []);
   const selectedCourier = couriers.find((courier) => courier.id === value);
 
   const handleSelect = (courierId: number | null) => {
@@ -230,10 +240,14 @@ function CourierAssignSelect({
   };
 
   return (
-    <div className="relative z-[100] min-w-[160px]">
+    <div className="relative min-w-[160px]">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          const nextOpen = !open;
+          window.dispatchEvent(new Event('mig-close-floating-ui'));
+          setOpen(nextOpen);
+        }}
         className={`flex h-10 w-full items-center justify-between border border-slate-200 px-3 text-left text-sm text-slate-900 outline-none transition ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white' : 'rounded-2xl bg-white hover:bg-slate-50'}`}
       >
         <span className={selectedCourier ? 'truncate' : 'truncate text-slate-500'}>
@@ -243,7 +257,7 @@ function CourierAssignSelect({
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full z-[999] -mt-px max-h-72 overflow-visible rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
+        <div className="absolute left-0 right-0 top-full z-30 -mt-px max-h-72 overflow-visible rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
           <button
             type="button"
             onClick={() => handleSelect(null)}

@@ -26,6 +26,28 @@ const normalizePackageType = (value: unknown): TaskFormData['packageType'] => {
   }
   return 'small';
 };
+const normalizePaymentMethod = (value: unknown): TaskFormData['paymentMethod'] => {
+  if (value === 'paid' || value === 'transfer' || value === 'cash' || value === 'terminal' || value === 'qr') {
+    return value;
+  }
+  return 'paid';
+};
+
+const cleanAiText = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  if (!text) return '';
+  const lowered = text.toLowerCase();
+  if (lowered === 'null' || lowered === 'undefined' || lowered === 'не указано' || lowered === 'не найдено') return '';
+  return text;
+};
+
+const parseAiPaymentAmount = (value: unknown): number => {
+  const normalized = cleanAiText(value).replace(/[^0-9.,]/g, '').replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 
 type CourierOption = { id: number; name: string; isActive?: boolean };
 type OperationPoint = {
@@ -187,6 +209,17 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [showCreateActionMenu, setShowCreateActionMenu] = useState(false);
+
+  useEffect(() => {
+    const closeCreateActionMenu = () => setShowCreateActionMenu(false);
+
+    window.addEventListener('mig-close-create-action-menu', closeCreateActionMenu);
+
+    return () => {
+      window.removeEventListener('mig-close-create-action-menu', closeCreateActionMenu);
+    };
+  }, []);
+
   const [createInitialData, setCreateInitialData] = useState<Partial<TaskFormData> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isParsingAi, setIsParsingAi] = useState(false);
@@ -200,6 +233,11 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   useEffect(() => { loadData(); }, []);
   useEffect(() => {
     if (!realtimeSnapshot) return;
+
+    if (!Array.isArray(realtimeSnapshot.requests)) {
+      console.warn('[TasksPage] ignore invalid realtime snapshot', realtimeSnapshot);
+      return;
+    }
 
     console.log('[TasksPage] realtime sync', realtimeSnapshot.updatedAt);
     setRequests(realtimeSnapshot.requests);
@@ -411,15 +449,44 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     }
   };
 
-  const handleAiParse = async (text: string) => {
+  const handleAiParse = async (text: string, selectedRequestType: NonNullable<TaskFormData['requestType']> = 'delivery') => {
     try {
       setIsParsingAi(true);
       const result = await parseRequestWithAI(text);
-      console.log('Parsed:', result);
+      const data = result.data;
+
+      if (!data) {
+        throw new Error('AI returned empty data');
+      }
+
+      const commentParts = [
+        cleanAiText(data.comment),
+        cleanAiText(data.packageDescription) ? `Что везём: ${cleanAiText(data.packageDescription)}` : '',
+        cleanAiText(data.specialInstructions) ? `Инструкции: ${cleanAiText(data.specialInstructions)}` : '',
+        text ? `Исходный текст: ${text}` : '',
+      ].filter(Boolean);
+
+      setCreateInitialData({
+        requestType: selectedRequestType,
+        senderName: cleanAiText(data.senderName || data.clientName),
+        senderPhone: cleanAiText(data.senderPhone),
+        senderAddress: cleanAiText(data.senderAddress || data.pickupAddress),
+        recipientName: cleanAiText(data.recipientName),
+        recipientPhone: cleanAiText(data.recipientPhone),
+        deliveryAddress: cleanAiText(data.deliveryAddress),
+        recipientAddress: cleanAiText(data.recipientAddress),
+        paymentMethod: normalizePaymentMethod(data.paymentMethod),
+        paymentAmount: parseAiPaymentAmount(data.paymentAmount),
+        deliveryTimeFrom: cleanAiText(data.deliveryTimeFrom),
+        deliveryTimeTo: cleanAiText(data.deliveryTimeTo),
+        comments: commentParts.join('\n'),
+      });
+
       setShowAiModal(false);
+      setShowCreateModal(true);
     } catch (error) {
       console.error('Failed to parse with AI:', error);
-      alert('Ошибка при разборе заявки по тексту');
+      alert(`Ошибка при разборе заявки по тексту: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
     } finally {
       setIsParsingAi(false);
     }
@@ -455,8 +522,24 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
       {operationMode === 'requests' ? (
         <>
-          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => setShowCreateActionMenu(true)} onAiCreateClick={() => setShowAiModal(true)} hideDatePicker />
-          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => setShowCreateActionMenu(true)} onAiCreateClick={() => setShowAiModal(true)} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
+          <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => {
+            window.dispatchEvent(new Event('mig-close-floating-ui'));
+            window.dispatchEvent(new Event('mig-close-archive-calendar'));
+            setShowCreateActionMenu(true);
+          }} onAiCreateClick={() => {
+            window.dispatchEvent(new Event('mig-close-floating-ui'));
+            window.dispatchEvent(new Event('mig-close-archive-calendar'));
+            setShowAiModal(true);
+          }} hideDatePicker />
+          {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => {
+            window.dispatchEvent(new Event('mig-close-floating-ui'));
+            window.dispatchEvent(new Event('mig-close-archive-calendar'));
+            setShowCreateActionMenu(true);
+          }} onAiCreateClick={() => {
+            window.dispatchEvent(new Event('mig-close-floating-ui'));
+            window.dispatchEvent(new Event('mig-close-archive-calendar'));
+            setShowAiModal(true);
+          }} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -604,7 +687,11 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
             <button
               type="button"
-              onClick={() => setShowCreateActionMenu((value) => !value)}
+              onClick={() => {
+                window.dispatchEvent(new Event('mig-close-floating-ui'));
+                window.dispatchEvent(new Event('mig-close-archive-calendar'));
+                setShowCreateActionMenu((value) => !value);
+              }}
               className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
               title="Создать заявку"
               aria-label="Создать заявку"

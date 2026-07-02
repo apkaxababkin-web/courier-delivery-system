@@ -217,26 +217,31 @@ function ManagerChatPanel() {
             </div>
           </div>
         ) : (
-          messages.map((message) => {
-            const isMine = message.senderName === managerName && message.senderRole === 'manager';
+          (Array.isArray(messages) ? messages : []).map((message) => {
+            const rawMessage = message as any;
+            const senderName = rawMessage.senderName || rawMessage.authorName || 'Пользователь';
+            const senderRole = rawMessage.senderRole || rawMessage.authorType || 'courier';
+            const messageText = rawMessage.text || '';
+            const messageCreatedAt = rawMessage.createdAt || rawMessage.created_at || new Date().toISOString();
+            const isMine = senderName === managerName && senderRole === 'manager';
 
             return (
               <div key={message.id} className="flex gap-3">
                 <div className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${isMine ? 'bg-violet-500 text-white' : 'bg-blue-500 text-white'}`}>
-                  {message.senderName.slice(0, 1)}
+                  {senderName.slice(0, 1)}
                 </div>
 
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <span className="font-semibold text-slate-950">{message.senderName}</span>
-                      <span className="ml-2 text-xs text-slate-400">{message.senderRole === 'manager' ? 'Менеджер' : 'Курьер'}</span>
+                      <span className="font-semibold text-slate-950">{senderName}</span>
+                      <span className="ml-2 text-xs text-slate-400">{senderRole === 'manager' ? 'Менеджер' : 'Курьер'}</span>
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400">{formatChatTime(message.createdAt)}</span>
+                    <span className="shrink-0 text-xs text-slate-400">{formatChatTime(messageCreatedAt)}</span>
                   </div>
 
                   <div className="whitespace-pre-wrap break-words rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-5 text-slate-700 shadow-sm ring-1 ring-slate-100">
-                    {message.text}
+                    {messageText}
                   </div>
                 </div>
               </div>
@@ -303,6 +308,17 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [archiveDate, setArchiveDate] = useState(getTodayDate());
   const [isArchiveCalendarOpen, setIsArchiveCalendarOpen] = useState(false);
+
+  useEffect(() => {
+    const closeArchiveCalendar = () => setIsArchiveCalendarOpen(false);
+
+    window.addEventListener('mig-close-archive-calendar', closeArchiveCalendar);
+
+    return () => {
+      window.removeEventListener('mig-close-archive-calendar', closeArchiveCalendar);
+    };
+  }, []);
+
   const [visibleArchiveMonth, setVisibleArchiveMonth] = useState(() => {
     const today = parseDateKey(getTodayDate());
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -414,7 +430,7 @@ function App() {
 
       <div className="flex h-screen min-h-0 overflow-hidden lg:pl-[280px]">
         <section className="flex min-w-0 flex-1 flex-col bg-slate-50">
-        <header className="shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
+        <header className="relative z-[9000] shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <button type="button" onClick={() => setIsSidebarOpen(true)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden" aria-label="Открыть меню"><Menu className="h-5 w-5" /></button>
@@ -426,7 +442,7 @@ function App() {
                   <button
                     type="button"
                     aria-label="Закрыть календарь архива"
-                    className="fixed inset-0 z-40 cursor-default bg-transparent"
+                    className="fixed inset-0 z-[70] cursor-default bg-transparent"
                     onClick={() => setIsArchiveCalendarOpen(false)}
                   />
                 ) : null}
@@ -434,11 +450,14 @@ function App() {
                 <button
                   type="button"
                   onClick={() => {
+                    window.dispatchEvent(new Event('mig-close-floating-ui'));
+                    window.dispatchEvent(new Event('mig-close-create-action-menu'));
+
                     const selected = parseDateKey(archiveDate);
                     setVisibleArchiveMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
                     setIsArchiveCalendarOpen((value) => !value);
                   }}
-                  className="relative z-50 inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  className="relative z-[80] inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
                   <CalendarDays className="h-4 w-4 text-slate-400" />
                   <span className="hidden whitespace-nowrap capitalize sm:inline">{formatArchiveDate(archiveDate)}</span>
@@ -446,7 +465,7 @@ function App() {
                 </button>
 
                 {isArchiveCalendarOpen ? (
-                  <div className="absolute right-0 top-12 z-50 w-[304px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/15">
+                  <div className="absolute right-0 top-12 z-[80] w-[304px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/15">
                     <div className="mb-3 flex items-center justify-between gap-2 px-1">
                       <button
                         type="button"
