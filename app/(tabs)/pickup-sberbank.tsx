@@ -1,17 +1,16 @@
-import { AppState, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useFocusEffect, useRouter } from "expo-router";
-import EventSource from "react-native-sse";
-import { getApiBaseUrl } from "@/constants/oauth";
 import { skipToken } from "@tanstack/react-query";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { NetworkBanner } from "@/components/network-banner";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { PickupOperationList } from "@/components/pickup-operation-list";
 import { performSuccessHaptic } from "@/lib/vibration-preference";
 import { DESIGN_PREVIEW_TOKEN, designPreviewPickupPoints } from "@/lib/design-preview";
@@ -58,111 +57,48 @@ export default function SberbankScreen() {
   const { data: pickedCountRaw = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(queryInput);
   const pickedCount = Number(pickedCountRaw) || pickupPoints.filter((point) => point.isPicked).length;
 
-  const toggleMutation = trpc.sberbank.togglePickup.useMutation({
-    onSuccess: () => {
-      refetch();
-      refetchCount();
-      performSuccessHaptic().catch(() => undefined);
-    },
-  });
+  const refreshInFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
 
-  const refreshSberbank = useCallback(() => {
+  const refreshSberbank = useCallback(async () => {
     if (!token || isDesignPreview) return;
-    void refetch();
-    void refetchCount();
+    if (refreshInFlightRef.current) {
+      refreshPendingRef.current = true;
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    try {
+      do {
+        refreshPendingRef.current = false;
+        await Promise.all([refetch(), refetchCount()]);
+      } while (refreshPendingRef.current);
+    } finally {
+      refreshInFlightRef.current = false;
+    }
   }, [token, isDesignPreview, refetch, refetchCount]);
 
   useFocusEffect(
     useCallback(() => {
-      refreshSberbank();
-
-      const interval = setInterval(refreshSberbank, 2000);
-
-      return () => clearInterval(interval);
+      void refreshSberbank();
     }, [refreshSberbank])
   );
 
-  useEffect(() => {
-    if (!token || isDesignPreview) return;
-
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") refreshSberbank();
-    });
-
-    return () => subscription.remove();
-  }, [token, isDesignPreview, refreshSberbank]);
-
-  useEffect(() => {
-    if (!token || isDesignPreview) return;
-
-    let closed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let eventSource: any = null;
-
-    const connect = () => {
-      if (closed) return;
-
-      try {
-        eventSource = new EventSource(`${getApiBaseUrl()}/api/live`, {
-          pollingInterval: 0,
-        });
-
-        eventSource.addEventListener("connected", () => {
-          console.log("[SberbankLiveSync] connected");
-          refreshSberbank();
-        });
-
-        eventSource.addEventListener("open", () => {
-          console.log("[SberbankLiveSync] opened");
-          refreshSberbank();
-        });
-
-        eventSource.addEventListener("sberbank_changed", () => {
-          console.log("[SberbankLiveSync] sberbank_changed");
-          refreshSberbank();
-        });
-
-        eventSource.addEventListener("data_changed", () => {
-          console.log("[SberbankLiveSync] data_changed");
-          refreshSberbank();
-        });
-
-        eventSource.addEventListener("ping", () => {
-          refreshSberbank();
-        });
-
-        eventSource.addEventListener("error", (error: unknown) => {
-          console.warn("[SberbankLiveSync] error:", error);
-
-          try {
-            eventSource?.close();
-          } catch {}
-
-          if (!closed) {
-            reconnectTimer = setTimeout(connect, 3000);
-          }
-        });
-      } catch (error) {
-        console.warn("[SberbankLiveSync] connect failed:", error);
-
-        if (!closed) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
+  useMobileLiveSync({
+    enabled: !!token && !isDesignPreview,
+    onSync: useCallback((eventType) => {
+      if (eventType === "sberbank_changed" || eventType === "app_active") {
+        return refreshSberbank();
       }
-    };
+    }, [refreshSberbank]),
+  });
 
-    connect();
-
-    return () => {
-      closed = true;
-
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-
-      try {
-        eventSource?.close();
-      } catch {}
-    };
-  }, [token, isDesignPreview, refreshSberbank]);
+  const toggleMutation = trpc.sberbank.togglePickup.useMutation({
+    onSuccess: () => {
+      void refreshSberbank();
+      performSuccessHaptic().catch(() => undefined);
+    },
+  });
 
   const handleTogglePickup = (pointId: number) => {
     if (isDesignPreview) return;
