@@ -721,9 +721,25 @@ export async function updateCourierUrgencyThresholds(
   }
 }
 
+const COURIER_TIME_ZONE = "Asia/Irkutsk";
+
+function formatCourierDate(targetDate: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: COURIER_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(targetDate);
+}
+
 // ─── Hemotest Pickup Points ────────────────────────────────────────────────────
 
-export type HemotestPickupWithStatus = HemotestPickupPoint & { isPicked: boolean; pickedAt: Date | null };
+export type HemotestPickupWithStatus = HemotestPickupPoint & {
+  isPicked: boolean;
+  pickedAt: Date | null;
+  courierId?: number | null;
+  courierName?: string;
+};
 
 export async function getHemotestPickupPointsForDate(
   courierId: number,
@@ -732,15 +748,12 @@ export async function getHemotestPickupPointsForDate(
   const db = await getDb();
   if (!db) return [];
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = formatCourierDate(targetDate);
 
-  // APK must see the same Hemotest lists that manager creates for this date.
   const lists = await db
     .select({ id: hemotestPickupLists.id })
     .from(hemotestPickupLists)
-    .where(eq(hemotestPickupLists.date, dateStr))
-    .orderBy(desc(hemotestPickupLists.id))
-    .limit(1);
+    .where(eq(hemotestPickupLists.date, dateStr));
 
   const listIds = lists.map((list: { id: number }) => list.id);
   if (listIds.length === 0) return [];
@@ -754,36 +767,42 @@ export async function getHemotestPickupPointsForDate(
 
   const pointsById = new Map<number, HemotestPickupPoint>();
   for (const row of listItems as Array<{ hemotestPickupPoints: HemotestPickupPoint }>) {
-    pointsById.set(row.hemotestPickupPoints.id, row.hemotestPickupPoints);
+    if (!pointsById.has(row.hemotestPickupPoints.id)) {
+      pointsById.set(row.hemotestPickupPoints.id, row.hemotestPickupPoints);
+    }
   }
+
   const points = Array.from(pointsById.values());
 
-  // Get pickups for this courier and date
+  // Общая доска: каждый курьер видит отметки всех курьеров за дату.
   const pickups = await db
     .select()
     .from(hemotestPickups)
-    .where(and(
-      eq(hemotestPickups.courierId, courierId),
-      eq(hemotestPickups.date, dateStr)
-    ));
-  
-  const pickupMap = new Map<number, HemotestPickup>(pickups.map((p: HemotestPickup) => [p.pointId, p]));
-  
-  // Get courier name
-  const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
-  const courierName = courierData[0]?.name ?? "Unknown";
-  
-  // Combine and sort: unpicked first, then picked
+    .leftJoin(couriers, eq(hemotestPickups.courierId, couriers.id))
+    .where(eq(hemotestPickups.date, dateStr));
+
+  const pickupMap = new Map<
+    number,
+    { hemotestPickups: HemotestPickup; couriers: { name: string | null } | null }
+  >(
+    pickups.map((p: { hemotestPickups: HemotestPickup; couriers: { name: string | null } | null }) => [
+      p.hemotestPickups.pointId,
+      p,
+    ])
+  );
+
   const result = points.map((point: HemotestPickupPoint) => {
-    const pickup: HemotestPickup | undefined = pickupMap.get(point.id);
+    const pickup = pickupMap.get(point.id);
+
     return {
       ...point,
-      isPicked: pickup?.isPicked ?? false,
-      pickedAt: pickup?.pickedAt ?? null,
-      courierName: pickup?.isPicked ? courierName : undefined,
+      isPicked: pickup?.hemotestPickups.isPicked ?? false,
+      pickedAt: pickup?.hemotestPickups.pickedAt ?? null,
+      courierId: pickup?.hemotestPickups.courierId ?? null,
+      courierName: pickup?.hemotestPickups.isPicked ? pickup.couriers?.name ?? undefined : undefined,
     };
   });
-  
+
   return result.sort(
     (a: HemotestPickupWithStatus, b: HemotestPickupWithStatus) =>
       Number(a.isPicked) - Number(b.isPicked),
@@ -798,9 +817,8 @@ export async function toggleHemotestPickup(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  // Check if pickup record exists
+  const dateStr = formatCourierDate(targetDate);
+
   const existing = await db
     .select()
     .from(hemotestPickups)
@@ -809,21 +827,20 @@ export async function toggleHemotestPickup(
       eq(hemotestPickups.date, dateStr)
     ))
     .limit(1);
-  
+
   if (existing.length > 0) {
-    // Toggle the status
     const pickup = existing[0];
+
     await db
       .update(hemotestPickups)
       .set({
-        courierId: !pickup.isPicked ? courierId : null,
+        courierId,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
         updatedAt: new Date(),
       })
       .where(eq(hemotestPickups.id, pickup.id));
   } else {
-    // Create new pickup record as picked
     await db.insert(hemotestPickups).values({
       courierId,
       pointId,
@@ -841,7 +858,12 @@ export async function getHemotestPickedCount(courierId: number, targetDate: Date
 
 // ─── Sberbank Pickup Points ────────────────────────────────────────────────────
 
-export type SberbankPickupWithStatus = SberbankPickupPoint & { isPicked: boolean; pickedAt: Date | null };
+export type SberbankPickupWithStatus = SberbankPickupPoint & {
+  isPicked: boolean;
+  pickedAt: Date | null;
+  courierId?: number | null;
+  courierName?: string;
+};
 
 function getBusinessDayOfWeek(targetDate: Date): number {
   const day = targetDate.getDay();
@@ -855,15 +877,12 @@ export async function getSberbankPickupPointsForDate(
   const db = await getDb();
   if (!db) return [];
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateStr = formatCourierDate(targetDate);
 
-  // APK must see the same Sberbank lists that manager creates for this exact date.
   const lists = await db
     .select({ id: sberbankPickupLists.id })
     .from(sberbankPickupLists)
-    .where(eq(sberbankPickupLists.date, dateStr))
-    .orderBy(desc(sberbankPickupLists.id))
-    .limit(1);
+    .where(eq(sberbankPickupLists.date, dateStr));
 
   const listIds = lists.map((list: { id: number }) => list.id);
   if (listIds.length === 0) return [];
@@ -877,36 +896,42 @@ export async function getSberbankPickupPointsForDate(
 
   const pointsById = new Map<number, SberbankPickupPoint>();
   for (const row of listItems as Array<{ sberbankPickupPoints: SberbankPickupPoint }>) {
-    pointsById.set(row.sberbankPickupPoints.id, row.sberbankPickupPoints);
+    if (!pointsById.has(row.sberbankPickupPoints.id)) {
+      pointsById.set(row.sberbankPickupPoints.id, row.sberbankPickupPoints);
+    }
   }
+
   const points = Array.from(pointsById.values());
 
-  // Get pickups for this courier and date
+  // Общая доска: каждый курьер видит отметки всех курьеров за дату.
   const pickups = await db
     .select()
     .from(sberbankPickups)
-    .where(and(
-      eq(sberbankPickups.courierId, courierId),
-      eq(sberbankPickups.date, dateStr)
-    ));
-  
-  const pickupMap = new Map<number, SberbankPickup>(pickups.map((p: SberbankPickup) => [p.pointId, p]));
-  
-  // Get courier name
-  const courierData = await db.select().from(couriers).where(eq(couriers.id, courierId)).limit(1);
-  const courierName = courierData[0]?.name ?? "Unknown";
-  
-  // Combine and sort: unpicked first, then picked
+    .leftJoin(couriers, eq(sberbankPickups.courierId, couriers.id))
+    .where(eq(sberbankPickups.date, dateStr));
+
+  const pickupMap = new Map<
+    number,
+    { sberbankPickups: SberbankPickup; couriers: { name: string | null } | null }
+  >(
+    pickups.map((p: { sberbankPickups: SberbankPickup; couriers: { name: string | null } | null }) => [
+      p.sberbankPickups.pointId,
+      p,
+    ])
+  );
+
   const result = points.map((point: SberbankPickupPoint) => {
-    const pickup: SberbankPickup | undefined = pickupMap.get(point.id);
+    const pickup = pickupMap.get(point.id);
+
     return {
       ...point,
-      isPicked: pickup?.isPicked ?? false,
-      pickedAt: pickup?.pickedAt ?? null,
-      courierName: pickup?.isPicked ? courierName : undefined,
+      isPicked: pickup?.sberbankPickups.isPicked ?? false,
+      pickedAt: pickup?.sberbankPickups.pickedAt ?? null,
+      courierId: pickup?.sberbankPickups.courierId ?? null,
+      courierName: pickup?.sberbankPickups.isPicked ? pickup.couriers?.name ?? undefined : undefined,
     };
   });
-  
+
   return result.sort(
     (a: SberbankPickupWithStatus, b: SberbankPickupWithStatus) =>
       Number(a.isPicked) - Number(b.isPicked),
@@ -921,9 +946,8 @@ export async function toggleSberbankPickup(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const dateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  // Check if pickup record exists
+  const dateStr = formatCourierDate(targetDate);
+
   const existing = await db
     .select()
     .from(sberbankPickups)
@@ -932,21 +956,20 @@ export async function toggleSberbankPickup(
       eq(sberbankPickups.date, dateStr)
     ))
     .limit(1);
-  
+
   if (existing.length > 0) {
-    // Toggle the status
     const pickup = existing[0];
+
     await db
       .update(sberbankPickups)
       .set({
-        courierId: !pickup.isPicked ? courierId : null,
+        courierId,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
         updatedAt: new Date(),
       })
       .where(eq(sberbankPickups.id, pickup.id));
   } else {
-    // Create new pickup record as picked
     await db.insert(sberbankPickups).values({
       courierId,
       pointId,
