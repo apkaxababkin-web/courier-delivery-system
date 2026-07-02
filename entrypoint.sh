@@ -6,18 +6,13 @@
 set -e
 
 echo "[Entrypoint] Starting courier-delivery-system API..."
-echo "[Entrypoint] DATABASE_URL: $DATABASE_URL"
-
-echo "[Entrypoint] Running database migrations..."
-if [ -f "drizzle.config.ts" ]; then
-  if yes | npx drizzle-kit push 2>&1; then
-    echo "[Entrypoint] ✓ Migrations completed successfully"
-  else
-    echo "[Entrypoint] ⚠ Migrations encountered an issue (continuing anyway)"
-  fi
+if [ -n "${DATABASE_URL:-}" ]; then
+  echo "[Entrypoint] DATABASE_URL is configured"
 else
-  echo "[Entrypoint] ⚠ drizzle.config.ts not found, skipping migrations"
+  echo "[Entrypoint] DATABASE_URL is not configured"
 fi
+
+echo "[Entrypoint] Automatic drizzle push is disabled; run versioned migrations during a controlled deploy"
 
 run_patch() {
   patch_file="$1"

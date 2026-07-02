@@ -5,6 +5,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: courier-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-courier}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-courier_password}
