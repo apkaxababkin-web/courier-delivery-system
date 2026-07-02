@@ -114,6 +114,49 @@ export async function deleteClient(id: number): Promise<void> {
 }
 
 
+export interface ClientPortalAccount {
+  id: number;
+  clientId: number;
+  ownerName: string;
+  login: string;
+  temporaryPassword?: string | null;
+  role: string;
+  isActive: boolean;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getClientPortalAccounts(clientId: number): Promise<ClientPortalAccount[]> {
+  return await restJson<ClientPortalAccount[]>(`/api/manager/clients/${clientId}/portal-accounts`);
+}
+
+export async function createClientPortalAccount(clientId: number, input: {
+  ownerName: string;
+  login: string;
+  password?: string;
+  role?: string;
+}): Promise<ClientPortalAccount> {
+  return await restJson<ClientPortalAccount>(`/api/manager/clients/${clientId}/portal-accounts`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function resetClientPortalAccountPassword(id: number): Promise<ClientPortalAccount> {
+  return await restJson<ClientPortalAccount>(`/api/manager/client-portal-accounts/${id}/reset-password`, {
+    method: 'POST',
+  });
+}
+
+export async function setClientPortalAccountActive(id: number, isActive: boolean): Promise<ClientPortalAccount> {
+  return await restJson<ClientPortalAccount>(`/api/manager/client-portal-accounts/${id}/active`, {
+    method: 'PUT',
+    body: JSON.stringify({ isActive }),
+  });
+}
+
+
 
 export interface ClientPoint {
   id: number;
@@ -135,6 +178,24 @@ export interface ClientRegularClient {
   contactPerson?: string | null;
   phone?: string | null;
   sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ClientTariffsDto {
+  id?: number;
+  clientId?: number;
+  deliveryFirstPlace: number;
+  deliveryNextPlace: number;
+  transportCompanyFirstPlace: number;
+  transportCompanyNextPlace: number;
+  movementFirstPlace: number;
+  movementNextPlace: number;
+  otherFirstPlace: number;
+  otherNextPlace: number;
+  hemotestPointPrice: number;
+  hemotestSundayFirstPointPrice: number;
+  hemotestSundayNextPointPrice: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -225,6 +286,33 @@ export async function deleteClientRegularClient(id: number): Promise<void> {
   await restJson<{ success: boolean }>(`/api/manager/regular-clients/${id}`, {
     method: 'DELETE',
   });
+}
+
+export async function getClientTariffs(clientId: number): Promise<ClientTariffsDto> {
+  return await restJson<ClientTariffsDto>(`/api/manager/clients/${clientId}/tariffs`);
+}
+
+export async function updateClientTariffs(clientId: number, tariffs: ClientTariffsDto): Promise<ClientTariffsDto> {
+  return await restJson<ClientTariffsDto>(`/api/manager/clients/${clientId}/tariffs`, {
+    method: 'PUT',
+    body: JSON.stringify(tariffs),
+  });
+}
+
+export interface HemotestReconciliationItem {
+  date: string;
+  pointId: number;
+  pointName: string;
+  address: string;
+  courierId?: number | null;
+  courierName?: string | null;
+  pickedAt?: string | null;
+}
+
+export async function getHemotestReconciliation(): Promise<HemotestReconciliationItem[]> {
+  return asArray<HemotestReconciliationItem>(
+    await restJson<unknown>('/api/manager/hemotest/reconciliation')
+  );
 }
 
 // ─── Partners API ───────────────────────────────────────────────────────────
@@ -468,6 +556,7 @@ export interface Mail {
   recipientSignature?: string | null;
   courierId?: number | null;
   courierName?: string | null;
+  partnerId?: number | null;
 }
 
 export async function getAllMails(filters?: {
@@ -674,18 +763,34 @@ export async function extractFromPdf(pdfBase64: string, fileName: string): Promi
 
 // ─── AI Text Parsing ────────────────────────────────────────────────────────
 export interface ParsedRequestData {
-  requestType: string;
-  clientName: string;
-  courierName: string;
-  recipientName: string;
-  recipientPhone: string;
-  pickupAddress: string;
-  deliveryAddress: string;
-  paymentMethod: string;
-  comment: string;
+  requestType?: string | null;
+  clientName?: string | null;
+  courierName?: string | null;
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  pickupAddress?: string | null;
+  deliveryAddress?: string | null;
+  recipientAddress?: string | null;
+  senderName?: string | null;
+  senderPhone?: string | null;
+  senderAddress?: string | null;
+  packageDescription?: string | null;
+  specialInstructions?: string | null;
+  paymentMethod?: string | null;
+  paymentAmount?: string | number | null;
+  deliveryTimeFrom?: string | null;
+  deliveryTimeTo?: string | null;
+  comment?: string | null;
 }
 
 export async function parseRequestWithAI(text: string): Promise<{ success: boolean; data?: ParsedRequestData }> {
   const data = await trpcPost<ParsedRequestData>('ai.parseRequest', { text }, {} as ParsedRequestData);
   return { success: true, data };
+}
+
+
+export async function resetCourierPassword(courierId: number): Promise<{ success: boolean; password: string }> {
+  return await restJson<{ success: boolean; password: string }>(`/api/manager/couriers/${courierId}/reset-password`, {
+    method: 'POST',
+  });
 }
