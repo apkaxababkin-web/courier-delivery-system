@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import type { StatusFilter } from '../model/types';
 import { formatLocalDateWithOptions, getLocalDateKey, toLocalDateKey } from '../../../lib/local-time';
 
@@ -66,6 +66,7 @@ export function TasksToolbar({
   onDateChange,
   searchQuery,
   onSearchChange,
+  onCreateClick,
   hideDatePicker = false,
 }: TasksToolbarProps) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -238,6 +239,15 @@ export function TasksToolbar({
               </div>
               )}
             </div>
+
+            <button
+              type="button"
+              onClick={onCreateClick}
+              className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 transition hover:bg-slate-800 xl:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              Создать заявку
+            </button>
           </div>
         </div>
       </div>

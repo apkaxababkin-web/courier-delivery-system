@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bike, BellOff, Copy, Edit2, KeyRound, MapPin, Phone, Plus, RefreshCcw, Search, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
+import { AppSelect } from '../components/AppSelect';
 
 type Courier = {
   id: number;
@@ -29,6 +30,12 @@ type CourierEditFormData = {
 };
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+const vehicleOptions = [
+  { value: 'car', label: 'Авто' },
+  { value: 'scooter', label: 'Скутер' },
+  { value: 'bicycle', label: 'Велосипед' },
+  { value: 'foot', label: 'Пеший' },
+];
 
 const emptyForm: CourierFormData = {
   name: '',
@@ -330,7 +337,7 @@ export default function CouriersView() {
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div><label className="mb-2 block text-sm font-medium text-slate-700">Телефон</label><input value={formData.phone} onChange={(event) => setFormData((prev) => ({ ...prev, phone: event.target.value }))} placeholder="+7..." className={inputClass} /></div>
-                <div><label className="mb-2 block text-sm font-medium text-slate-700">Транспорт</label><select value={formData.vehicleType} onChange={(event) => setFormData((prev) => ({ ...prev, vehicleType: event.target.value }))} className={inputClass}><option value="car">Авто</option><option value="scooter">Скутер</option><option value="bicycle">Велосипед</option><option value="foot">Пеший</option></select></div>
+                <div><label className="mb-2 block text-sm font-medium text-slate-700">Транспорт</label><AppSelect value={formData.vehicleType} options={vehicleOptions} onChange={(value) => setFormData((prev) => ({ ...prev, vehicleType: String(value ?? 'car') }))} /></div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">Курьер сможет войти только по выданному логину и паролю. Самостоятельной регистрации в курьерском приложении нет.</div>
               <div className="flex gap-3 pt-2"><button type="submit" disabled={saving} className={`flex-1 ${primaryButtonClass}`}>{saving ? 'Создание...' : 'Создать доступ'}</button><button type="button" onClick={() => setShowForm(false)} className={`flex-1 ${secondaryButtonClass}`}>Отмена</button></div>
@@ -387,28 +394,20 @@ export default function CouriersView() {
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">Транспорт</label>
-                  <select
+                  <AppSelect
                     value={editFormData.vehicleType}
-                    onChange={(event) => setEditFormData((prev) => ({ ...prev, vehicleType: event.target.value }))}
-                    className={inputClass}
-                  >
-                    <option value="car">Авто</option>
-                    <option value="scooter">Скутер</option>
-                    <option value="bicycle">Велосипед</option>
-                    <option value="foot">Пеший</option>
-                  </select>
+                    options={vehicleOptions}
+                    onChange={(value) => setEditFormData((prev) => ({ ...prev, vehicleType: String(value ?? 'car') }))}
+                  />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">Статус</label>
-                  <select
+                  <AppSelect
                     value={editFormData.isActive ? 'active' : 'disabled'}
-                    onChange={(event) => setEditFormData((prev) => ({ ...prev, isActive: event.target.value === 'active' }))}
-                    className={inputClass}
-                  >
-                    <option value="active">Активен</option>
-                    <option value="disabled">Отключён</option>
-                  </select>
+                    options={[{ value: 'active', label: 'Активен' }, { value: 'disabled', label: 'Отключён' }]}
+                    onChange={(value) => setEditFormData((prev) => ({ ...prev, isActive: value === 'active' }))}
+                  />
                 </div>
               </div>
 

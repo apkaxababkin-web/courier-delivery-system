@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { FileText, Loader2, Trash2 } from 'lucide-react';
+import { AppSelect } from '../../../components/AppSelect';
 import type { Request } from '../model/types';
 import { getStatusLabel, getStatusBadgeClass, getStatusIcon } from '../model/stats';
 import { formatLocalDate } from '../../../lib/local-time';
@@ -180,6 +180,7 @@ export function TasksTable({
                     <CourierAssignSelect
                       value={request.courierId ?? null}
                       couriers={couriers}
+                      disabled={assigningRequestId === request.id}
                       onChange={(courierId) => onAssignCourier(request.id, courierId)}
                     />
                     {request.courierName && (
@@ -215,69 +216,29 @@ export function TasksTable({
 function CourierAssignSelect({
   value,
   couriers,
+  disabled,
   onChange,
 }: {
   value: number | null;
   couriers: Array<{ id: number; name: string }>;
+  disabled?: boolean;
   onChange: (value: number | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const closeFloatingUi = () => setOpen(false);
-
-    window.addEventListener('mig-close-floating-ui', closeFloatingUi);
-
-    return () => {
-      window.removeEventListener('mig-close-floating-ui', closeFloatingUi);
-    };
-  }, []);
-  const selectedCourier = couriers.find((courier) => courier.id === value);
-
-  const handleSelect = (courierId: number | null) => {
-    onChange(courierId);
-    setOpen(false);
-  };
-
   return (
-    <div className="relative min-w-[160px]">
-      <button
-        type="button"
-        onClick={() => {
-          const nextOpen = !open;
-          window.dispatchEvent(new Event('mig-close-floating-ui'));
-          setOpen(nextOpen);
-        }}
-        className={`flex h-10 w-full items-center justify-between border border-slate-200 px-3 text-left text-sm text-slate-900 outline-none transition ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white' : 'rounded-2xl bg-white hover:bg-slate-50'}`}
-      >
-        <span className={selectedCourier ? 'truncate' : 'truncate text-slate-500'}>
-          {selectedCourier ? selectedCourier.name : 'Не назначен'}
-        </span>
-        <span className="ml-2 shrink-0 text-slate-400">{open ? '−' : '⌄'}</span>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-30 -mt-px max-h-72 overflow-visible rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
-          <button
-            type="button"
-            onClick={() => handleSelect(null)}
-            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${value === null ? 'bg-slate-950 font-semibold text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
-          >
-            Не назначен
-          </button>
-
-          {couriers.map((courier) => (
-            <button
-              key={courier.id}
-              type="button"
-              onClick={() => handleSelect(courier.id)}
-              className={`mt-0.5 block w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${value === courier.id ? 'bg-slate-950 font-semibold text-white' : 'text-slate-900 hover:bg-slate-50'}`}
-            >
-              <span className="block truncate">{courier.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="min-w-[180px]">
+      <AppSelect
+        value={value}
+        disabled={disabled}
+        compact
+        searchable={couriers.length > 6}
+        ariaLabel="Назначить курьера"
+        placeholder="Не назначен"
+        options={[
+          { value: null, label: 'Не назначен' },
+          ...couriers.map((courier) => ({ value: courier.id, label: courier.name })),
+        ]}
+        onChange={(courierId) => onChange(typeof courierId === 'number' ? courierId : null)}
+      />
     </div>
   );
 }

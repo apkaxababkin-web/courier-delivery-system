@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Modal } from '../../../../components/Modal';
+import { AppSelect } from '../../../../components/AppSelect';
 import { getLocalDateKey } from '../../../../lib/local-time';
 import { getClientPoints, getClientRegularClients, type ClientPoint, type ClientRegularClient, getTransportCompanies, type TransportCompany} from '../../../../lib/api';
 import type { TaskFormData, Client, NutsBox } from '../../model/types';
@@ -21,6 +22,7 @@ type RequestType = NonNullable<TaskFormData['requestType']>;
 type ExtraPickupPoint = NonNullable<TaskFormData['extraPickupPoints']>[number];
 
 type LocalFormData = TaskFormData & {
+  senderAddressDetails?: string;
   senderClientId?: number;
   recipientClientId?: number;
   pickupRecipientClientId?: number;
@@ -37,7 +39,7 @@ const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
   nuts: 'Орехи',
   courier_call: 'Вызов курьера',
   pickup_from_tc: 'Транспортная компания',
-  simple: 'Простая заявка',
+  simple: 'Заявка',
 };
 
 const NUTS_TARIFF_STORAGE_KEY = 'courier-manager:nuts-tariff';
@@ -71,6 +73,7 @@ const makeInitialFormData = (): LocalFormData => ({
   senderCity: '',
   senderPhone: '',
   senderAddress: '',
+  senderAddressDetails: '',
   recipientName: '',
   recipientCompany: '',
   recipientCity: '',
@@ -365,8 +368,13 @@ export function CreateTaskModal({
 
   const selectTransportCompanyForRequest = (companyId: number | null) => {
     if (!companyId) {
-      updateField('tcName', '');
-      updateField('tcAddress', '');
+      setFormData((prev) => ({
+        ...prev,
+        tcName: '',
+        tcAddress: '',
+        senderName: '',
+        senderAddress: '',
+      }));
       return;
     }
 
@@ -377,6 +385,8 @@ export function CreateTaskModal({
       ...prev,
       tcName: company.name,
       tcAddress: company.address,
+      senderName: company.name,
+      senderAddress: company.address,
     }));
   };
 
@@ -407,6 +417,17 @@ export function CreateTaskModal({
       if (target === 'pickupRecipient') return { ...prev, pickupRecipientClientId: client.id, recipientName: client.name, recipientPhone: client.phone || '', deliveryAddress: client.address };
       return { ...prev, clientId: client.id, senderName: client.name, senderPhone: client.phone || '', senderAddress: client.address };
     });
+  };
+
+  const selectUniversalClient = (clientId: number | undefined) => {
+    const client = clients.find((item) => item.id === clientId);
+    setFormData((prev) => client ? ({
+      ...prev,
+      clientId: client.id,
+      senderName: client.name,
+      senderPhone: client.phone || '',
+      senderAddress: client.address,
+    }) : ({ ...prev, clientId: undefined }));
   };
 
   const selectNutsOwnerClient = (clientId: number | undefined) => {
@@ -546,28 +567,26 @@ export function CreateTaskModal({
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const { senderClientId, recipientClientId, pickupRecipientClientId, pickupDirection, nutsBoxes, nutsTariff, cedroilTariff, extraPickupPoints, requestFiles, ...payload } = formData;
-    const pickupPoints = extraPickupPoints || [];
-    const combinedSenderAddress = requestType === 'pickup_from_tc'
-      ? joinPickupAddresses(payload.tcAddress, pickupPoints)
-      : joinPickupAddresses(payload.senderAddress, pickupPoints);
-    const baseComments = requestType === 'pickup_from_tc'
-      ? [payload.comments, pickupDirection === 'recipient_to_tc' ? 'Направление: получатель → ТК' : 'Направление: ТК → получатель'].filter(Boolean).join('\n')
-      : payload.comments;
+    const { senderAddressDetails, senderClientId, recipientClientId, pickupRecipientClientId, pickupDirection, nutsBoxes, nutsTariff, cedroilTariff, extraPickupPoints, requestFiles, ...payload } = formData;
+    const isUniversalRequest = requestType !== 'nuts';
+    const universalSenderAddress = [payload.senderAddress?.trim(), senderAddressDetails?.trim()].filter(Boolean).join(', ');
+    const nutsSenderAddress = joinPickupAddresses(payload.senderAddress, extraPickupPoints || []);
 
     onSubmit({
       ...payload,
       requestType,
-      senderAddress: combinedSenderAddress || payload.senderAddress,
-      tcAddress: requestType === 'pickup_from_tc' ? (combinedSenderAddress || payload.tcAddress) : payload.tcAddress,
-      recipientName: payload.recipientName || payload.senderName || '',
-      recipientPhone: payload.recipientPhone || payload.senderPhone || '',
-      deliveryAddress: payload.deliveryAddress || payload.recipientAddress || combinedSenderAddress || payload.senderAddress || '',
+      senderAddress: isUniversalRequest ? universalSenderAddress : (nutsSenderAddress || payload.senderAddress),
+      tcAddress: requestType === 'pickup_from_tc' ? universalSenderAddress : payload.tcAddress,
+      recipientName: isUniversalRequest ? (payload.recipientName || '') : (payload.recipientName || payload.senderName || ''),
+      recipientPhone: isUniversalRequest ? (payload.recipientPhone || '') : (payload.recipientPhone || payload.senderPhone || ''),
+      deliveryAddress: isUniversalRequest
+        ? (payload.deliveryAddress || payload.recipientAddress || '')
+        : (payload.deliveryAddress || payload.recipientAddress || nutsSenderAddress || payload.senderAddress || ''),
       items: requestType === 'nuts' ? (nutsBoxes || []).filter((box) => box.quantity > 0).map((box) => `${box.name}: ${box.quantity}`).join('; ') : payload.items,
       description: requestType === 'nuts' ? `Орехи. Сумма: ${nutsTotal.toFixed(2)}` : payload.description,
-      comments: baseComments,
+      comments: payload.comments,
       requestFiles,
-      clientId: requestType === 'pickup_from_tc' ? pickupRecipientClientId : payload.clientId,
+      clientId: payload.clientId,
     });
     if (mode === 'create') {
       setFormData(makeInitialFormData());
@@ -585,16 +604,6 @@ export function CreateTaskModal({
         <div className="grid gap-3 border-b border-slate-200 px-5 py-3 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
           <h2 className="text-xl font-semibold tracking-tight text-slate-950">Создать заявку</h2>
 
-          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <span className="whitespace-nowrap text-sm font-semibold text-slate-700">Дата заявки</span>
-            <input
-              type="date"
-              value={formData.requestDate || getLocalDateKey()}
-              onChange={(event) => updateField('requestDate', event.target.value)}
-              className="h-10 rounded-2xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none focus:border-slate-300"
-            />
-          </label>
-
           <div className="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 md:block">
             {requestTypeLabel}
           </div>
@@ -603,242 +612,98 @@ export function CreateTaskModal({
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-3">
-          {requestType !== 'nuts' && requestType !== 'pickup_from_tc' && requestType !== 'simple' && (
-            <div className="grid gap-3 lg:grid-cols-2">
-              <Section title="Отправитель"><div className="grid gap-2.5 md:grid-cols-2">{(requestType === 'delivery' || requestType === 'movement') && <ClientStoreSelect label="Выберите отправителя" value={formData.senderClientId} addressValue={formData.senderAddress} clients={clients} pointsMap={tcClientPointsMap} onClientChange={(id) => selectClient(id, 'sender')} onPointChange={(clientId, pointId) => selectClientPointForTask(clientId, pointId, 'sender')} className="md:col-span-2" />}<Field label="Отправитель *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required /><Field label="Телефон отправителя" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} />{requestType === 'courier_call' && <><Field label="Компания отправителя" value={formData.senderCompany || ''} onChange={(value) => updateField('senderCompany', value)} /><Field label="Город отправителя" value={formData.senderCity || ''} onChange={(value) => updateField('senderCity', value)} /></>}<Field label="Адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required className="md:col-span-2" /></div></Section>
-              <Section title="Получатель"><div className="grid gap-2.5 md:grid-cols-2">{requestType === 'movement' && <ClientStoreSelect label="Выберите получателя" value={formData.recipientClientId} addressValue={formData.deliveryAddress} clients={clients} pointsMap={tcClientPointsMap} onClientChange={(id) => selectClient(id, 'recipient')} onPointChange={(clientId, pointId) => selectClientPointForTask(clientId, pointId, 'recipient')} className="md:col-span-2" />}<Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required /><Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required />{requestType === 'courier_call' && <><Field label="Компания получателя" value={formData.recipientCompany || ''} onChange={(value) => updateField('recipientCompany', value)} /><Field label="Город получателя" value={formData.recipientCity || ''} onChange={(value) => updateField('recipientCity', value)} /></>}<Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required className="md:col-span-2" />{requestType !== 'courier_call' && <Field label="Квартира/офис" value={formData.recipientAddress || ''} onChange={(value) => updateField('recipientAddress', value)} className="md:col-span-2" />}</div></Section>
+          <Section title="Основное">
+            <div className={`grid gap-2.5 ${requestType === 'nuts' ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+              <SelectField
+                label="Тип заявки"
+                value={requestType}
+                onChange={(value) => updateField('requestType', value as RequestType)}
+                options={Object.entries(REQUEST_TYPE_LABELS)}
+              />
+              {requestType !== 'nuts' && (requestType === 'pickup_from_tc' ? (
+                <TransportCompanySelect
+                  label="Клиент / компания"
+                  value={selectedTransportCompanyId}
+                  companies={transportCompanies}
+                  onChange={selectTransportCompanyForRequest}
+                />
+              ) : (
+                <ClientSelect
+                  label="Клиент / компания"
+                  value={formData.clientId}
+                  clients={clients}
+                  onChange={selectUniversalClient}
+                />
+              ))}
+              <Field label="Дата" type="date" value={formData.requestDate || getLocalDateKey()} onChange={(value) => updateField('requestDate', value)} required />
+              {requestType !== 'nuts' && (
+                <>
+                  <Field label="Заголовок" value={formData.packageDescription || ''} onChange={(value) => updateField('packageDescription', value)} />
+                  <Field label="Время от" type="time" value={formData.deliveryTimeFrom || ''} onChange={(value) => updateField('deliveryTimeFrom', value)} />
+                  <Field label="Время до" type="time" value={formData.deliveryTimeTo || ''} onChange={(value) => updateField('deliveryTimeTo', value)} />
+                </>
+              )}
             </div>
-          )}
+          </Section>
 
-          {(['delivery', 'movement'].includes(requestType)) && (
-            <Section title="Дополнительные точки забора">
-                <div className="space-y-3">
-                  {(formData.extraPickupPoints || []).map((point, index) => (
-                    <div key={index} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-slate-950">Точка забора {index + 1}</p>
-                        <button
-                          type="button"
-                          onClick={() => removeExtraPickupPoint(index)}
-                          className="inline-flex h-8 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-950"
-                        >
-                          Удалить
-                        </button>
-                      </div>
-
-                      <PointSelect
-                          label="Магазин / точка клиента"
-                          value={point.address}
-                          points={pickupClientPoints}
-                          loading={pickupClientPointsLoading}
-                          disabled={!pickupPointsClientId || pickupClientPointsLoading || pickupClientPoints.length === 0}
-                          onChange={(address) => updateExtraPickupPoint(index, 'address', address)}
-                        />
-                    </div>
-                  ))}
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={addExtraPickupPoint}
-                      className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                    >
-                      + Добавить точку забора
-                    </button>
-
-                    {extraPickupError && (
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-                        {extraPickupError}
-                      </span>
-                    )}
+          {requestType !== 'nuts' && (
+            <div className="space-y-3">
+              <div className="space-y-3">
+                <Section title="Отправитель">
+                  <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                    <Field label="Отправитель / компания *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required />
+                    <Field label="Улица / адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required />
+                    <Field label="Квартира / офис отправителя" value={formData.senderAddressDetails || ''} onChange={(value) => updateField('senderAddressDetails', value)} />
+                    <Field label="Телефон отправителя" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} />
                   </div>
-                </div>
+                </Section>
+
+                <Section title="Получатель">
+                  <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                    <Field label="Получатель / компания *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required />
+                    <Field label="Улица / адрес получателя *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required />
+                    <Field label="Квартира / офис получателя" value={formData.recipientAddress || ''} onChange={(value) => updateField('recipientAddress', value)} />
+                    <Field label="Телефон получателя" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} />
+                  </div>
+                </Section>
+              </div>
+
+              <Section title="Комментарий">
+                <TextareaField label="Комментарий к заявке" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} />
               </Section>
 
-          )}
-
-
-
-          {requestType === 'simple' && <Section title="Информация"><div className="grid gap-2.5 md:grid-cols-2"><Field label="Откуда (адрес) *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required className="md:col-span-2" /><Field label="Имя *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required /><Field label="Телефон *" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} required /><Field label="Время от" type="time" value={formData.deliveryTimeFrom || ''} onChange={(value) => updateField('deliveryTimeFrom', value)} /><Field label="Время до" type="time" value={formData.deliveryTimeTo || ''} onChange={(value) => updateField('deliveryTimeTo', value)} />
-
-<div>
-<label className="mb-1 block text-sm font-medium leading-none text-slate-700">
-Количество мест
-</label>
-
-<input
-type="text"
-inputMode="numeric"
-placeholder="Не указано"
-name="placesCountManual"
-autoComplete="off"
-value={formData.placesCount ?? ""}
-onChange={(e) =>
-updateField(
-"placesCount",
-e.target.value === ""
-? undefined
-: Number(e.target.value)
-)
-}
-className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
-/>
-</div>
-
-<TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} className="md:col-span-2" /></div></Section>}
-
-          {requestType !== 'nuts' && requestType !== 'pickup_from_tc' && requestType !== 'simple' && (
-            <Section title="Детали доставки">
-              <div className="grid gap-2.5 md:grid-cols-2 lg:grid-cols-4">
-                <Field label="Время от" type="time" value={formData.deliveryTimeFrom || ''} onChange={(value) => updateField('deliveryTimeFrom', value)} />
-                <Field label="Время до" type="time" value={formData.deliveryTimeTo || ''} onChange={(value) => updateField('deliveryTimeTo', value)} />
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium leading-none text-slate-700">
-                    Количество мест
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Не указано"
-                    name="placesCountManual"
-                    autoComplete="off"
-                    value={formData.placesCount ?? ""}
-                    onChange={(e) =>
-                      updateField(
-                        "placesCount",
-                        e.target.value === ""
-                          ? undefined
-                          : Number(e.target.value)
-                      )
-                    }
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
-                  />
-                </div>
-
-                {requestType === 'delivery' ? (
+              <Section title="Детали">
+                <div className="grid gap-2.5 md:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium leading-none text-slate-700">Кол-во мест</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Не указано"
+                      name="placesCountManual"
+                      autoComplete="off"
+                      value={formData.placesCount ?? ''}
+                      onChange={(event) => updateField('placesCount', event.target.value === '' ? undefined : Number(event.target.value))}
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
+                    />
+                  </div>
                   <SelectField
-                    label="Способ оплаты"
+                    label="Статус оплаты"
                     value={formData.paymentMethod || 'paid'}
                     onChange={(value) => updateField('paymentMethod', value as TaskFormData['paymentMethod'])}
                     options={[["paid", "Оплачено"], ["transfer", "Перевод"], ["cash", "Наличные"], ["terminal", "Терминал"], ["qr", "QR-код"]]}
                   />
-                ) : (
-                  <div className="hidden lg:block" />
-                )}
-
-                {requestType === 'delivery' && formData.paymentMethod !== 'paid' && (
-                  <Field
-                    label="Сумма оплаты"
-                    type="number"
-                    value={formData.paymentAmount || ''}
-                    onChange={(value) => updateField('paymentAmount', Number(value) || 0)}
-                  />
-                )}
-
-                <TextareaField
-                  label="Комментарии"
-                  value={formData.comments || ''}
-                  onChange={(value) => updateField('comments', value)}
-                  className="md:col-span-2 lg:col-span-4"
-                />
-              </div>
-            </Section>
-          )}
-
-          {requestType === 'nuts' && <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]"><Section title="Коробки Орехов"><div className="space-y-2">{(formData.nutsBoxes || []).map((box, index) => <div key={box.id} className="grid grid-cols-[1fr_76px_108px] items-center gap-2"><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{box.name}</div><input aria-label={`Количество ${box.name}`} type="number" min="0" value={box.quantity} onChange={(event) => updateNutsBox(box.id, { quantity: Number(event.target.value) || 0 })} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-slate-300 focus:bg-white" /><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-medium text-slate-700">{(index === 5 ? (box.quantity || 0) * (formData.cedroilTariff || 0) : (box.quantity || 0) * (NUTS_WEIGHTS[box.id] || 0) * (formData.nutsTariff || 0)).toFixed(2)}</div></div>)}<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><div className="flex justify-between gap-4"><span className="font-semibold text-slate-900">Итого сумма:</span><span className="font-bold text-slate-950">{nutsTotal.toFixed(2)}</span></div></div><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} /></div></Section><div className="space-y-3"><Section title="Получатель"><div className="grid gap-2.5"><ClientSelect label="Клиент Орехов" value={nutsOwnerClientId} clients={clients} onChange={selectNutsOwnerClient} /><NutsRegularClientSelect label="Выберите получателя" value={nutsRegularClients.find((item) => item.name === formData.recipientName && item.address === formData.deliveryAddress)?.id ?? null} items={nutsRegularClients} loading={nutsRegularClientsLoading} ownerFound={Boolean(nutsOwnerClient)} onChange={selectNutsRegularClient} /><Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required /><Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required /><Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required /></div></Section><Section title="Тарифы"><div className="grid gap-2.5"><Field label="Орехи, руб. за кг" type="number" value={formData.nutsTariff || ''} onChange={(value) => updateTariff('nutsTariff', Number(value) || 0)} /><Field label="Кедровое масло, руб." type="number" value={formData.cedroilTariff || ''} onChange={(value) => updateTariff('cedroilTariff', Number(value) || 0)} /><p className="text-xs leading-4 text-slate-500">Сейчас тарифы сохраняются на этом рабочем месте. Для общего хранения нужна backend-настройка в базе.</p></div></Section></div></div>}
-
-          {requestType === 'pickup_from_tc' && <><div className="grid gap-3 lg:grid-cols-2"><Section title="Транспортная компания"><div className="grid gap-2.5 md:grid-cols-2"><SelectField label="Направление" value={formData.pickupDirection || 'tc_to_recipient'} onChange={(value) => updateField('pickupDirection', value as LocalFormData['pickupDirection'])} options={[["tc_to_recipient", "ТК → получатель"], ["recipient_to_tc", "Получатель → ТК"]]} className="md:col-span-2" /><TransportCompanySelect label="Транспортная компания" value={selectedTransportCompanyId} companies={transportCompanies} onChange={selectTransportCompanyForRequest} className="md:col-span-2" /><Field label="Адрес ТК" value={formData.tcAddress || ''} onChange={(value) => updateField('tcAddress', value)} className="md:col-span-2" /><Field label="Номер трекинга" value={formData.trackingNumber || ''} onChange={(value) => updateField('trackingNumber', value)} className="md:col-span-2" /></div></Section><Section title="Получатель"><div className="grid gap-2.5 md:grid-cols-2"><div className="relative md:col-span-2"><label className="mb-1 block text-sm font-medium leading-none text-slate-700">Выберите получателя</label><button type="button" onClick={() => setTcRecipientDropdownOpen((value) => !value)} className={`flex h-11 w-full items-center justify-between border border-slate-200 px-4 text-left text-sm text-slate-900 outline-none transition ${tcRecipientDropdownOpen ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white' : 'rounded-2xl bg-slate-50 hover:bg-white'}`}><span className={formData.pickupRecipientClientId ? 'truncate' : 'truncate text-slate-500'}>{selectedTcRecipientLabel}</span><span className="text-slate-400">{tcRecipientDropdownOpen ? '−' : '⌄'}</span></button>{tcRecipientDropdownOpen && <div className="absolute left-0 right-0 top-full z-[80] -mt-px max-h-72 overflow-y-auto rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10"><button type="button" onClick={clearTcRecipient} className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50">-- Не выбрано --</button>{clients.map((client) => { const points = tcClientPointsMap[client.id] || []; const isExpanded = expandedTcClientId === client.id; const isClientSelected = formData.pickupRecipientClientId === client.id; return <div key={client.id} className="mt-0.5"><button type="button" onClick={() => toggleTcRecipientClient(client.id)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${isClientSelected ? 'bg-slate-950 text-white' : 'text-slate-900 hover:bg-slate-50'}`}><span className="truncate">{client.name}</span><span className={isClientSelected ? 'text-white/70' : 'text-slate-400'}>{isExpanded ? '−' : '+'}</span></button>{isExpanded && <div className="mt-1 space-y-0.5 rounded-xl bg-slate-50 p-1">{points.length > 0 ? points.map((point) => <button key={point.id} type="button" onClick={() => selectTcRecipientPoint(client.id, point.id)} className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${point.address && point.address === formData.deliveryAddress ? 'bg-white font-semibold text-slate-950 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white hover:text-slate-950'}`}><span className="block truncate">{point.name || 'Магазин'}</span><span className="mt-0.5 block truncate text-xs text-slate-400">{point.address || 'Адрес не указан'}</span></button>) : <div className="px-3 py-2 text-xs text-slate-400">У клиента нет магазинов</div>}</div>}</div>; })}</div>}</div><Field label="Получатель" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} /><Field label="Телефон получателя" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} /><Field label="Адрес доставки" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} className="md:col-span-2" /><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} className="md:col-span-2" /></div></Section></div></>}
-
-          {(['pickup_from_tc', 'simple'].includes(requestType)) && (
-            <Section title="Дополнительные точки забора">
-                <div className="space-y-3">
-                  {(formData.extraPickupPoints || []).map((point, index) => (
-                    <div key={index} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-slate-950">Точка забора {index + 1}</p>
-                        <button
-                          type="button"
-                          onClick={() => removeExtraPickupPoint(index)}
-                          className="inline-flex h-8 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-950"
-                        >
-                          Удалить
-                        </button>
-                      </div>
-
-                      <PointSelect
-                          label="Магазин / точка клиента"
-                          value={point.address}
-                          points={pickupClientPoints}
-                          loading={pickupClientPointsLoading}
-                          disabled={!pickupPointsClientId || pickupClientPointsLoading || pickupClientPoints.length === 0}
-                          onChange={(address) => updateExtraPickupPoint(index, 'address', address)}
-                        />
-                    </div>
-                  ))}
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={addExtraPickupPoint}
-                      className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                    >
-                      + Добавить точку забора
-                    </button>
-
-                    {extraPickupError && (
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-                        {extraPickupError}
-                      </span>
-                    )}
-                  </div>
+                  <Field label="Сумма новой оплаты" type="number" value={formData.paymentAmount || ''} onChange={(value) => updateField('paymentAmount', Number(value) || 0)} />
                 </div>
               </Section>
 
+              <Section title="Прикрепление файла">
+                <RequestFilesField files={formData.requestFiles || []} inputRef={requestFileInputRef} onAdd={addRequestFiles} onRemove={removeRequestFile} />
+              </Section>
+            </div>
           )}
 
-          {requestType !== 'nuts' && (
-            <Section title="Файлы для курьера">
-              <div className="space-y-3">
-                {(formData.requestFiles || []).length > 0 && (
-                  <div className="space-y-2">
-                    {(formData.requestFiles || []).map((file, index) => (
-                      <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-950">{file.name}</p>
-                          <p className="text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} МБ</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeRequestFile(index)}
-                          className="inline-flex h-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-950"
-                        >
-                          Удалить
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <input
-                  ref={requestFileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => addRequestFiles(event.target.files)}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => requestFileInputRef.current?.click()}
-                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                >
-                  + Добавить файл
-                </button>
-              </div>
-            </Section>
-          )}
-
+          {requestType === 'nuts' && <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]"><Section title="Коробки Орехов"><div className="space-y-2">{(formData.nutsBoxes || []).map((box, index) => <div key={box.id} className="grid grid-cols-[1fr_76px_108px] items-center gap-2"><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{box.name}</div><input aria-label={`Количество ${box.name}`} type="number" min="0" value={box.quantity} onChange={(event) => updateNutsBox(box.id, { quantity: Number(event.target.value) || 0 })} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-slate-300 focus:bg-white" /><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-medium text-slate-700">{(index === 5 ? (box.quantity || 0) * (formData.cedroilTariff || 0) : (box.quantity || 0) * (NUTS_WEIGHTS[box.id] || 0) * (formData.nutsTariff || 0)).toFixed(2)}</div></div>)}<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><div className="flex justify-between gap-4"><span className="font-semibold text-slate-900">Итого сумма:</span><span className="font-bold text-slate-950">{nutsTotal.toFixed(2)}</span></div></div><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} /></div></Section><div className="space-y-3"><Section title="Получатель"><div className="grid gap-2.5"><ClientSelect label="Клиент Орехов" value={nutsOwnerClientId} clients={clients} onChange={selectNutsOwnerClient} /><NutsRegularClientSelect label="Выберите получателя" value={nutsRegularClients.find((item) => item.name === formData.recipientName && item.address === formData.deliveryAddress)?.id ?? null} items={nutsRegularClients} loading={nutsRegularClientsLoading} ownerFound={Boolean(nutsOwnerClient)} onChange={selectNutsRegularClient} /><Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required /><Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required /><Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required /></div></Section><Section title="Тарифы"><div className="grid gap-2.5"><Field label="Орехи, руб. за кг" type="number" value={formData.nutsTariff || ''} onChange={(value) => updateTariff('nutsTariff', Number(value) || 0)} /><Field label="Кедровое масло, руб." type="number" value={formData.cedroilTariff || ''} onChange={(value) => updateTariff('cedroilTariff', Number(value) || 0)} /><p className="text-xs leading-4 text-slate-500">Сейчас тарифы сохраняются на этом рабочем месте. Для общего хранения нужна backend-настройка в базе.</p></div></Section></div></div>}
         </div>
 
         <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">Отмена</button><button type="submit" disabled={isLoading} className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? (mode === 'edit' ? 'Сохранение...' : 'Создание...') : (submitLabel || (mode === 'edit' ? 'Сохранить изменения' : 'Создать заявку'))}</button></div>
@@ -848,6 +713,27 @@ className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm"><h3 className="mb-2.5 text-sm font-semibold leading-none text-slate-950">{title}</h3>{children}</section>; }
+
+function RequestFilesField({ files, inputRef, onAdd, onRemove }: { files: File[]; inputRef: React.RefObject<HTMLInputElement | null>; onAdd: (files: FileList | null) => void; onRemove: (index: number) => void }) {
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium leading-none text-slate-700">Файл</label>
+      <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        {files.map((file, index) => (
+          <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+            <span className="min-w-0 truncate text-sm font-medium text-slate-700">{file.name}</span>
+            <button type="button" onClick={() => onRemove(index)} className="shrink-0 text-xs font-semibold text-slate-500 hover:text-slate-950">Удалить</button>
+          </div>
+        ))}
+        <input ref={inputRef} type="file" multiple className="hidden" onChange={(event) => onAdd(event.target.files)} />
+        <button type="button" onClick={() => inputRef.current?.click()} className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
+          + Добавить файл
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, value, onChange, required, type = 'text', className = '' }: { label: string; value: string | number; onChange: (value: string) => void; required?: boolean; type?: string; className?: string }) {
   const isAddressField = label.toLowerCase().includes('адрес');
   const inputType = isAddressField && type === 'text' ? 'search' : type;
@@ -904,65 +790,26 @@ function TransportCompanySelect({
   onChange: (value: number | null) => void;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const selectedCompany = companies.find((company) => company.id === value);
   const disabled = companies.length === 0;
 
-  const handleSelect = (companyId: number | null) => {
-    onChange(companyId);
-    setOpen(false);
-  };
-
   return (
-    <div className={`relative ${className}`}>
+    <div className={className}>
       <label className="mb-1 block text-sm font-medium leading-none text-slate-700">{label}</label>
-
-      <button
-        type="button"
+      <AppSelect
+        value={value}
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        className={`flex h-11 w-full items-center justify-between border border-slate-200 px-4 text-left text-sm outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white text-slate-900' : 'rounded-2xl bg-slate-50 text-slate-900 hover:bg-white'}`}
-      >
-        <span className={selectedCompany ? 'truncate' : 'truncate text-slate-500'}>
-          {selectedCompany ? selectedCompany.name : disabled ? 'Сначала добавьте ТК в Контрагентах' : '-- Выберите ТК --'}
-        </span>
-        <span className="ml-2 shrink-0 text-slate-400">{open ? '−' : '⌄'}</span>
-      </button>
-
-      {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full z-[90] -mt-px max-h-72 overflow-y-auto rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
-          <button
-            type="button"
-            onClick={() => handleSelect(null)}
-            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${!value ? 'bg-slate-950 font-semibold text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
-          >
-            -- Не выбрано --
-          </button>
-
-          {companies.map((company) => {
-            const isSelected = company.id === value;
-
-            return (
-              <button
-                key={company.id}
-                type="button"
-                onClick={() => handleSelect(company.id)}
-                className={`mt-0.5 block w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${isSelected ? 'bg-slate-950 font-semibold text-white' : 'text-slate-900 hover:bg-slate-50'}`}
-              >
-                <span className="block truncate font-medium">{company.name}</span>
-                <span className={`mt-0.5 block truncate text-xs ${isSelected ? 'text-white/70' : 'text-slate-400'}`}>
-                  {company.address}
-                </span>
-                {(company.phone || company.contactPerson) && (
-                  <span className={`mt-0.5 block truncate text-xs ${isSelected ? 'text-white/60' : 'text-slate-400'}`}>
-                    {[company.contactPerson, company.phone].filter(Boolean).join(' • ')}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+        searchable
+        placeholder={disabled ? 'Сначала добавьте ТК в Контрагентах' : 'Выберите ТК'}
+        options={[
+          { value: null, label: 'Не выбрано' },
+          ...companies.map((company) => ({
+            value: company.id,
+            label: company.name,
+            description: [company.address, company.contactPerson, company.phone].filter(Boolean).join(' • '),
+          })),
+        ]}
+        onChange={(nextValue) => onChange(typeof nextValue === 'number' ? nextValue : null)}
+      />
     </div>
   );
 }
@@ -983,110 +830,45 @@ function PointSelect({
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const selectedPoint = points.find((point) => point.address === value);
   const placeholder = loading
     ? 'Загрузка точек...'
     : points.length === 0
       ? 'Нет магазинов'
       : '-- Выберите магазин / точку --';
 
-  const handleSelect = (address: string) => {
-    onChange(address);
-    setOpen(false);
-  };
-
   return (
-    <div className="relative">
+    <div>
       <label className="mb-1 block text-sm font-medium leading-none text-slate-700">{label}</label>
-
-      <button
-        type="button"
+      <AppSelect
+        value={value || null}
+        options={[
+          { value: null, label: '-- Не выбрано --' },
+          ...points.map((point) => ({
+            value: point.address,
+            label: point.name || 'Магазин',
+            description: point.address || 'Адрес не указан',
+          })),
+        ]}
+        placeholder={placeholder}
+        emptyText="Нет магазинов"
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        className={`flex h-11 w-full items-center justify-between border border-slate-200 px-4 text-left text-sm outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white text-slate-900' : 'rounded-2xl bg-white text-slate-900 hover:bg-slate-50'}`}
-      >
-        <span className={selectedPoint ? 'truncate' : 'truncate text-slate-500'}>
-          {selectedPoint ? selectedPoint.name : placeholder}
-        </span>
-        <span className="text-slate-400">{open ? '−' : '⌄'}</span>
-      </button>
-
-      {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full z-[90] -mt-px max-h-72 overflow-y-auto rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
-          <button
-            type="button"
-            onClick={() => handleSelect('')}
-            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${!value ? 'bg-slate-950 font-semibold text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
-          >
-            -- Не выбрано --
-          </button>
-
-          {points.map((point) => {
-            const isSelected = point.address === value;
-
-            return (
-              <button
-                key={point.id}
-                type="button"
-                onClick={() => handleSelect(point.address)}
-                className={`mt-0.5 block w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${isSelected ? 'bg-slate-950 font-semibold text-white' : 'text-slate-900 hover:bg-slate-50'}`}
-              >
-                <span className="block truncate font-medium">{point.name || 'Магазин'}</span>
-                <span className={`mt-0.5 block truncate text-xs ${isSelected ? 'text-white/70' : 'text-slate-400'}`}>
-                  {point.address || 'Адрес не указан'}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+        searchable={points.length > 6}
+        onChange={(nextValue) => onChange(typeof nextValue === 'string' ? nextValue : '')}
+      />
     </div>
   );
 }
 
 
 function SelectField({ label, value, onChange, options, className = '' }: { label: string; value: string | number; onChange: (value: string) => void; options: Array<[string | number, string]>; className?: string }) {
-  const [open, setOpen] = useState(false);
-  const selectedOption = options.find(([optionValue]) => String(optionValue) === String(value));
-  const selectedLabel = selectedOption?.[1] || '-- Не выбрано --';
-
-  const handleSelect = (optionValue: string | number) => {
-    onChange(String(optionValue));
-    setOpen(false);
-  };
-
   return (
-    <div className={`relative ${className}`}>
+    <div className={className}>
       <label className="mb-1 block text-sm font-medium leading-none text-slate-700">{label}</label>
-
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`flex h-11 w-full items-center justify-between border border-slate-200 px-4 text-left text-sm text-slate-900 outline-none transition ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white' : 'rounded-2xl bg-slate-50 hover:bg-white'}`}
-      >
-        <span className="truncate">{selectedLabel}</span>
-        <span className="text-slate-400">{open ? '−' : '⌄'}</span>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-[90] -mt-px max-h-72 overflow-y-auto rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
-          {options.map(([optionValue, labelText]) => {
-            const isSelected = String(optionValue) === String(value);
-
-            return (
-              <button
-                key={String(optionValue)}
-                type="button"
-                onClick={() => handleSelect(optionValue)}
-                className={`mt-0.5 block w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${isSelected ? 'bg-slate-950 font-semibold text-white' : 'text-slate-900 hover:bg-slate-50'}`}
-              >
-                <span className="block truncate">{labelText}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <AppSelect
+        value={value}
+        options={options.map(([optionValue, labelText]) => ({ value: optionValue, label: labelText }))}
+        onChange={(nextValue) => onChange(String(nextValue ?? ''))}
+      />
     </div>
   );
 }
@@ -1105,8 +887,6 @@ function NutsRegularClientSelect({
   ownerFound: boolean;
   onChange: (value: number | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const selectedItem = items.find((item) => item.id === value);
   const placeholder = loading
     ? 'Загрузка постоянных клиентов...'
     : !ownerFound
@@ -1117,58 +897,25 @@ function NutsRegularClientSelect({
 
   const disabled = loading || !ownerFound || items.length === 0;
 
-  const handleSelect = (itemId: number | null) => {
-    onChange(itemId);
-    setOpen(false);
-  };
-
   return (
-    <div className="relative">
+    <div>
       <label className="mb-1 block text-sm font-medium leading-none text-slate-700">{label}</label>
-
-      <button
-        type="button"
+      <AppSelect
+        value={value}
+        options={[
+          { value: null, label: '-- Не выбрано --' },
+          ...items.map((item) => ({
+            value: item.id,
+            label: item.name,
+            description: [item.address, item.phone].filter(Boolean).join(' · '),
+          })),
+        ]}
+        placeholder={placeholder}
+        emptyText="Нет постоянных клиентов"
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        className={`flex h-11 w-full items-center justify-between border border-slate-200 px-4 text-left text-sm outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white text-slate-900' : 'rounded-2xl bg-slate-50 text-slate-900 hover:bg-white'}`}
-      >
-        <span className={selectedItem ? 'truncate' : 'truncate text-slate-500'}>
-          {selectedItem ? selectedItem.name : placeholder}
-        </span>
-        <span className="ml-2 shrink-0 text-slate-400">{open ? '−' : '⌄'}</span>
-      </button>
-
-      {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full z-[90] -mt-px max-h-72 overflow-y-auto rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
-          <button
-            type="button"
-            onClick={() => handleSelect(null)}
-            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${!value ? 'bg-slate-950 font-semibold text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
-          >
-            -- Не выбрано --
-          </button>
-
-          {items.map((item) => {
-            const isSelected = item.id === value;
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleSelect(item.id)}
-                className={`mt-0.5 block w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${isSelected ? 'bg-slate-950 font-semibold text-white' : 'text-slate-900 hover:bg-slate-50'}`}
-              >
-                <span className="block truncate font-medium">{item.name}</span>
-                {item.address && (
-                  <span className={`mt-0.5 block truncate text-xs ${isSelected ? 'text-white/70' : 'text-slate-400'}`}>
-                    {item.address}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+        searchable={items.length > 6}
+        onChange={(nextValue) => onChange(typeof nextValue === 'number' ? nextValue : null)}
+      />
     </div>
   );
 }
@@ -1193,152 +940,60 @@ function ClientStoreSelect({
   onPointChange: (clientId: number, pointId: number) => void;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
-  const selectedClient = clients.find((client) => client.id === value);
-  const selectedPoint = value ? (pointsMap[value] || []).find((point) => point.address && point.address === addressValue) : undefined;
-
-  const selectedLabel = selectedClient
-    ? selectedPoint
-      ? `${selectedClient.name} / ${selectedPoint.name || 'Магазин'}`
-      : selectedClient.name
-    : '-- Не выбрано --';
-
-  const handleClientClick = (clientId: number) => {
-    onClientChange(clientId);
-    setExpandedClientId((current) => (current === clientId ? null : clientId));
-    setOpen(true);
-  };
-
-  const handlePointClick = (clientId: number, pointId: number) => {
-    onPointChange(clientId, pointId);
-    setExpandedClientId(clientId);
-    setOpen(false);
-  };
-
-  const handleClear = () => {
-    onClientChange(undefined);
-    setExpandedClientId(null);
-    setOpen(false);
-  };
+  const selectedPoint = value
+    ? (pointsMap[value] || []).find((point) => point.address && point.address === addressValue)
+    : undefined;
+  const selectedValue = selectedPoint && value ? `point:${value}:${selectedPoint.id}` : value ? `client:${value}` : null;
+  const options = [
+    { value: null, label: '-- Не выбрано --' },
+    ...clients.flatMap((client) => [
+      { value: `client:${client.id}`, label: client.name, description: client.address || 'Основной адрес' },
+      ...(pointsMap[client.id] || []).map((point) => ({
+        value: `point:${client.id}:${point.id}`,
+        label: `${client.name} / ${point.name || 'Магазин'}`,
+        description: point.address || 'Адрес не указан',
+      })),
+    ]),
+  ];
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={className}>
       <label className="mb-1 block text-sm font-medium leading-none text-slate-700">{label}</label>
-
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`flex h-11 w-full items-center justify-between border border-slate-200 px-4 text-left text-sm text-slate-900 outline-none transition ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white' : 'rounded-2xl bg-slate-50 hover:bg-white'}`}
-      >
-        <span className={selectedClient ? 'truncate' : 'truncate text-slate-500'}>{selectedLabel}</span>
-        <span className="text-slate-400">{open ? '−' : '⌄'}</span>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-[90] -mt-px max-h-72 overflow-y-auto rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
-          <button
-            type="button"
-            onClick={handleClear}
-            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${!value ? 'bg-slate-950 font-semibold text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
-          >
-            -- Не выбрано --
-          </button>
-
-          {clients.map((client) => {
-            const points = pointsMap[client.id] || [];
-            const isExpanded = expandedClientId === client.id;
-            const isClientSelected = value === client.id;
-
-            return (
-              <div key={client.id} className="mt-0.5">
-                <button
-                  type="button"
-                  onClick={() => handleClientClick(client.id)}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${isClientSelected ? 'bg-slate-950 text-white' : 'text-slate-900 hover:bg-slate-50'}`}
-                >
-                  <span className="truncate">{client.name}</span>
-                  <span className={isClientSelected ? 'text-white/70' : 'text-slate-400'}>{isExpanded ? '−' : '+'}</span>
-                </button>
-
-                {isExpanded && (
-                  <div className="mt-1 space-y-0.5 rounded-xl bg-slate-50 p-1">
-                    {points.length > 0 ? points.map((point) => (
-                      <button
-                        key={point.id}
-                        type="button"
-                        onClick={() => handlePointClick(client.id, point.id)}
-                        className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${point.address && point.address === addressValue ? 'bg-white font-semibold text-slate-950 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white hover:text-slate-950'}`}
-                      >
-                        <span className="block truncate">{point.name || 'Магазин'}</span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-400">{point.address || 'Адрес не указан'}</span>
-                      </button>
-                    )) : (
-                      <div className="px-3 py-2 text-xs text-slate-400">У клиента нет магазинов</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <AppSelect
+        value={selectedValue}
+        options={options}
+        placeholder="-- Не выбрано --"
+        emptyText="Нет клиентов"
+        searchable
+        onChange={(nextValue) => {
+          if (typeof nextValue !== 'string') {
+            onClientChange(undefined);
+            return;
+          }
+          const [kind, clientIdText, pointIdText] = nextValue.split(':');
+          const clientId = Number(clientIdText);
+          if (kind === 'point') onPointChange(clientId, Number(pointIdText));
+          else onClientChange(clientId);
+        }}
+      />
     </div>
   );
 }
 
 
 function ClientSelect({ label, value, clients, onChange, className = '' }: { label: string; value?: number; clients: Client[]; onChange: (value: number | undefined) => void; className?: string }) {
-  const [open, setOpen] = useState(false);
-  const selectedClient = clients.find((client) => client.id === value);
-
-  const handleSelect = (clientId: number | undefined) => {
-    onChange(clientId);
-    setOpen(false);
-  };
-
   return (
-    <div className={`relative ${className}`}>
+    <div className={className}>
       <label className="mb-1 block text-sm font-medium leading-none text-slate-700">{label}</label>
-
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`flex h-11 w-full items-center justify-between border border-slate-200 px-4 text-left text-sm text-slate-900 outline-none transition ${open ? 'rounded-t-2xl rounded-b-none border-slate-300 bg-white' : 'rounded-2xl bg-slate-50 hover:bg-white'}`}
-      >
-        <span className={selectedClient ? 'truncate' : 'truncate text-slate-500'}>
-          {selectedClient ? selectedClient.name : '-- Не выбрано --'}
-        </span>
-        <span className="text-slate-400">{open ? '−' : '⌄'}</span>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-[90] -mt-px max-h-72 overflow-y-auto rounded-b-2xl border border-t-0 border-slate-300 bg-white p-1.5 shadow-lg shadow-slate-950/10">
-          <button
-            type="button"
-            onClick={() => handleSelect(undefined)}
-            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${!value ? 'bg-slate-950 font-semibold text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
-          >
-            -- Не выбрано --
-          </button>
-
-          {clients.map((client) => (
-            <button
-              key={client.id}
-              type="button"
-              onClick={() => handleSelect(client.id)}
-              className={`mt-0.5 block w-full rounded-xl px-3 py-2.5 text-left text-sm transition ${value === client.id ? 'bg-slate-950 font-semibold text-white' : 'text-slate-900 hover:bg-slate-50'}`}
-            >
-              <span className="block truncate font-medium">{client.name}</span>
-              {client.address && (
-                <span className={`mt-0.5 block truncate text-xs ${value === client.id ? 'text-white/70' : 'text-slate-400'}`}>
-                  {client.address}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      <AppSelect
+        value={value ?? null}
+        searchable
+        options={[
+          { value: null, label: 'Не выбрано' },
+          ...clients.map((client) => ({ value: client.id, label: client.name, description: client.address })),
+        ]}
+        onChange={(nextValue) => onChange(typeof nextValue === 'number' ? nextValue : undefined)}
+      />
     </div>
   );
 }

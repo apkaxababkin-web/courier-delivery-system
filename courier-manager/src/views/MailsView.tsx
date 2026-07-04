@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileSpreadsheet, MailPlus, MailCheck, Plus, Search } from 'lucide-react';
+import { FileSpreadsheet, MailPlus, MailCheck, Search } from 'lucide-react';
 import * as api from '../lib/api';
 import * as XLSX from 'xlsx';
 import { formatLocalDate, formatLocalDateTime } from '../lib/local-time';
+import { AppSelect } from '../components/AppSelect';
 
 interface Mail {
   id: number;
@@ -90,7 +91,6 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const [previewRows, setPreviewRows] = useState(50);
   const [mapping, setMapping] = useState<FieldMapping>({ waybill: { column: 'A', startRow: 2, endRow: 100 }, recipient: { column: 'B', startRow: 2, endRow: 100 }, address: { column: 'C', startRow: 2, endRow: 100 } });
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualForm, setManualForm] = useState({
     waybillNumber: '',
@@ -258,6 +258,28 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
             <span className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">Доставлено: {deliveredTodayCount}</span>
           </div>
 
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <button
+              type="button"
+              onClick={() => manifestInputRef.current?.click()}
+              className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 transition hover:bg-slate-800 sm:w-auto"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Загрузить манифест
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetManualForm();
+                setShowManualForm(true);
+              }}
+              className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 sm:w-auto"
+            >
+              <MailPlus className="h-4 w-4" />
+              Добавить вручную
+            </button>
+          </div>
+
           <input
             ref={manifestInputRef}
             type="file"
@@ -268,76 +290,6 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
         </div>
 
         <MailsTable mails={filteredMails} loading={loading} compactTitle="Письма выбранного дня" />
-      </div>
-
-
-      {showAddMenu && (
-        <button
-          type="button"
-          aria-label="Закрыть меню добавления писем"
-          className="fixed inset-0 z-30 cursor-default bg-transparent"
-          onClick={() => setShowAddMenu(false)}
-        />
-      )}
-
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3 xl:right-[400px] 2xl:right-[440px]">
-        {showAddMenu && (
-          <div className="w-96 max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xl shadow-slate-950/15">
-            <div className="px-3 pb-2.5 pt-2.5">
-              <p className="text-base font-semibold text-slate-950">Добавить письма</p>
-              <p className="mt-0.5 text-sm text-slate-500">Выбери способ добавления.</p>
-            </div>
-
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddMenu(false);
-                  manifestInputRef.current?.click();
-                }}
-                className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
-              >
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-950">
-                  <FileSpreadsheet className="h-[18px] w-[18px]" />
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-base font-semibold text-slate-950">Добавить из файла</span>
-                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">Excel или CSV со списком писем</span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddMenu(false);
-                  resetManualForm();
-                  setShowManualForm(true);
-                }}
-                className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
-              >
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-950">
-                  <MailPlus className="h-[18px] w-[18px]" />
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-base font-semibold text-slate-950">Добавить вручную</span>
-                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">Одно письмо через форму</span>
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setShowAddMenu((value) => !value)}
-          className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
-          title="Добавить письма"
-          aria-label="Добавить письма"
-        >
-          <Plus className={`h-6 w-6 transition ${showAddMenu ? 'rotate-45' : ''}`} />
-        </button>
       </div>
 
 
@@ -433,9 +385,9 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
 
 
 function MappingField({ label, required, columns, value, onChange }: { label: string; required?: boolean; columns: string[]; value: CellRange; onChange: (value: CellRange) => void }) {
-  return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">{label} {required && <span className="text-slate-400">*</span>}</label><select value={value.column} onChange={(e) => onChange({ ...value, column: e.target.value })} className={`${compactInputClass} mt-2`}>{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select><div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={value.startRow} onChange={(nextValue) => onChange({ ...value, startRow: nextValue })} /><RangeInput label="До строки" value={value.endRow} onChange={(nextValue) => onChange({ ...value, endRow: nextValue })} /></div></div>;
+  return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">{label} {required && <span className="text-slate-400">*</span>}</label><AppSelect className="mt-2" compact value={value.column} options={columns.map(col => ({ value: col, label: `Столбец ${col}` }))} onChange={(column) => onChange({ ...value, column: String(column ?? '') })} emptyText="Нет столбцов" searchable={columns.length > 7} /><div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={value.startRow} onChange={(nextValue) => onChange({ ...value, startRow: nextValue })} /><RangeInput label="До строки" value={value.endRow} onChange={(nextValue) => onChange({ ...value, endRow: nextValue })} /></div></div>;
 }
-function PhoneMapping({ columns, mapping, setMapping }: { columns: string[]; mapping: FieldMapping; setMapping: React.Dispatch<React.SetStateAction<FieldMapping>> }) { return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">Телефон</label><select value={mapping.phone?.column || ''} onChange={(e) => setMapping((prev) => ({ ...prev, phone: e.target.value ? { column: e.target.value, startRow: prev.phone?.startRow || prev.waybill.startRow, endRow: prev.phone?.endRow || prev.waybill.endRow } : undefined }))} className={`${compactInputClass} mt-2`}><option value="">Не использовать</option>{columns.map(col => <option key={col} value={col}>Столбец {col}</option>)}</select>{mapping.phone && <div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={mapping.phone.startRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, startRow: value } }))} /><RangeInput label="До строки" value={mapping.phone.endRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, endRow: value } }))} /></div>}</div>; }
+function PhoneMapping({ columns, mapping, setMapping }: { columns: string[]; mapping: FieldMapping; setMapping: React.Dispatch<React.SetStateAction<FieldMapping>> }) { return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">Телефон</label><AppSelect className="mt-2" compact value={mapping.phone?.column ?? null} options={[{ value: null, label: 'Не использовать' }, ...columns.map(col => ({ value: col, label: `Столбец ${col}` }))]} onChange={(column) => setMapping((prev) => ({ ...prev, phone: typeof column === 'string' && column ? { column, startRow: prev.phone?.startRow || prev.waybill.startRow, endRow: prev.phone?.endRow || prev.waybill.endRow } : undefined }))} emptyText="Нет столбцов" searchable={columns.length > 7} />{mapping.phone && <div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={mapping.phone.startRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, startRow: value } }))} /><RangeInput label="До строки" value={mapping.phone.endRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, endRow: value } }))} /></div>}</div>; }
 function RangeInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <label className="block"><span className="text-xs font-medium text-slate-500">{label}</span><input type="number" min="1" value={value} onChange={(e) => onChange(parseInt(e.target.value) || 1)} className={`${compactInputClass} mt-1`} /></label>; }
 
 

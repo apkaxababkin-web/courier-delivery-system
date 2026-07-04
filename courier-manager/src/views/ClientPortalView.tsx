@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AppSelect } from '../components/AppSelect';
 import {
   ArrowLeft,
   ArrowRight,
@@ -276,6 +277,7 @@ export default function ClientPortalView() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(localStorage.getItem('clientPortalToken')));
   const [page, setPage] = useState<ClientPage>('home');
   const [requestType, setRequestType] = useState<RequestType>('delivery');
+  const [transportCompany, setTransportCompany] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
   const clientName = localStorage.getItem('clientPortalName') || 'Иванов И.И.';
@@ -497,13 +499,12 @@ export default function ClientPortalView() {
                   <>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-slate-700">Транспортная компания</label>
-                      <select className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white">
-                        <option>Выберите ТК</option>
-                        <option>СДЭК</option>
-                        <option>Деловые Линии</option>
-                        <option>ПЭК</option>
-                        <option>Энергия</option>
-                      </select>
+                      <AppSelect
+                        value={transportCompany}
+                        placeholder="Выберите ТК"
+                        options={['СДЭК', 'Деловые Линии', 'ПЭК', 'Энергия'].map((name) => ({ value: name, label: name }))}
+                        onChange={(value) => setTransportCompany(typeof value === 'string' ? value : null)}
+                      />
                     </div>
 
                     <div>

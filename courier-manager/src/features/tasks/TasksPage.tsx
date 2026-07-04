@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, ArrowLeftRight, CheckCircle2, Landmark, Mail, MapPin, Nut, Package, Plus, Sparkles, Truck, type LucideIcon } from 'lucide-react';
+import { Activity, CheckCircle2, Landmark, Mail, MapPin } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -15,11 +15,12 @@ import { TasksTable } from './components/TasksTable';
 import { EmptyState } from './components/EmptyState';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { AiTaskModal } from './components/modals/AiTaskModal';
+import MailsView from '../../views/MailsView';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
 import { getFilteredRequests } from './model/filters';
 import { formatLocalDate, formatLocalDateWithOptions, formatLocalTime, getLocalDateKey, toLocalDateKey } from '../../lib/local-time';
 
-type OperationMode = 'requests' | 'hemotest' | 'sberbank';
+type OperationMode = 'requests' | 'mails' | 'hemotest' | 'sberbank';
 const normalizePackageType = (value: unknown): TaskFormData['packageType'] => {
   if (value === 'document' || value === 'small' || value === 'medium' || value === 'large' || value === 'fragile') {
     return value;
@@ -68,22 +69,6 @@ type PickupListWithItems = { list?: PickupList; items?: OperationPoint[] };
 
 const API_BASE = '/api/trpc';
 const API_URL = import.meta.env.VITE_API_URL || '';
-
-interface CreateRequestOption {
-  type: NonNullable<TaskFormData['requestType']>;
-  title: string;
-  description: string;
-  Icon: LucideIcon;
-}
-
-const REQUEST_CREATE_OPTIONS: CreateRequestOption[] = [
-  { type: 'delivery', title: 'Доставка', description: 'Обычная доставка от отправителя к получателю', Icon: Package },
-  { type: 'movement', title: 'Перемещение', description: 'Перевезти между двумя точками или клиентами', Icon: ArrowLeftRight },
-  { type: 'nuts', title: 'Орехи', description: 'Заявка по коробкам, весу и тарифам', Icon: Nut },
-  { type: 'courier_call', title: 'Вызов курьера', description: 'Курьер нужен по адресу клиента', Icon: Mail },
-  { type: 'pickup_from_tc', title: 'Транспортная компания', description: 'Получение или отправка груза через ТК', Icon: Truck },
-  { type: 'simple', title: 'Простая заявка', description: 'Минимальная форма без лишних полей', Icon: Plus },
-];
 
 const weekdayNames: Record<number, string> = { 1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг', 5: 'Пятница' };
 
@@ -208,17 +193,6 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
-  const [showCreateActionMenu, setShowCreateActionMenu] = useState(false);
-
-  useEffect(() => {
-    const closeCreateActionMenu = () => setShowCreateActionMenu(false);
-
-    window.addEventListener('mig-close-create-action-menu', closeCreateActionMenu);
-
-    return () => {
-      window.removeEventListener('mig-close-create-action-menu', closeCreateActionMenu);
-    };
-  }, []);
 
   const [createInitialData, setCreateInitialData] = useState<Partial<TaskFormData> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -324,7 +298,6 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
   const openCreateRequest = (requestType: NonNullable<TaskFormData['requestType']>) => {
     setCreateInitialData({ requestType });
-    setShowCreateActionMenu(false);
     setShowCreateModal(true);
   };
 
@@ -514,7 +487,8 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     <div className="w-full space-y-5">
       <div className="border-b border-slate-200">
         <div className="flex flex-wrap gap-7">
-          {renderModeButton('requests', 'Созданные заявки', <Activity className="h-4 w-4" />)}
+          {renderModeButton('requests', 'Заявки', <Activity className="h-4 w-4" />)}
+          {renderModeButton('mails', 'Письма', <Mail className="h-4 w-4" />)}
           {renderModeButton('hemotest', 'Гемотест', <MapPin className="h-4 w-4" />)}
           {renderModeButton('sberbank', 'Сбербанк', <Landmark className="h-4 w-4" />)}
         </div>
@@ -525,7 +499,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
           <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => {
             window.dispatchEvent(new Event('mig-close-floating-ui'));
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
-            setShowCreateActionMenu(true);
+            openCreateRequest('simple');
           }} onAiCreateClick={() => {
             window.dispatchEvent(new Event('mig-close-floating-ui'));
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
@@ -534,13 +508,15 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => {
             window.dispatchEvent(new Event('mig-close-floating-ui'));
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
-            setShowCreateActionMenu(true);
+            openCreateRequest('simple');
           }} onAiCreateClick={() => {
             window.dispatchEvent(new Event('mig-close-floating-ui'));
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
             setShowAiModal(true);
           }} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
+      ) : operationMode === 'mails' ? (
+        <MailsView archiveDate={archiveDate} />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
@@ -549,6 +525,15 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
               <p className="mt-1 text-sm text-slate-500">Операционный список сборов: точка, адрес, курьер и факт забора.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('mig-open-pickup-list-manager', {
+                  detail: { view: operationMode },
+                }))}
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 transition hover:bg-slate-800"
+              >
+                Создать список
+              </button>
               <OperationCompletionProgress completed={pickedCount} total={flattenedPoints.length} />
             </div>
           </div>
@@ -620,89 +605,6 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
           )}
         </div>
       )}
-
-
-      {operationMode === 'requests' && (
-        <>
-          {showCreateActionMenu && (
-            <button
-              type="button"
-              aria-label="Закрыть меню создания"
-              className="fixed inset-0 z-40 bg-transparent"
-              onClick={() => setShowCreateActionMenu(false)}
-            />
-          )}
-
-          <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 xl:right-[400px] 2xl:right-[440px]">
-            {showCreateActionMenu && (
-              <div className="w-96 max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xl shadow-slate-950/15">
-                <div className="px-3 pb-2.5 pt-2.5">
-                  <p className="text-base font-semibold text-slate-950">Создать заявку</p>
-                  <p className="mt-0.5 text-sm text-slate-500">Выбери тип заявки.</p>
-                </div>
-
-                <div className="space-y-1">
-                  {REQUEST_CREATE_OPTIONS.map((option) => {
-                    const Icon = option.Icon;
-
-                    return (
-                      <button
-                        key={option.type}
-                        type="button"
-                        onClick={() => openCreateRequest(option.type)}
-                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
-                      >
-                        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-950">
-                          <Icon className="h-[18px] w-[18px]" />
-                        </span>
-
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-base font-semibold text-slate-950">{option.title}</span>
-                          <span className="mt-0.5 block truncate text-[13px] text-slate-500">{option.description}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreateActionMenu(false);
-                      setShowAiModal(true);
-                    }}
-                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
-                  >
-                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-                      <Sparkles className="h-[18px] w-[18px]" />
-                    </span>
-
-                    <span className="min-w-0">
-                      <span className="block text-base font-semibold text-slate-950">Создать по тексту</span>
-                      <span className="mt-0.5 block truncate text-[13px] text-slate-500">Вставить текст и разобрать автоматически</span>
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                window.dispatchEvent(new Event('mig-close-floating-ui'));
-                window.dispatchEvent(new Event('mig-close-archive-calendar'));
-                setShowCreateActionMenu((value) => !value);
-              }}
-              className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 transition hover:-translate-y-0.5 hover:bg-slate-800"
-              title="Создать заявку"
-              aria-label="Создать заявку"
-            >
-              <Plus className={`h-6 w-6 transition ${showCreateActionMenu ? 'rotate-45' : ''}`} />
-            </button>
-          </div>
-        </>
-      )}
-
-
       <CreateTaskModal isOpen={showCreateModal} onClose={closeCreateRequest} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} initialData={createInitialData} />
       <CreateTaskModal
         isOpen={Boolean(selectedRequest)}

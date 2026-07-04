@@ -3,11 +3,9 @@ import {
   Package,
   MapPin,
   Landmark,
-  Mail,
   BarChart3,
   Users,
   LogOut,
-  Menu,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -16,7 +14,6 @@ import {
   Search,
   Send,
 } from 'lucide-react';
-import Sidebar from './components/Sidebar';
 import TasksView from './views/TasksView';
 import ClientsView from './views/ClientsViewV2';
 import HemotestView from './views/HemotestView';
@@ -284,7 +281,6 @@ function ManagerChatPanel() {
 
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
-  { id: 'mails', label: 'Письма', icon: Mail },
   { id: 'hemotest', label: 'Гемотест', icon: MapPin },
   { id: 'sberbank', label: 'Сбербанк', icon: Landmark },
   { id: 'clients', label: 'Контрагенты', icon: Users },
@@ -305,17 +301,24 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [managerName, setManagerName] = useState('');
   const [managerRole, setManagerRole] = useState('Менеджер');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [archiveDate, setArchiveDate] = useState(getTodayDate());
   const [isArchiveCalendarOpen, setIsArchiveCalendarOpen] = useState(false);
 
   useEffect(() => {
     const closeArchiveCalendar = () => setIsArchiveCalendarOpen(false);
+    const openPickupListManager = (event: Event) => {
+      const view = (event as CustomEvent<{ view?: ViewType }>).detail?.view;
+      if (view === 'hemotest' || view === 'sberbank') {
+        setActiveView(view);
+      }
+    };
 
     window.addEventListener('mig-close-archive-calendar', closeArchiveCalendar);
+    window.addEventListener('mig-open-pickup-list-manager', openPickupListManager);
 
     return () => {
       window.removeEventListener('mig-close-archive-calendar', closeArchiveCalendar);
+      window.removeEventListener('mig-open-pickup-list-manager', openPickupListManager);
     };
   }, []);
 
@@ -417,24 +420,16 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
-      <Sidebar
-        menuItems={menuItems as any}
-        activeView={activeView}
-        onViewChange={(view) => {
-          setActiveView(view as ViewType);
-          setIsSidebarOpen(false);
-        }}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-      />
-
-      <div className="flex h-screen min-h-0 overflow-hidden lg:pl-[280px]">
+      <div className="flex h-screen min-h-0 overflow-hidden">
         <section className="flex min-w-0 flex-1 flex-col bg-slate-50">
         <header className="relative z-[9000] shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <button type="button" onClick={() => setIsSidebarOpen(true)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 lg:hidden" aria-label="Открыть меню"><Menu className="h-5 w-5" /></button>
-              <div className="hidden min-w-0 flex-col md:flex"><h1 className="truncate text-lg font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="truncate text-xs text-slate-500">{getPageDescription()}</p></div>
+              <img src="/mig-icon-original.png?v=7" alt="МИГ" className="h-10 w-10 shrink-0 object-contain" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold leading-5 text-slate-950">Курьерская служба МИГ</p>
+                <p className="hidden truncate text-xs text-slate-500 md:block">{getPageTitle()}</p>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -553,6 +548,31 @@ function App() {
               <button onClick={handleLogout} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Выход</span></button>
             </div>
           </div>
+
+          <nav className="overflow-x-auto border-t border-slate-100 px-3 sm:px-5 lg:px-7" aria-label="Разделы менеджера">
+            <div className="flex h-14 min-w-max items-center gap-1">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeView === item.id;
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveView(item.id as ViewType)}
+                    className={`inline-flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-medium transition ${
+                      isActive
+                        ? 'bg-slate-950 text-white shadow-sm'
+                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="whitespace-nowrap">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
         </header>
 
           <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 lg:px-7">
