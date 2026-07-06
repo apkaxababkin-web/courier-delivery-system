@@ -11,6 +11,8 @@ import { registerCompatRoutes } from "./compatRoutes";
 import { sendExpoPush } from "./expoPush";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
+import { managerApiAuthGate } from "./managerSecurity";
+import { toSafeCourier } from "./courierPublic";
 import { createContext } from "./context";
 import { mails, requests, tasks, taskStatusHistory } from "../../drizzle/schema";
 import * as db from "../db";
@@ -125,27 +127,52 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  const configuredOrigins = (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+  const allowedOrigins = new Set([
+    "https://couriermig.ru",
+    "https://www.couriermig.ru",
+    "https://courier.couriermig.ru",
+    ...configuredOrigins,
+  ]);
+
   app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
+    const origin = req.headers.origin?.replace(/\/$/, "");
+    const isDevOrigin =
+      process.env.NODE_ENV !== "production" &&
+      Boolean(origin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    const isAllowedOrigin = !origin || allowedOrigins.has(origin) || isDevOrigin;
+
+    res.vary("Origin");
+
+    if (origin && isAllowedOrigin) {
       res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+      );
     }
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization",
-    );
-    res.header("Access-Control-Allow-Credentials", "true");
 
     if (req.method === "OPTIONS") {
-      res.sendStatus(200);
+      if (!isAllowedOrigin) {
+        res.status(403).json({ error: { code: "CORS_FORBIDDEN", message: "Origin is not allowed" } });
+        return;
+      }
+      res.sendStatus(204);
       return;
     }
+
     next();
   });
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  app.use(managerApiAuthGate);
 
   registerOAuthRoutes(app);
 
@@ -292,7 +319,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
   app.get("/api/trpc/manager.couriers", async (_req, res) => {
     try {
       const couriers = await db.getAllCouriers();
-      res.json(trpcBatchJson(couriers));
+      res.json(trpcBatchJson(couriers.map(toSafeCourier)));
     } catch (error) {
       console.error("[manager.couriers] failed", error);
       res.status(500).json({ error: { message: "Failed to load couriers" } });
@@ -469,6 +496,13 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
       createContext,
     }),
   );
+
+  app.use("/api", (_req, res) => {
+    res.status(404).json({
+      error: "Not Found",
+      message: "API route not found",
+    });
+  });
 
   const publicPath = path.join(process.cwd(), "public");
   app.use(express.static(publicPath));

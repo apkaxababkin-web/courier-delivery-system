@@ -1,5 +1,20 @@
 const API_BASE = '/api/trpc';
 
+export async function managerFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = localStorage.getItem('managerToken');
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  return fetch(input, {
+    ...init,
+    credentials: init.credentials ?? 'include',
+    headers,
+  });
+}
+
 export interface Client {
   id: number;
   name: string;
@@ -66,7 +81,7 @@ function inputQuery(input?: JsonRecord) {
 async function trpcGet<T>(procedure: string, input?: JsonRecord, fallback: T = [] as T): Promise<T> {
   const wrappedInput = input ? { json: input } : undefined;
 
-  const response = await fetch(`${API_BASE}/${procedure}?${inputQuery(wrappedInput)}`, {
+  const response = await managerFetch(`${API_BASE}/${procedure}?${inputQuery(wrappedInput)}`, {
     credentials: 'include',
     cache: 'no-store',
   });
@@ -76,7 +91,7 @@ async function trpcGet<T>(procedure: string, input?: JsonRecord, fallback: T = [
 }
 
 async function trpcPost<T>(procedure: string, body: JsonRecord, fallback: T): Promise<T> {
-  const response = await fetch(`${API_BASE}/${procedure}`, {
+  const response = await managerFetch(`${API_BASE}/${procedure}`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -225,7 +240,7 @@ export interface TransportCompany {
 }
 
 async function restJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await managerFetch(url, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
     ...options,
@@ -621,7 +636,7 @@ export interface Request {
 }
 
 export async function post(endpoint: string, data: any): Promise<any> {
-  const response = await fetch(endpoint, {
+  const response = await managerFetch(endpoint, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -665,7 +680,7 @@ export async function getRequestAttachments(requestId: number): Promise<RequestA
 }
 
 export async function uploadRequestAttachment(requestId: number, file: File): Promise<RequestAttachment> {
-  const response = await fetch(`/api/manager/requests/${requestId}/attachments`, {
+  const response = await managerFetch(`/api/manager/requests/${requestId}/attachments`, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -696,7 +711,7 @@ export async function assignRequestCourier(id: number, courierId: number | null)
 }
 
 export async function getRealtimeSnapshot(): Promise<RealtimeSnapshot> {
-  const response = await fetch('/api/realtime/manager', {
+  const response = await managerFetch('/api/realtime/manager', {
     credentials: 'include',
     cache: 'no-store',
   });

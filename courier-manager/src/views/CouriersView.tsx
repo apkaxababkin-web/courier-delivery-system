@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bike, BellOff, Copy, Edit2, KeyRound, MapPin, Phone, Plus, RefreshCcw, Search, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { AppSelect } from '../components/AppSelect';
+import { managerFetch } from '../lib/api';
 
 type Courier = {
   id: number;
@@ -100,7 +101,7 @@ export default function CouriersView() {
   const loadCouriers = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/manager/couriers`);
+      const response = await managerFetch(`${API_URL}/api/manager/couriers`);
       if (!response.ok) throw new Error('Failed to load couriers');
       const data = await response.json();
       setCouriers(Array.isArray(data) ? data : []);
@@ -134,7 +135,7 @@ export default function CouriersView() {
     try {
       setSaving(true);
       const payload = { name: formData.name.trim(), username: formData.username.trim(), password: formData.password, phone: formData.phone.trim(), vehicleType: formData.vehicleType };
-      const response = await fetch(`${API_URL}/api/manager/couriers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const response = await managerFetch(`${API_URL}/api/manager/couriers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'Ошибка при создании курьера');
       setCreatedCredentials({ name: payload.name, username: payload.username, password: payload.password });
@@ -151,7 +152,7 @@ export default function CouriersView() {
   const handleDeactivateCourier = async (courier: Courier) => {
     if (!confirm(`Отключить доступ курьера «${courier.name}»? Он больше не сможет войти в приложение.`)) return;
     try {
-      const response = await fetch(`${API_URL}/api/manager/couriers/${courier.id}`, { method: 'DELETE' });
+      const response = await managerFetch(`${API_URL}/api/manager/couriers/${courier.id}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Ошибка при отключении курьера');
       await loadCouriers();
     } catch (error) {
@@ -196,7 +197,7 @@ export default function CouriersView() {
         isActive: editFormData.isActive,
       };
 
-      const response = await fetch(`${API_URL}/api/manager/couriers/${editingCourier.id}`, {
+      const response = await managerFetch(`${API_URL}/api/manager/couriers/${editingCourier.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

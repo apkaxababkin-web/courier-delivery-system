@@ -1,22 +1,30 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────
-# entrypoint.sh — Run migrations and start API server
+# entrypoint.sh - Start API server; DB changes require explicit flags
 # ─────────────────────────────────────────────────────────────────
 
 set -e
 
 echo "[Entrypoint] Starting courier-delivery-system API..."
-echo "[Entrypoint] DATABASE_URL: $DATABASE_URL"
+if [ -n "$DATABASE_URL" ]; then
+  echo "[Entrypoint] DATABASE_URL is configured"
+else
+  echo "[Entrypoint] DATABASE_URL is not configured"
+fi
 
-echo "[Entrypoint] Running database migrations..."
-if [ -f "drizzle.config.ts" ]; then
-  if yes | npx drizzle-kit push 2>&1; then
-    echo "[Entrypoint] ✓ Migrations completed successfully"
+if [ "${RUN_DB_PUSH:-false}" = "true" ]; then
+  echo "[Entrypoint] RUN_DB_PUSH=true; running explicit Drizzle schema push..."
+  if [ -f "drizzle.config.ts" ]; then
+    if npx drizzle-kit push; then
+      echo "[Entrypoint] Drizzle schema push completed"
+    else
+      echo "[Entrypoint] Drizzle schema push failed (continuing without blocking API startup)"
+    fi
   else
-    echo "[Entrypoint] ⚠ Migrations encountered an issue (continuing anyway)"
+    echo "[Entrypoint] drizzle.config.ts not found, skipping schema push"
   fi
 else
-  echo "[Entrypoint] ⚠ drizzle.config.ts not found, skipping migrations"
+  echo "[Entrypoint] Skipping Drizzle schema push (set RUN_DB_PUSH=true to run it explicitly)"
 fi
 
 run_patch() {
@@ -32,10 +40,14 @@ run_patch() {
   fi
 }
 
-run_patch "scripts/db_compat_patch.sql" "compatibility patch"
-run_patch "scripts/mails_manifest_patch.sql" "mails manifest patch"
-# disabled: backend helper now handles request-task sync
-# run_patch "scripts/realtime_bridge.sql" "request-task bridge patch"
+if [ "${RUN_DB_PATCHES:-false}" = "true" ]; then
+  run_patch "scripts/db_compat_patch.sql" "compatibility patch"
+  run_patch "scripts/mails_manifest_patch.sql" "mails manifest patch"
+  # disabled: backend helper now handles request-task sync
+  # run_patch "scripts/realtime_bridge.sql" "request-task bridge patch"
+else
+  echo "[Entrypoint] Skipping compatibility SQL patches (set RUN_DB_PATCHES=true to run them explicitly)"
+fi
 
 echo "[Entrypoint] Starting API server..."
 exec node dist/index.js

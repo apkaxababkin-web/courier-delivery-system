@@ -6,6 +6,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { syncTaskForRequestId } from "./_core/requestTaskSync";
 import { sendExpoPush } from "./_core/expoPush";
 import { broadcastLive } from "./_core/liveEvents";
+import { toSafeCourier } from "./_core/courierPublic";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
@@ -114,7 +115,7 @@ async function signManagerToken(managerId: number): Promise<string> {
     .setExpirationTime(MANAGER_TOKEN_EXPIRY)
     .sign(MANAGER_JWT_SECRET);
 }
-async function verifyManagerToken(token: string): Promise<{ managerId: number } | null> {
+export async function verifyManagerToken(token: string): Promise<{ managerId: number } | null> {
   try {
     const { payload } = await jwtVerify(token, MANAGER_JWT_SECRET);
     if (payload.type !== "manager" || typeof payload.managerId !== "number") return null;
@@ -283,7 +284,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        return db.getAllCouriers();
+        return (await db.getAllCouriers()).map(toSafeCourier);
       }),
 
     registerPushToken: publicProcedure

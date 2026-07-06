@@ -32,6 +32,7 @@ import {
 } from "../../drizzle/schema";
 import * as db from "../db";
 import { verifyCourierToken } from "../routers";
+import { toSafeCourier } from "./courierPublic";
 
 const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
 const MAX_REQUEST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -543,7 +544,7 @@ export function registerCompatRoutes(app: Express) {
 
   app.get("/api/manager/couriers", async (_req, res) => {
     try {
-      res.json(await db.getAllCouriers());
+      res.json((await db.getAllCouriers()).map(toSafeCourier));
     } catch (error) {
       sendError(res, error, "Failed to load manager couriers");
     }
@@ -577,7 +578,7 @@ export function registerCompatRoutes(app: Express) {
       } as any);
 
       const courier = await db.getCourierById(id);
-      res.json(courier);
+      res.json(courier ? toSafeCourier(courier) : null);
     } catch (error) {
       sendError(res, error, "Failed to create manager courier");
     }

@@ -11,11 +11,15 @@ export type TrpcContext = {
 export async function createContext(opts: CreateExpressContextOptions): Promise<TrpcContext> {
   let user: User | null = null;
 
-  try {
-    user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    // Authentication is optional for public procedures.
-    user = null;
+  const apiIdentityAlreadyVerified = Boolean(opts.res.locals.manager || opts.res.locals.courier);
+
+  if (!apiIdentityAlreadyVerified) {
+    try {
+      user = await sdk.authenticateRequest(opts.req);
+    } catch {
+      // OAuth authentication is optional for procedures with their own token checks.
+      user = null;
+    }
   }
 
   return {

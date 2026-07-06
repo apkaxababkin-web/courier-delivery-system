@@ -8,6 +8,7 @@ import {
   parseRequestWithAI,
   assignRequestCourier,
   post,
+  managerFetch,
 } from '../../lib/api';
 import { useManagerRealtime } from '../../lib/useManagerRealtime';
 import { TasksToolbar } from './components/TasksToolbar';
@@ -163,14 +164,28 @@ function getPickupMeta(point: OperationPoint) {
 
 async function trpcQuery<T>(path: string, input: Record<string, unknown>): Promise<T> {
   const wrappedInput = encodeURIComponent(JSON.stringify({ json: input }));
-  const response = await fetch(`${API_BASE}/${path}?input=${wrappedInput}`);
+  const response = await managerFetch(`${API_BASE}/${path}?input=${wrappedInput}`);
   if (!response.ok) throw new Error(await response.text() || `Failed to fetch ${path}`);
   const data = await response.json();
   return data.result?.data?.json || data.result?.data || [];
 }
 
+async function trpcMutation<T = unknown>(path: string, input: Record<string, unknown>): Promise<T> {
+  const response = await managerFetch(`${API_BASE}/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ json: input }),
+  });
+
+  if (!response.ok) throw new Error(await response.text() || `Failed to mutate ${path}`);
+
+  const data = await response.json();
+  return data.result?.data?.json || data.result?.data || data;
+}
+
 async function fetchCouriers(): Promise<CourierOption[]> {
-  const response = await fetch(`${API_URL}/api/manager/couriers`, {
+  const response = await managerFetch(`${API_URL}/api/manager/couriers`, {
     credentials: 'include',
     cache: 'no-store',
   });

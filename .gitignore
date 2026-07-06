@@ -74,3 +74,25 @@ postgres_data/
 
 # Runtime uploads
 uploads/
+
+# Sensitive local files and repository backups
+.env.*
+!.env.example
+!.env.*.example
+
+credentials.json
+*credentials*.json
+*secret*.json
+*token*.json
+
+*.sql
+!drizzle/migrations/*.sql
+!scripts/*.sql
+*.dump
+*.backup
+*.before-*
+backups/
+**/backups/
+tmp/
+.pnpm-store/
+build/

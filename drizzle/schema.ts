@@ -2,6 +2,7 @@ import {
   boolean,
   decimal,
   integer,
+  index,
   pgEnum,
   pgTable,
   serial,
@@ -681,3 +682,130 @@ export const managers = pgTable("managers", {
 
 export type Manager = typeof managers.$inferSelect;
 export type InsertManager = typeof managers.$inferInsert;
+
+// --- Runtime Chat Tables -----------------------------------------------------
+
+/**
+ * Legacy shared chat messages used by the existing realtime chat implementation.
+ * This definition mirrors the production table; no migration is run at startup.
+ */
+export const chatMessages = pgTable("chatMessages", {
+  id: serial("id").primaryKey(),
+  authorType: varchar("authorType", { length: 20 }).notNull(),
+  authorId: integer("authorId"),
+  authorName: varchar("authorName", { length: 255 }).notNull(),
+  text: text("text").notNull(),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  replyToMessageId: integer("replyToMessageId"),
+  editedAt: timestamp("editedAt"),
+});
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = typeof chatMessages.$inferInsert;
+
+export const chatMessageReactions = pgTable(
+  "chatMessageReactions",
+  {
+    id: serial("id").primaryKey(),
+    messageId: integer("messageId").notNull(),
+    authorType: varchar("authorType", { length: 20 }).notNull(),
+    authorId: integer("authorId"),
+    authorName: varchar("authorName", { length: 255 }).notNull(),
+    emoji: varchar("emoji", { length: 16 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("chatMessageReactions_messageId_idx").on(table.messageId),
+  ],
+);
+
+export type ChatMessageReaction = typeof chatMessageReactions.$inferSelect;
+export type InsertChatMessageReaction = typeof chatMessageReactions.$inferInsert;
+
+export const chatReadStates = pgTable(
+  "chatReadStates",
+  {
+    id: serial("id").primaryKey(),
+    authorType: varchar("authorType", { length: 20 }).notNull(),
+    authorId: integer("authorId"),
+    authorName: varchar("authorName", { length: 255 }).notNull(),
+    lastReadMessageId: integer("lastReadMessageId").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("chatReadStates_author_idx").on(table.authorType, table.authorId),
+  ],
+);
+
+export type ChatReadState = typeof chatReadStates.$inferSelect;
+export type InsertChatReadState = typeof chatReadStates.$inferInsert;
+
+/**
+ * Current manager/courier chat endpoint stores messages in this table.
+ */
+export const managerChatMessages = pgTable("managerChatMessages", {
+  id: serial("id").primaryKey(),
+  senderName: varchar("senderName", { length: 255 }).notNull(),
+  senderRole: varchar("senderRole", { length: 40 }).default("manager").notNull(),
+  text: text("text").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ManagerChatMessage = typeof managerChatMessages.$inferSelect;
+export type InsertManagerChatMessage = typeof managerChatMessages.$inferInsert;
+
+// --- Client Portal and Tariffs -----------------------------------------------
+
+export const clientPortalAccounts = pgTable(
+  "clientPortalAccounts",
+  {
+    id: serial("id").primaryKey(),
+    clientId: integer("clientId").notNull(),
+    ownerName: varchar("ownerName", { length: 255 }).notNull(),
+    login: varchar("login", { length: 320 }).notNull(),
+    passwordHash: text("passwordHash").notNull(),
+    temporaryPassword: varchar("temporaryPassword", { length: 120 }),
+    role: varchar("role", { length: 50 }).default("owner").notNull(),
+    isActive: boolean("isActive").default(true).notNull(),
+    lastLoginAt: timestamp("lastLoginAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("clientPortalAccounts_login_key").on(table.login),
+  ],
+);
+
+export type ClientPortalAccount = typeof clientPortalAccounts.$inferSelect;
+export type InsertClientPortalAccount = typeof clientPortalAccounts.$inferInsert;
+
+export const clientTariffs = pgTable(
+  "clientTariffs",
+  {
+    id: serial("id").primaryKey(),
+    clientId: integer("clientId").notNull(),
+    deliveryFirstPlace: integer("deliveryFirstPlace").default(0).notNull(),
+    deliveryNextPlace: integer("deliveryNextPlace").default(0).notNull(),
+    transportCompanyFirstPlace: integer("transportCompanyFirstPlace").default(0).notNull(),
+    transportCompanyNextPlace: integer("transportCompanyNextPlace").default(0).notNull(),
+    movementFirstPlace: integer("movementFirstPlace").default(0).notNull(),
+    movementNextPlace: integer("movementNextPlace").default(0).notNull(),
+    otherFirstPlace: integer("otherFirstPlace").default(0).notNull(),
+    otherNextPlace: integer("otherNextPlace").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+    hemotestPointPrice: integer("hemotestPointPrice").default(0).notNull(),
+    hemotestSundayFirstPointPrice: integer("hemotestSundayFirstPointPrice").default(0).notNull(),
+    hemotestSundayNextPointPrice: integer("hemotestSundayNextPointPrice").default(0).notNull(),
+  },
+  (table) => [
+    unique("clientTariffs_clientId_unique").on(table.clientId),
+  ],
+);
+
+export type ClientTariff = typeof clientTariffs.$inferSelect;
+export type InsertClientTariff = typeof clientTariffs.$inferInsert;
