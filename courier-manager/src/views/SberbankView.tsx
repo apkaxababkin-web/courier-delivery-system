@@ -186,9 +186,9 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
         return jsDay;
       })();
 
-      await api.createSberbankPickupList(dayOfWeek, selectedDate, formattedDate, orderedSelectedPointIds);
+      await api.createOrAppendSberbankPickupList(dayOfWeek, selectedDate, formattedDate, orderedSelectedPointIds);
 
-      alert(`Список создан (${orderedSelectedPointIds.length} точек)`);
+      alert(`Точки сохранены (${orderedSelectedPointIds.length} точек)`);
       setSelectedPoints([]);
       setShowListForm(false);
     } catch (error) {

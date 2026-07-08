@@ -1,16 +1,25 @@
+export function isExpoPushToken(pushToken: string | null | undefined) {
+  return Boolean(
+    pushToken &&
+      (pushToken.startsWith("ExponentPushToken") || pushToken.startsWith("ExpoPushToken")),
+  );
+}
+
 export async function sendExpoPush(
   pushToken: string | null | undefined,
   title: string,
   body: string,
   data?: Record<string, unknown>,
 ) {
-  if (!pushToken || !pushToken.startsWith("ExponentPushToken")) {
-    console.log("[PUSH] invalid token", pushToken);
+  if (!isExpoPushToken(pushToken)) {
+    console.log("[PUSH] invalid token", pushToken ? `${pushToken.slice(0, 25)}...` : null);
     return false;
   }
 
+  const token = pushToken as string;
+
   const payload = {
-    to: pushToken,
+    to: token,
     sound: "default",
     priority: "high",
     title,
@@ -19,7 +28,7 @@ export async function sendExpoPush(
   };
 
   console.log("[PUSH] expo request", {
-    to: pushToken.slice(0, 25),
+    to: token.slice(0, 25),
     title,
     body,
     data: data ?? {},

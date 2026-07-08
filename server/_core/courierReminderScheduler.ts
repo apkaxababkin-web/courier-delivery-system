@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { couriers, tasks, type Courier } from "../../drizzle/schema";
 import * as db from "../db";
+import { isExpoPushToken } from "./expoPush";
 
 type ReminderKind = "soft" | "final";
 
@@ -37,7 +38,7 @@ function localDayRangeUtc(parts = localNowParts()) {
 }
 
 async function sendExpoPush(pushToken: string, title: string, body: string, data?: Record<string, unknown>) {
-  if (!pushToken || !pushToken.startsWith("ExponentPushToken")) return;
+  if (!isExpoPushToken(pushToken)) return;
 
   const response = await fetch("https://exp.host/--/api/v2/push/send", {
     method: "POST",

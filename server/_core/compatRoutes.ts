@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
-import { sendExpoPush } from "./expoPush";
+import { isExpoPushToken, sendExpoPush } from "./expoPush";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -95,7 +95,7 @@ function unwrapBatchInput(obj: Record<string, unknown>): Record<string, unknown>
 async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
   try {
     const allCouriers = await db.getAllCouriers();
-    const targets = allCouriers.filter((courier) => courier.pushToken?.startsWith("ExponentPushToken"));
+    const targets = allCouriers.filter((courier) => isExpoPushToken(courier.pushToken));
 
     console.log("[PUSH_ALL] targets", targets.length, title);
 

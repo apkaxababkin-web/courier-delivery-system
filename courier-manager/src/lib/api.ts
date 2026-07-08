@@ -484,6 +484,24 @@ export async function addPointToHemotestList(listId: number, pointId: number): P
   await trpcPost('hemotest.addPointToList', { listId, pointId }, { success: true });
 }
 
+export async function createOrAppendHemotestPickupList(date: string, name: string, pointIds: number[]): Promise<HemotestPickupList> {
+  const existingLists = await getHemotestListsForDate(date);
+  const existingList = existingLists[0];
+
+  if (existingList) {
+    const fullList = await getHemotestList(existingList.id);
+    const existingPointIds = new Set((fullList?.items ?? []).map((point) => point.id));
+    const missingPointIds = pointIds.filter((pointId) => !existingPointIds.has(pointId));
+
+    for (const pointId of missingPointIds) {
+      await addPointToHemotestList(existingList.id, pointId);
+    }
+    return existingList;
+  }
+
+  return await createHemotestPickupList(date, name, pointIds);
+}
+
 // ─── Sberbank List Management ───────────────────────────────────────────────
 
 export interface SberbankPickupList {
@@ -552,6 +570,29 @@ export async function getSberbankList(listId: number): Promise<SberbankListWithI
 
 export async function addPointToSberbankList(listId: number, pointId: number): Promise<void> {
   await trpcPost('sberbank.addPointToList', { listId, pointId }, { success: true });
+}
+
+export async function createOrAppendSberbankPickupList(
+  dayOfWeek: number,
+  date: string,
+  name: string,
+  pointIds: number[],
+): Promise<SberbankPickupList> {
+  const existingLists = await getSberbankListsForDate(date);
+  const existingList = existingLists[0];
+
+  if (existingList) {
+    const fullList = await getSberbankList(existingList.id);
+    const existingPointIds = new Set((fullList?.items ?? []).map((point) => point.id));
+    const missingPointIds = pointIds.filter((pointId) => !existingPointIds.has(pointId));
+
+    for (const pointId of missingPointIds) {
+      await addPointToSberbankList(existingList.id, pointId);
+    }
+    return existingList;
+  }
+
+  return await createSberbankPickupList(dayOfWeek, date, name, pointIds);
 }
 
 // ─── Mails API ─────────────────────────────────────────────────────────────

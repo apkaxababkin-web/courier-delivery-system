@@ -179,9 +179,9 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
         .filter((point) => selectedPoints.includes(point.id))
         .map((point) => point.id);
 
-      await api.createHemotestPickupList(selectedDate, formattedDate, orderedSelectedPointIds);
+      await api.createOrAppendHemotestPickupList(selectedDate, formattedDate, orderedSelectedPointIds);
 
-      alert(`Список создан (${orderedSelectedPointIds.length} точек)`);
+      alert(`Точки сохранены (${orderedSelectedPointIds.length} точек)`);
       setSelectedPoints([]);
       setShowListForm(false);
     } catch (error) {
