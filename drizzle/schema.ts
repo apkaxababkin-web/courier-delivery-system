@@ -228,6 +228,8 @@ export const hemotestPickups = pgTable("hemotestPickups", {
   date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD format
   isPicked: boolean("isPicked").default(false).notNull(),
   pickedAt: timestamp("pickedAt"),
+  isCancelled: boolean("isCancelled").notNull().default(false),
+  cancelledAt: timestamp("cancelledAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -263,6 +265,8 @@ export const sberbankPickups = pgTable("sberbankPickups", {
   date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD format
   isPicked: boolean("isPicked").default(false).notNull(),
   pickedAt: timestamp("pickedAt"),
+  isCancelled: boolean("isCancelled").notNull().default(false),
+  cancelledAt: timestamp("cancelledAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

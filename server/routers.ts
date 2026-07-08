@@ -81,6 +81,17 @@ function getPlacesLabel(count: unknown) {
   return `${places} мест`;
 }
 
+function getPointsLabel(count: unknown) {
+  const points = Number(count || 0);
+  const lastTwo = points % 100;
+  const last = points % 10;
+
+  if (lastTwo >= 11 && lastTwo <= 14) return `${points} точек`;
+  if (last === 1) return `${points} точка`;
+  if (last >= 2 && last <= 4) return `${points} точки`;
+  return `${points} точек`;
+}
+
 function buildNewRequestPush(input: {
   id: number;
   requestType?: unknown;
@@ -88,21 +99,52 @@ function buildNewRequestPush(input: {
   recipientAddress?: unknown;
   senderAddress?: unknown;
   senderName?: unknown;
+  senderCompany?: unknown;
   recipientName?: unknown;
+  recipientCompany?: unknown;
+  tcName?: unknown;
+  packageDescription?: unknown;
   placesCount?: unknown;
   paymentMethod?: unknown;
 }) {
-  const title = `Новая заявка #${input.id}`;
-  const senderName = compactText(input.senderName, "Отправитель");
-  const fromAddress = compactText(input.senderAddress, "");
-  const toAddress = compactText(input.deliveryAddress || input.recipientAddress, "Адрес не указан");
+  const typeLabels: Record<string, string> = {
+    delivery: "Доставка",
+    movement: "Перемещение",
+    nuts: "Орехи",
+    courier_call: "Вызов курьера",
+    pickup_from_tc: "Транспортная компания",
+    simple: "Заявка",
+  };
 
-  const route = fromAddress ? `${senderName}, ${fromAddress} → ${toAddress}` : `${senderName} → ${toAddress}`;
+  const requestType = String(input.requestType || "");
+  const typeLabel = typeLabels[requestType] || "Заявка";
+
+  const name = compactText(
+    input.packageDescription ||
+      input.tcName ||
+      input.senderCompany ||
+      input.recipientCompany ||
+      input.recipientName ||
+      input.senderName,
+    "",
+  );
+
+  const pickupPlace = compactText(
+    input.senderAddress ||
+      input.tcName ||
+      input.deliveryAddress ||
+      input.recipientAddress,
+    "",
+  );
+
+  const title = name ? `${typeLabel} · ${name}` : typeLabel;
+
   return {
-    title,
-    body: truncatePushText(route, 150),
+    title: truncatePushText(title, 90),
+    body: truncatePushText(pickupPlace, 120),
   };
 }
+
 
 // ─── Manager JWT helpers ─────────────────────────────────────────────────────
 const MANAGER_JWT_SECRET = new TextEncoder().encode(
@@ -730,7 +772,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const list = await db.createHemotestPickupList(input);
-        await sendPushToAllCouriers("Гемотест", `Новый список: ${input.pointIds.length} точек`, {
+        await sendPushToAllCouriers(`Гемотест ${getPointsLabel(input.pointIds.length)}`, "", {
           type: "hemotest_list_created",
           listId: list.id,
         });
@@ -756,8 +798,41 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.addPointToHemotestList(input.listId, input.pointId);
+
+        const listWithItems = await db.getHemotestPickupListWithItems(input.listId);
+        const point = listWithItems?.items.find((item: any) => Number(item.id) === Number(input.pointId));
+        const pointName = String(point?.name || point?.address || "точка").trim();
+
+        await sendPushToAllCouriers(`Гемотест добавлена "${pointName}"`, "", {
+          type: "hemotest_point_added",
+          listId: input.listId,
+          pointId: input.pointId,
+        });
+
         return { success: true };
       }),
+
+    removePointFromList: publicProcedure
+      .input(z.object({
+        listId: z.number(),
+        pointId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const points = await db.getAllHemotestPoints();
+        const point = points.find((item: any) => Number(item.id) === Number(input.pointId));
+        const pointName = String(point?.name || point?.address || "точка").trim();
+
+        await db.removePointFromHemotestList(input.listId, input.pointId);
+
+        await sendPushToAllCouriers(`Гемотест удалена "${pointName}"`, "", {
+          type: "hemotest_point_removed",
+          listId: input.listId,
+          pointId: input.pointId,
+        });
+
+        return { success: true };
+      }),
+
 
     pickupPoints: publicProcedure
       .input(z.object({
@@ -794,6 +869,37 @@ export const appRouter = router({
         broadcastLive("hemotest_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
       }),
+
+
+    cancelPickup: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.coerce.date(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.cancelHemotestPickup(payload.courierId, input.pointId, input.date);
+        broadcastLive("hemotest_changed", { pointId: input.pointId, courierId: payload.courierId });
+        return { success: true };
+      }),
+
+    assignPickupCourier: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.coerce.date(),
+        courierId: z.number().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.assignHemotestPickupCourier(input.pointId, input.date, input.courierId);
+        broadcastLive("hemotest_changed", { pointId: input.pointId, courierId: input.courierId });
+        return { success: true };
+      }),
+
   }),
 
   // Sberbank pickup points
@@ -841,7 +947,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const list = await db.createSberbankPickupList(input);
-        await sendPushToAllCouriers("Сбербанк", `Новый список: ${input.pointIds.length} точек`, {
+        await sendPushToAllCouriers(`Сбербанк ${getPointsLabel(input.pointIds.length)}`, "", {
           type: "sberbank_list_created",
           listId: list.id,
         });
@@ -873,8 +979,41 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await db.addPointToSberbankList(input.listId, input.pointId);
+
+        const listWithItems = await db.getSberbankPickupListWithItems(input.listId);
+        const point = listWithItems?.items.find((item: any) => Number(item.id) === Number(input.pointId));
+        const pointName = String(point?.name || point?.address || "точка").trim();
+
+        await sendPushToAllCouriers(`Сбербанк добавлена "${pointName}"`, "", {
+          type: "sberbank_point_added",
+          listId: input.listId,
+          pointId: input.pointId,
+        });
+
         return { success: true };
       }),
+
+    removePointFromList: publicProcedure
+      .input(z.object({
+        listId: z.number(),
+        pointId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const points = await db.getAllSberbankPoints();
+        const point = points.find((item: any) => Number(item.id) === Number(input.pointId));
+        const pointName = String(point?.name || point?.address || "точка").trim();
+
+        await db.removePointFromSberbankList(input.listId, input.pointId);
+
+        await sendPushToAllCouriers(`Сбербанк удалена "${pointName}"`, "", {
+          type: "sberbank_point_removed",
+          listId: input.listId,
+          pointId: input.pointId,
+        });
+
+        return { success: true };
+      }),
+
 
     // Courier endpoints
     pickupPoints: publicProcedure
@@ -912,6 +1051,37 @@ export const appRouter = router({
         broadcastLive("sberbank_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
       }),
+
+
+    cancelPickup: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.coerce.date(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.cancelSberbankPickup(payload.courierId, input.pointId, input.date);
+        broadcastLive("sberbank_changed", { pointId: input.pointId, courierId: payload.courierId });
+        return { success: true };
+      }),
+
+    assignPickupCourier: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        pointId: z.number(),
+        date: z.coerce.date(),
+        courierId: z.number().nullable(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.assignSberbankPickupCourier(input.pointId, input.date, input.courierId);
+        broadcastLive("sberbank_changed", { pointId: input.pointId, courierId: input.courierId });
+        return { success: true };
+      }),
+
   }),
 
   // Mail router
@@ -1071,7 +1241,24 @@ export const appRouter = router({
         const createdByUserId = ctx.user?.id ?? 0;
         const id = await db.createRequest({ ...input, createdByUserId });
         await syncTaskForRequestId(id);
-        const push = buildNewRequestPush({ id, ...input });
+
+        const requestForPush = await db.getRequestById(id);
+        const push = buildNewRequestPush({
+          id,
+          requestType: requestForPush?.requestType || input.requestType,
+          deliveryAddress: requestForPush?.deliveryAddress || input.deliveryAddress,
+          recipientAddress: requestForPush?.recipientAddress || input.recipientAddress,
+          senderAddress: requestForPush?.senderAddress || input.senderAddress,
+          senderName: requestForPush?.senderName || input.senderName,
+          senderCompany: requestForPush?.senderCompany || input.senderCompany,
+          recipientName: requestForPush?.recipientName || input.recipientName,
+          recipientCompany: requestForPush?.recipientCompany || input.recipientCompany,
+          tcName: requestForPush?.tcName || input.tcName,
+          packageDescription: requestForPush?.packageDescription || input.packageDescription,
+          placesCount: requestForPush?.placesCount || input.placesCount,
+          paymentMethod: requestForPush?.paymentMethod || input.paymentMethod,
+        });
+
         await sendPushToAllCouriers(push.title, push.body, {
           type: "new_request_available",
           requestId: id,
@@ -1133,10 +1320,24 @@ export const appRouter = router({
 
               console.log("[PUSH] sending to", courier.pushToken.slice(0, 25));
 
+              const push = buildNewRequestPush({
+                id: request.id,
+                requestType: request.requestType,
+                deliveryAddress: request.deliveryAddress,
+                recipientAddress: request.recipientAddress,
+                senderAddress: request.senderAddress,
+                senderName: request.senderName,
+                senderCompany: request.senderCompany,
+                recipientName: request.recipientName,
+                recipientCompany: request.recipientCompany,
+                tcName: request.tcName,
+                packageDescription: request.packageDescription,
+              });
+
               await sendExpoPush(
                 courier.pushToken,
-                `Назначена заявка #${request.id}`,
-                truncatePushText(`${request.recipientName || "Клиент"} • ${address}`, 90),
+                push.title,
+                push.body,
                 {
                   type: "new_request",
                   requestId: request.id,

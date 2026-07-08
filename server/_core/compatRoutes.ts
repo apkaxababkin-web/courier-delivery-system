@@ -150,21 +150,52 @@ function buildNewRequestPush(input: {
   recipientAddress?: unknown;
   senderAddress?: unknown;
   senderName?: unknown;
+  senderCompany?: unknown;
   recipientName?: unknown;
+  recipientCompany?: unknown;
+  tcName?: unknown;
+  packageDescription?: unknown;
   placesCount?: unknown;
   paymentMethod?: unknown;
 }) {
-  const title = `Новая заявка #${input.id}`;
-  const senderName = compactText(input.senderName, "Отправитель");
-  const fromAddress = compactText(input.senderAddress, "");
-  const toAddress = compactText(input.deliveryAddress || input.recipientAddress, "Адрес не указан");
+  const typeLabels: Record<string, string> = {
+    delivery: "Доставка",
+    movement: "Перемещение",
+    nuts: "Орехи",
+    courier_call: "Вызов курьера",
+    pickup_from_tc: "Транспортная компания",
+    simple: "Заявка",
+  };
 
-  const route = fromAddress ? `${senderName}, ${fromAddress} → ${toAddress}` : `${senderName} → ${toAddress}`;
+  const requestType = String(input.requestType || "");
+  const typeLabel = typeLabels[requestType] || "Заявка";
+
+  const name = compactText(
+    input.packageDescription ||
+      input.tcName ||
+      input.senderCompany ||
+      input.recipientCompany ||
+      input.recipientName ||
+      input.senderName,
+    "",
+  );
+
+  const pickupPlace = compactText(
+    input.senderAddress ||
+      input.tcName ||
+      input.deliveryAddress ||
+      input.recipientAddress,
+    "",
+  );
+
+  const title = name ? `${typeLabel} · ${name}` : typeLabel;
+
   return {
-    title,
-    body: truncatePushText(route, 150),
+    title: truncatePushText(title, 90),
+    body: truncatePushText(pickupPlace, 120),
   };
 }
+
 
 
 function inputFrom(req: Request): Record<string, unknown> {
@@ -426,6 +457,33 @@ async function pickupFeedbackSummary() {
   };
 }
 
+async function hemotestReconciliationRows() {
+  const conn = await db.getDb();
+  if (!conn) return [];
+
+  const courierMap = await courierNameMap();
+
+  const rows = await conn
+    .select()
+    .from(hemotestPickups)
+    .innerJoin(hemotestPickupPoints, eq(hemotestPickups.pointId, hemotestPickupPoints.id))
+    .where(eq(hemotestPickups.isPicked, true))
+    .orderBy(desc(hemotestPickups.date), desc(hemotestPickups.pickedAt));
+
+  return rows.map((row: any) => ({
+    id: row.hemotestPickups.id,
+    pointId: row.hemotestPickupPoints.id,
+    pointName: row.hemotestPickupPoints.name,
+    address: row.hemotestPickupPoints.address,
+    courierId: row.hemotestPickups.courierId ?? null,
+    courierName: row.hemotestPickups.courierId ? courierMap.get(row.hemotestPickups.courierId) ?? null : null,
+    date: row.hemotestPickups.date,
+    isPicked: row.hemotestPickups.isPicked,
+    pickedAt: row.hemotestPickups.pickedAt,
+  }));
+}
+
+
 async function findTaskForRequest(requestId: number): Promise<Task | null> {
   const conn = await db.getDb();
   if (!conn) return null;
@@ -541,6 +599,177 @@ export function registerCompatRoutes(app: Express) {
       removeLiveClient(id);
     });
   });
+
+  const emptyClientTariffs = {
+    deliveryFirstPlace: 0,
+    deliveryNextPlace: 0,
+    transportCompanyFirstPlace: 0,
+    transportCompanyNextPlace: 0,
+    movementFirstPlace: 0,
+    movementNextPlace: 0,
+    otherFirstPlace: 0,
+    otherNextPlace: 0,
+    hemotestPointPrice: 0,
+    hemotestSundayFirstPointPrice: 0,
+    hemotestSundayNextPointPrice: 0,
+  };
+
+  const normalizeClientTariffs = (row: any) => ({
+    deliveryFirstPlace: Number(row?.deliveryFirstPlace ?? 0),
+    deliveryNextPlace: Number(row?.deliveryNextPlace ?? 0),
+    transportCompanyFirstPlace: Number(row?.transportCompanyFirstPlace ?? 0),
+    transportCompanyNextPlace: Number(row?.transportCompanyNextPlace ?? 0),
+    movementFirstPlace: Number(row?.movementFirstPlace ?? 0),
+    movementNextPlace: Number(row?.movementNextPlace ?? 0),
+    otherFirstPlace: Number(row?.otherFirstPlace ?? 0),
+    otherNextPlace: Number(row?.otherNextPlace ?? 0),
+    hemotestPointPrice: Number(row?.hemotestPointPrice ?? 0),
+    hemotestSundayFirstPointPrice: Number(row?.hemotestSundayFirstPointPrice ?? 0),
+    hemotestSundayNextPointPrice: Number(row?.hemotestSundayNextPointPrice ?? 0),
+  });
+
+  const tariffNumber = (value: unknown) => {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) && numberValue >= 0 ? Math.round(numberValue) : 0;
+  };
+
+  app.get("/api/manager/clients/:id/tariffs", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.id);
+      if (!clientId) throw new Error("client id is required");
+
+      const result = await conn.execute(sql`
+        SELECT
+          "deliveryFirstPlace",
+          "deliveryNextPlace",
+          "transportCompanyFirstPlace",
+          "transportCompanyNextPlace",
+          "movementFirstPlace",
+          "movementNextPlace",
+          "otherFirstPlace",
+          "otherNextPlace",
+          "hemotestPointPrice",
+          "hemotestSundayFirstPointPrice",
+          "hemotestSundayNextPointPrice"
+        FROM "clientTariffs"
+        WHERE "clientId" = ${clientId}
+        ORDER BY id DESC
+        LIMIT 1
+      `) as any;
+
+      const row = Array.isArray(result) ? result[0] : result?.rows?.[0];
+      res.json(row ? normalizeClientTariffs(row) : emptyClientTariffs);
+    } catch (error) {
+      sendError(res, error, "Failed to load client tariffs");
+    }
+  });
+
+  app.put("/api/manager/clients/:id/tariffs", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.id);
+      if (!clientId) throw new Error("client id is required");
+
+      const body = req.body || {};
+      const values = {
+        deliveryFirstPlace: tariffNumber(body.deliveryFirstPlace),
+        deliveryNextPlace: tariffNumber(body.deliveryNextPlace),
+        transportCompanyFirstPlace: tariffNumber(body.transportCompanyFirstPlace),
+        transportCompanyNextPlace: tariffNumber(body.transportCompanyNextPlace),
+        movementFirstPlace: tariffNumber(body.movementFirstPlace),
+        movementNextPlace: tariffNumber(body.movementNextPlace),
+        otherFirstPlace: tariffNumber(body.otherFirstPlace),
+        otherNextPlace: tariffNumber(body.otherNextPlace),
+        hemotestPointPrice: tariffNumber(body.hemotestPointPrice ?? body.hemotest?.pointPrice),
+        hemotestSundayFirstPointPrice: tariffNumber(body.hemotestSundayFirstPointPrice ?? body.hemotest?.sundayFirstPointPrice),
+        hemotestSundayNextPointPrice: tariffNumber(body.hemotestSundayNextPointPrice ?? body.hemotest?.sundayNextPointPrice),
+      };
+
+      const existing = await conn.execute(sql`
+        SELECT id
+        FROM "clientTariffs"
+        WHERE "clientId" = ${clientId}
+        ORDER BY id DESC
+        LIMIT 1
+      `) as any;
+
+      const existingRow = Array.isArray(existing) ? existing[0] : existing?.rows?.[0];
+
+      if (existingRow?.id) {
+        await conn.execute(sql`
+          UPDATE "clientTariffs"
+          SET
+            "deliveryFirstPlace" = ${values.deliveryFirstPlace},
+            "deliveryNextPlace" = ${values.deliveryNextPlace},
+            "transportCompanyFirstPlace" = ${values.transportCompanyFirstPlace},
+            "transportCompanyNextPlace" = ${values.transportCompanyNextPlace},
+            "movementFirstPlace" = ${values.movementFirstPlace},
+            "movementNextPlace" = ${values.movementNextPlace},
+            "otherFirstPlace" = ${values.otherFirstPlace},
+            "otherNextPlace" = ${values.otherNextPlace},
+            "hemotestPointPrice" = ${values.hemotestPointPrice},
+            "hemotestSundayFirstPointPrice" = ${values.hemotestSundayFirstPointPrice},
+            "hemotestSundayNextPointPrice" = ${values.hemotestSundayNextPointPrice},
+            "updatedAt" = now()
+          WHERE id = ${Number(existingRow.id)}
+        `);
+      } else {
+        await conn.execute(sql`
+          INSERT INTO "clientTariffs" (
+            "clientId",
+            "deliveryFirstPlace",
+            "deliveryNextPlace",
+            "transportCompanyFirstPlace",
+            "transportCompanyNextPlace",
+            "movementFirstPlace",
+            "movementNextPlace",
+            "otherFirstPlace",
+            "otherNextPlace",
+            "hemotestPointPrice",
+            "hemotestSundayFirstPointPrice",
+            "hemotestSundayNextPointPrice",
+            "createdAt",
+            "updatedAt"
+          )
+          VALUES (
+            ${clientId},
+            ${values.deliveryFirstPlace},
+            ${values.deliveryNextPlace},
+            ${values.transportCompanyFirstPlace},
+            ${values.transportCompanyNextPlace},
+            ${values.movementFirstPlace},
+            ${values.movementNextPlace},
+            ${values.otherFirstPlace},
+            ${values.otherNextPlace},
+            ${values.hemotestPointPrice},
+            ${values.hemotestSundayFirstPointPrice},
+            ${values.hemotestSundayNextPointPrice},
+            now(),
+            now()
+          )
+        `);
+      }
+
+      res.json(values);
+    } catch (error) {
+      sendError(res, error, "Failed to save client tariffs");
+    }
+  });
+
+
+  app.get("/api/manager/hemotest/reconciliation", async (_req, res) => {
+    try {
+      res.json(await hemotestReconciliationRows());
+    } catch (error) {
+      sendError(res, error, "Failed to load hemotest reconciliation");
+    }
+  });
+
 
   app.get("/api/manager/couriers", async (_req, res) => {
     try {
@@ -932,6 +1161,39 @@ export function registerCompatRoutes(app: Express) {
       res.json(trpcBatchJson([...active, ...completed]));
     } catch (error) { sendError(res, error, "Failed to load manager tasks"); }
   });
+
+  const handleTaskReschedule = async (req: any, res: any) => {
+    try {
+      const input = inputFrom(req);
+      const taskId = Number(input.taskId || input.id || 0);
+      const rawDate = input.newDate || input.date || input.targetDate || input.scheduledAt;
+
+      if (!taskId) throw new Error("taskId is required");
+      if (!rawDate) throw new Error("newDate is required");
+
+      let newDate: Date;
+      if (String(rawDate).includes("-")) {
+        const [year, month, day] = String(rawDate).slice(0, 10).split("-").map(Number);
+        newDate = new Date(year, month - 1, day);
+      } else {
+        newDate = new Date(String(rawDate));
+      }
+
+      if (Number.isNaN(newDate.getTime())) throw new Error("Invalid newDate");
+
+      await db.updateTaskDate(taskId, newDate);
+      broadcastLive("tasks_changed");
+      broadcastLive("requests_changed");
+      res.json(trpcBatchJson({ success: true }));
+    } catch (error) {
+      sendError(res, error, "Failed to reschedule task");
+    }
+  };
+
+  app.post("/api/trpc/managerTasks.reschedule", handleTaskReschedule);
+  app.post("/api/trpc/tasks.reschedule", handleTaskReschedule);
+  app.post("/api/trpc/tasks.updateDate", handleTaskReschedule);
+  app.post("/api/trpc/rescheduleTask", handleTaskReschedule);
 
   app.post("/api/trpc/managerTasks.create", async (req, res) => {
     try {
@@ -1381,6 +1643,18 @@ export function registerCompatRoutes(app: Express) {
       const conn = await db.getDb();
       if (!conn) throw new Error("Database not available");
       const input = inputFrom(req);
+      const rawRequestDate = input.requestDate || input.scheduledDate || input.deliveryDate;
+      const rawScheduledAt = input.scheduledAt;
+      let scheduledAt: Date | null = null;
+
+      if (rawScheduledAt) {
+        const parsed = new Date(String(rawScheduledAt));
+        if (!Number.isNaN(parsed.getTime())) scheduledAt = parsed;
+      } else if (rawRequestDate) {
+        const [year, month, day] = String(rawRequestDate).slice(0, 10).split("-").map(Number);
+        if (year && month && day) scheduledAt = new Date(year, month - 1, day);
+      }
+
       const payload: InsertRequest = {
         createdByUserId: Number(input.createdByUserId || 1),
         requestType: (input.requestType as InsertRequest["requestType"]) || "delivery",
@@ -1415,19 +1689,28 @@ export function registerCompatRoutes(app: Express) {
         deliveryTimeFrom: input.deliveryTimeFrom ? String(input.deliveryTimeFrom) : null,
         deliveryTimeTo: input.deliveryTimeTo ? String(input.deliveryTimeTo) : null,
         estimatedMinutes: input.estimatedMinutes ? Number(input.estimatedMinutes) : null,
+        scheduledAt: scheduledAt,
       };
       const inserted = await conn.insert(requests).values(payload).returning();
       const request = inserted[0] as DeliveryRequest;
       const taskId = await syncTaskForRequest(request);
 
+      const requestForPush = await db.getRequestById(request.id);
+
       const push = buildNewRequestPush({
         id: request.id,
-        requestType: request.requestType,
-        deliveryAddress: request.deliveryAddress,
-        recipientAddress: request.recipientAddress,
-        senderAddress: request.senderAddress,
-        placesCount: request.placesCount,
-        paymentMethod: request.paymentMethod,
+        requestType: requestForPush?.requestType || request.requestType,
+        deliveryAddress: requestForPush?.deliveryAddress || request.deliveryAddress,
+        recipientAddress: requestForPush?.recipientAddress || request.recipientAddress,
+        senderAddress: requestForPush?.senderAddress || request.senderAddress,
+        senderName: requestForPush?.senderName || request.senderName,
+        senderCompany: requestForPush?.senderCompany || request.senderCompany,
+        recipientName: requestForPush?.recipientName || request.recipientName,
+        recipientCompany: requestForPush?.recipientCompany || request.recipientCompany,
+        tcName: requestForPush?.tcName || request.tcName,
+        packageDescription: requestForPush?.packageDescription || request.packageDescription,
+        placesCount: requestForPush?.placesCount || request.placesCount,
+        paymentMethod: requestForPush?.paymentMethod || request.paymentMethod,
       });
 
       await sendPushToAllCouriers(
@@ -1491,10 +1774,24 @@ export function registerCompatRoutes(app: Express) {
 
             console.log("[PUSH] compat sending to", courier.pushToken.slice(0, 25));
 
+            const push = buildNewRequestPush({
+              id: request.id,
+              requestType: request.requestType,
+              deliveryAddress: request.deliveryAddress,
+              recipientAddress: request.recipientAddress,
+              senderAddress: request.senderAddress,
+              senderName: request.senderName,
+              senderCompany: request.senderCompany,
+              recipientName: request.recipientName,
+              recipientCompany: request.recipientCompany,
+              tcName: request.tcName,
+              packageDescription: request.packageDescription,
+            });
+
             await sendExpoPush(
               courier.pushToken,
-              `Назначена заявка #${request.id}`,
-              truncatePushText(`${request.recipientName || "Клиент"} • ${address}`, 90),
+              push.title,
+              push.body,
               {
                 type: "new_request",
                 requestId: request.id,
@@ -1554,6 +1851,96 @@ export function registerCompatRoutes(app: Express) {
       res.json(trpcBatchJson(updated[0] || { success: true }));
     } catch (error) {
       sendError(res, error, "Failed to update hemotest point");
+    }
+  });
+
+
+  app.post("/api/trpc/hemotest.deletePoint", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const input = inputFrom(req);
+      const id = Number(input.id);
+      if (!id) throw new Error("id is required");
+
+      const existing = await conn
+        .select()
+        .from(hemotestPickupPoints)
+        .where(eq(hemotestPickupPoints.id, id))
+        .limit(1);
+
+      const point = existing[0];
+
+      await conn.delete(hemotestListItems).where(eq(hemotestListItems.pointId, id));
+      await conn.delete(hemotestPickups).where(eq(hemotestPickups.pointId, id));
+      await conn.delete(hemotestPickupPoints).where(eq(hemotestPickupPoints.id, id));
+
+      if (point) {
+        await conn.delete(clientPoints).where(sql`
+          ${clientPoints.clientId} = 6
+          AND lower(trim(coalesce(${clientPoints.name}, ''))) = lower(trim(coalesce(${point.name}, '')))
+          AND lower(trim(coalesce(${clientPoints.address}, ''))) = lower(trim(coalesce(${point.address}, '')))
+        `);
+      }
+
+      broadcastLive("hemotest_changed", { id });
+      broadcastLive("clients_changed", { clientId: 6 });
+
+      res.json(trpcBatchJson({ success: true }));
+    } catch (error) {
+      sendError(res, error, "Failed to delete hemotest point");
+    }
+  });
+
+
+  app.post("/api/trpc/sberbank.deletePoint", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const input = inputFrom(req);
+      const id = Number(input.id);
+      if (!id) throw new Error("id is required");
+
+      const existing = await conn
+        .select()
+        .from(sberbankPickupPoints)
+        .where(eq(sberbankPickupPoints.id, id))
+        .limit(1);
+
+      const point = existing[0];
+
+      await conn.delete(sberbankListItems).where(eq(sberbankListItems.pointId, id));
+      await conn.delete(sberbankPickups).where(eq(sberbankPickups.pointId, id));
+      await conn.delete(sberbankPickupPoints).where(eq(sberbankPickupPoints.id, id));
+
+      if (point) {
+        const sberbankClientRows = await conn.execute(sql`
+          SELECT id
+          FROM clients
+          WHERE lower(name) LIKE '%сбербанк%'
+          ORDER BY id
+          LIMIT 1
+        `) as any;
+
+        const sberbankClient = Array.isArray(sberbankClientRows) ? sberbankClientRows[0] : sberbankClientRows?.rows?.[0];
+
+        if (sberbankClient?.id) {
+          await conn.delete(clientPoints).where(sql`
+            ${clientPoints.clientId} = ${Number(sberbankClient.id)}
+            AND lower(trim(coalesce(${clientPoints.name}, ''))) = lower(trim(coalesce(${point.name}, '')))
+            AND lower(trim(coalesce(${clientPoints.address}, ''))) = lower(trim(coalesce(${point.address}, '')))
+          `);
+        }
+      }
+
+      broadcastLive("sberbank_changed", { id });
+      broadcastLive("clients_changed", {});
+
+      res.json(trpcBatchJson({ success: true }));
+    } catch (error) {
+      sendError(res, error, "Failed to delete sberbank point");
     }
   });
 

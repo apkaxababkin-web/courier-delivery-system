@@ -233,6 +233,18 @@ export async function updateCourier(id: number, data: Partial<InsertCourier>): P
 export async function getAllCouriers(): Promise<Courier[]> {
   const db = await getDb();
   if (!db) return [];
+
+  return db
+    .select()
+    .from(couriers)
+    .where(eq(couriers.isActive, true))
+    .orderBy(couriers.name);
+}
+
+export async function getAllCouriersIncludingInactive(): Promise<Courier[]> {
+  const db = await getDb();
+  if (!db) return [];
+
   return db.select().from(couriers).orderBy(couriers.name);
 }
 
@@ -426,7 +438,16 @@ export async function updateTaskTimeInterval(
 export async function updateTaskDate(taskId: number, newDate: Date): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(tasks).set({ scheduledAt: newDate }).where(eq(tasks.id, taskId));
+
+  await db.update(tasks).set({ scheduledAt: newDate, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  const marker = task?.comments?.match(/\[request:(\d+)\]/)?.[1];
+  const linkedRequestId = task?.requestId || task?.sourceRequestId || (marker ? Number(marker) : 0);
+
+  if (linkedRequestId) {
+    await db.update(requests).set({ scheduledAt: newDate, updatedAt: new Date() }).where(eq(requests.id, linkedRequestId));
+  }
 }
 
 export async function updateTaskCourierComments(taskId: number, courierComments: string): Promise<void> {
@@ -737,6 +758,8 @@ function formatCourierDate(targetDate: Date): string {
 export type HemotestPickupWithStatus = HemotestPickupPoint & {
   isPicked: boolean;
   pickedAt: Date | null;
+  isCancelled: boolean;
+  cancelledAt: Date | null;
   courierId?: number | null;
   courierName?: string;
 };
@@ -798,14 +821,16 @@ export async function getHemotestPickupPointsForDate(
       ...point,
       isPicked: pickup?.hemotestPickups.isPicked ?? false,
       pickedAt: pickup?.hemotestPickups.pickedAt ?? null,
+      isCancelled: pickup?.hemotestPickups.isCancelled ?? false,
+      cancelledAt: pickup?.hemotestPickups.cancelledAt ?? null,
       courierId: pickup?.hemotestPickups.courierId ?? null,
-      courierName: pickup?.hemotestPickups.isPicked ? pickup.couriers?.name ?? undefined : undefined,
+      courierName: pickup?.couriers?.name ?? undefined,
     };
   });
 
   return result.sort(
     (a: HemotestPickupWithStatus, b: HemotestPickupWithStatus) =>
-      Number(a.isPicked) - Number(b.isPicked),
+      Number(a.isPicked || a.isCancelled) - Number(b.isPicked || b.isCancelled),
   );
 }
 
@@ -837,6 +862,8 @@ export async function toggleHemotestPickup(
         courierId,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
+        isCancelled: false,
+        cancelledAt: null,
         updatedAt: new Date(),
       })
       .where(eq(hemotestPickups.id, pickup.id));
@@ -847,6 +874,101 @@ export async function toggleHemotestPickup(
       date: dateStr,
       isPicked: true,
       pickedAt: new Date(),
+      isCancelled: false,
+      cancelledAt: null,
+    });
+  }
+}
+
+
+export async function cancelHemotestPickup(
+  courierId: number,
+  pointId: number,
+  targetDate: Date
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = formatCourierDate(targetDate);
+
+  const existing = await db
+    .select()
+    .from(hemotestPickups)
+    .where(and(
+      eq(hemotestPickups.pointId, pointId),
+      eq(hemotestPickups.date, dateStr)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const pickup = existing[0];
+
+    await db
+      .update(hemotestPickups)
+      .set({
+        courierId: pickup.courierId ?? courierId,
+        isPicked: false,
+        pickedAt: null,
+        isCancelled: true,
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(hemotestPickups.id, pickup.id));
+  } else {
+    await db.insert(hemotestPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked: false,
+      pickedAt: null,
+      isCancelled: true,
+      cancelledAt: new Date(),
+    });
+  }
+}
+
+export async function assignHemotestPickupCourier(
+  pointId: number,
+  targetDate: Date,
+  courierId: number | null
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = formatCourierDate(targetDate);
+
+  const existing = await db
+    .select()
+    .from(hemotestPickups)
+    .where(and(
+      eq(hemotestPickups.pointId, pointId),
+      eq(hemotestPickups.date, dateStr)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const pickup = existing[0];
+
+    await db
+      .update(hemotestPickups)
+      .set({
+        courierId,
+        isPicked: false,
+        pickedAt: null,
+        isCancelled: false,
+        cancelledAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(hemotestPickups.id, pickup.id));
+  } else {
+    await db.insert(hemotestPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked: false,
+      pickedAt: null,
+      isCancelled: false,
+      cancelledAt: null,
     });
   }
 }
@@ -861,6 +983,8 @@ export async function getHemotestPickedCount(courierId: number, targetDate: Date
 export type SberbankPickupWithStatus = SberbankPickupPoint & {
   isPicked: boolean;
   pickedAt: Date | null;
+  isCancelled: boolean;
+  cancelledAt: Date | null;
   courierId?: number | null;
   courierName?: string;
 };
@@ -927,14 +1051,16 @@ export async function getSberbankPickupPointsForDate(
       ...point,
       isPicked: pickup?.sberbankPickups.isPicked ?? false,
       pickedAt: pickup?.sberbankPickups.pickedAt ?? null,
+      isCancelled: pickup?.sberbankPickups.isCancelled ?? false,
+      cancelledAt: pickup?.sberbankPickups.cancelledAt ?? null,
       courierId: pickup?.sberbankPickups.courierId ?? null,
-      courierName: pickup?.sberbankPickups.isPicked ? pickup.couriers?.name ?? undefined : undefined,
+      courierName: pickup?.couriers?.name ?? undefined,
     };
   });
 
   return result.sort(
     (a: SberbankPickupWithStatus, b: SberbankPickupWithStatus) =>
-      Number(a.isPicked) - Number(b.isPicked),
+      Number(a.isPicked || a.isCancelled) - Number(b.isPicked || b.isCancelled),
   );
 }
 
@@ -966,6 +1092,8 @@ export async function toggleSberbankPickup(
         courierId,
         isPicked: !pickup.isPicked,
         pickedAt: !pickup.isPicked ? new Date() : null,
+        isCancelled: false,
+        cancelledAt: null,
         updatedAt: new Date(),
       })
       .where(eq(sberbankPickups.id, pickup.id));
@@ -976,6 +1104,101 @@ export async function toggleSberbankPickup(
       date: dateStr,
       isPicked: true,
       pickedAt: new Date(),
+      isCancelled: false,
+      cancelledAt: null,
+    });
+  }
+}
+
+
+export async function cancelSberbankPickup(
+  courierId: number,
+  pointId: number,
+  targetDate: Date
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = formatCourierDate(targetDate);
+
+  const existing = await db
+    .select()
+    .from(sberbankPickups)
+    .where(and(
+      eq(sberbankPickups.pointId, pointId),
+      eq(sberbankPickups.date, dateStr)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const pickup = existing[0];
+
+    await db
+      .update(sberbankPickups)
+      .set({
+        courierId: pickup.courierId ?? courierId,
+        isPicked: false,
+        pickedAt: null,
+        isCancelled: true,
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(sberbankPickups.id, pickup.id));
+  } else {
+    await db.insert(sberbankPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked: false,
+      pickedAt: null,
+      isCancelled: true,
+      cancelledAt: new Date(),
+    });
+  }
+}
+
+export async function assignSberbankPickupCourier(
+  pointId: number,
+  targetDate: Date,
+  courierId: number | null
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = formatCourierDate(targetDate);
+
+  const existing = await db
+    .select()
+    .from(sberbankPickups)
+    .where(and(
+      eq(sberbankPickups.pointId, pointId),
+      eq(sberbankPickups.date, dateStr)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const pickup = existing[0];
+
+    await db
+      .update(sberbankPickups)
+      .set({
+        courierId,
+        isPicked: false,
+        pickedAt: null,
+        isCancelled: false,
+        cancelledAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sberbankPickups.id, pickup.id));
+  } else {
+    await db.insert(sberbankPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked: false,
+      pickedAt: null,
+      isCancelled: false,
+      cancelledAt: null,
     });
   }
 }
@@ -1385,6 +1608,21 @@ export async function addPointToHemotestList(listId: number, pointId: number): P
   }
 }
 
+/**
+ * Remove a point from an existing Hemotest pickup list
+ */
+export async function removePointFromHemotestList(listId: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .delete(hemotestListItems)
+    .where(and(
+      eq(hemotestListItems.listId, listId),
+      eq(hemotestListItems.pointId, pointId)
+    ));
+}
+
 // ─── Sberbank Pickup Lists ───────────────────────────────────────────────────
 
 /**
@@ -1549,6 +1787,21 @@ export async function addPointToSberbankList(listId: number, pointId: number): P
       pointId,
     });
   }
+}
+
+/**
+ * Remove a point from an existing Sberbank pickup list
+ */
+export async function removePointFromSberbankList(listId: number, pointId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .delete(sberbankListItems)
+    .where(and(
+      eq(sberbankListItems.listId, listId),
+      eq(sberbankListItems.pointId, pointId)
+    ));
 }
 
 
