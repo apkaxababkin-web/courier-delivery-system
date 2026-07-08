@@ -400,6 +400,7 @@ async function pickupFeedbackSummary() {
         .from(hemotestListItems)
         .innerJoin(hemotestPickupPoints, eq(hemotestListItems.pointId, hemotestPickupPoints.id))
         .where(inArray(hemotestListItems.listId, hemotestListIds))
+        .orderBy(hemotestListItems.id)
     : [];
 
   const hemotestPickupRows = await conn
@@ -442,6 +443,7 @@ async function pickupFeedbackSummary() {
         .from(sberbankListItems)
         .innerJoin(sberbankPickupPoints, eq(sberbankListItems.pointId, sberbankPickupPoints.id))
         .where(inArray(sberbankListItems.listId, sberbankListIds))
+        .orderBy(sberbankListItems.id)
     : [];
 
   const sberbankPickupRows = await conn
