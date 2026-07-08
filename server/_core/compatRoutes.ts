@@ -522,14 +522,13 @@ async function updateRequestStatusFromTask(taskId: number, status: Task["status"
 }
 
 async function managerSnapshot() {
-  const [activeTasks, completedTasks, requestList, mailList, pickupFeedback] = await Promise.all([
+  const [activeTasks, requestList, mailList, pickupFeedback] = await Promise.all([
     db.getAllTasksWithCourier(),
-    db.getCompletedTasksWithCourier(),
     requestRows(),
     db.getAllMails(),
     pickupFeedbackSummary(),
   ]);
-  const allTasks = await tasksWithRequestType([...activeTasks, ...completedTasks]);
+  const allTasks = await tasksWithRequestType(activeTasks);
 
   return {
     ok: true,
