@@ -327,9 +327,14 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
     .where(
       or(
         and(
-          inArray(tasks.status, ["completed", "cancelled"]),
+          eq(tasks.status, "completed"),
           gte(tasks.completedAt, startOfDay),
           lte(tasks.completedAt, endOfDay)
+        ),
+        and(
+          eq(tasks.status, "cancelled"),
+          gte(tasks.updatedAt, startOfDay),
+          lte(tasks.updatedAt, endOfDay)
         ),
         and(
           sql`${tasks.status} NOT IN ('completed', 'cancelled')`,

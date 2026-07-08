@@ -206,6 +206,35 @@ function inputFrom(req: Request): Record<string, unknown> {
   try { return unwrapBatchInput(JSON.parse(raw) as Record<string, unknown>); } catch { return {}; }
 }
 
+function localDateKeyInIrkutsk(value: Date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Irkutsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
+
+function normalizeDateKey(value: unknown) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : localDateKeyInIrkutsk();
+}
+
+function localDayRangeInIrkutsk(dateKey: string) {
+  return {
+    start: new Date(`${dateKey}T00:00:00.000+08:00`),
+    end: new Date(`${dateKey}T23:59:59.999+08:00`),
+  };
+}
+
+function isCourierVisibleTask(task: Task & { courierName?: string | null }, courierId: number) {
+  const status = String(task.status || "");
+  const isDone = status === "completed" || status === "cancelled";
+  if (task.courierId === courierId) return true;
+  return !isDone && !task.courierId;
+}
+
+
 function normalizeTaskStatus(status: unknown): Task["status"] {
   if (status === "in_progress" || status === "completed" || status === "cancelled") return status;
   return "assigned";
@@ -540,17 +569,27 @@ async function managerSnapshot() {
   };
 }
 
-async function courierSnapshot(courierId: number) {
-  const [courier, activeTasks, completedTasks, mailList] = await Promise.all([
+async function courierSnapshot(courierId: number, dateKey = localDateKeyInIrkutsk()) {
+  const conn = await db.getDb();
+  const { start, end } = localDayRangeInIrkutsk(dateKey);
+  const [courier, dayTasks, mailList] = await Promise.all([
     db.getCourierById(courierId),
-    db.getAllTasksWithCourier(),
-    db.getCompletedTasksWithCourier(),
-    db.getAllMails(),
+    db.getTasksByDateWithCourier(dateKey),
+    conn
+      ? conn
+          .select()
+          .from(mails)
+          .where(sql`(${mails.status} = 'not_delivered') OR (${mails.deliveredAt} >= ${start} AND ${mails.deliveredAt} <= ${end}) OR (${mails.createdAt} >= ${start} AND ${mails.createdAt} <= ${end})`)
+          .orderBy(desc(mails.createdAt))
+          .limit(300)
+      : Promise.resolve([]),
   ]);
-  const allTasks = await tasksWithRequestType([...activeTasks, ...completedTasks]);
+  const visibleTasks = dayTasks.filter((task) => isCourierVisibleTask(task as Task & { courierName?: string | null }, courierId));
+  const allTasks = await tasksWithRequestType(visibleTasks);
   return {
     ok: true,
     updatedAt: new Date().toISOString(),
+    date: dateKey,
     courier,
     tasks: allTasks,
     mails: mailList,
@@ -1090,7 +1129,7 @@ export function registerCompatRoutes(app: Express) {
     try {
       const courierId = await courierIdFromReq(req);
       if (!courierId) { res.status(401).json({ ok: false, error: "Invalid courier token" }); return; }
-      res.json(await courierSnapshot(courierId));
+      res.json(await courierSnapshot(courierId, normalizeDateKey(req.query.date)));
     } catch (error) { sendError(res, error, "Failed to load courier realtime snapshot"); }
   });
 
@@ -1102,12 +1141,12 @@ export function registerCompatRoutes(app: Express) {
         return;
       }
 
-      const [active, completed] = await Promise.all([
-        db.getAllTasksWithCourier(),
-        db.getCompletedTasksWithCourier(),
-      ]);
+      const input = inputFrom(req);
+      const dateKey = normalizeDateKey(input.date || req.query.date);
+      const dayTasks = await db.getTasksByDateWithCourier(dateKey);
+      const visibleTasks = dayTasks.filter((task) => isCourierVisibleTask(task as Task & { courierName?: string | null }, courierId));
 
-      res.json(trpcJson(await tasksWithRequestType([...active, ...completed])));
+      res.json(trpcJson(await tasksWithRequestType(visibleTasks)));
     } catch (error) {
       sendError(res, error, "Failed to load tasks");
     }
