@@ -303,7 +303,18 @@ export function CreateTaskModal({
 
   if (!isOpen) return null;
 
-  const updateField = <K extends keyof LocalFormData>(field: K, value: LocalFormData[K]) => setFormData((prev) => ({ ...prev, [field]: value }));
+  const buildSenderTitle = (name?: string, address?: string) => (
+    [name?.trim() || '', address?.trim() || ''].filter(Boolean).join(', ')
+  );
+
+  const updateField = <K extends keyof LocalFormData>(field: K, value: LocalFormData[K]) => setFormData((prev) => {
+    if (field === 'senderName') {
+      const senderName = typeof value === 'string' ? value : '';
+      return { ...prev, [field]: value, packageDescription: senderName };
+    }
+
+    return { ...prev, [field]: value };
+  });
 
   const addExtraPickupPoint = () => {
     if (!pickupPointsClientId) {
@@ -374,6 +385,7 @@ export function CreateTaskModal({
         tcAddress: '',
         senderName: '',
         senderAddress: '',
+        packageDescription: '',
       }));
       return;
     }
@@ -387,6 +399,7 @@ export function CreateTaskModal({
       tcAddress: company.address,
       senderName: company.name,
       senderAddress: company.address,
+      packageDescription: buildSenderTitle(company.name, company.address),
     }));
   };
 
@@ -412,22 +425,24 @@ export function CreateTaskModal({
     const client = clients.find((item) => item.id === clientId);
     setFormData((prev) => {
       if (!client) return { ...prev, [`${target}ClientId`]: undefined };
-      if (target === 'sender') return { ...prev, senderClientId: client.id, senderName: client.name, senderPhone: client.phone || '', senderAddress: client.address };
+      if (target === 'sender') {
+        return {
+          ...prev,
+          senderClientId: client.id,
+          senderName: client.name,
+          senderPhone: client.phone || '',
+          senderAddress: client.address,
+          packageDescription: buildSenderTitle(client.name, client.address),
+        };
+      }
       if (target === 'recipient') return { ...prev, recipientClientId: client.id, recipientName: client.name, recipientPhone: client.phone || '', deliveryAddress: client.address };
       if (target === 'pickupRecipient') return { ...prev, pickupRecipientClientId: client.id, recipientName: client.name, recipientPhone: client.phone || '', deliveryAddress: client.address };
-      return { ...prev, clientId: client.id, senderName: client.name, senderPhone: client.phone || '', senderAddress: client.address };
+      return { ...prev, clientId: client.id };
     });
   };
 
   const selectUniversalClient = (clientId: number | undefined) => {
-    const client = clients.find((item) => item.id === clientId);
-    setFormData((prev) => client ? ({
-      ...prev,
-      clientId: client.id,
-      senderName: client.name,
-      senderPhone: client.phone || '',
-      senderAddress: client.address,
-    }) : ({ ...prev, clientId: undefined }));
+    setFormData((prev) => ({ ...prev, clientId }));
   };
 
   const selectNutsOwnerClient = (clientId: number | undefined) => {
@@ -488,16 +503,17 @@ export function CreateTaskModal({
         return {
           ...prev,
           senderClientId: client.id,
-          senderName: client.name,
+          senderName: point.name || client.name,
           senderPhone: point.phone || client.phone || '',
           senderAddress: point.address || client.address,
+          packageDescription: buildSenderTitle(point.name || client.name, point.address || client.address),
         };
       }
 
       return {
         ...prev,
         recipientClientId: client.id,
-        recipientName: client.name,
+        recipientName: point.name || client.name,
         recipientPhone: point.phone || client.phone || '',
         deliveryAddress: point.address || client.address,
       };
@@ -622,7 +638,7 @@ export function CreateTaskModal({
               />
               {requestType !== 'nuts' && (requestType === 'pickup_from_tc' ? (
                 <TransportCompanySelect
-                  label="Клиент / компания"
+                  label="Транспортная компания"
                   value={selectedTransportCompanyId}
                   companies={transportCompanies}
                   onChange={selectTransportCompanyForRequest}
@@ -651,6 +667,16 @@ export function CreateTaskModal({
               <div className="space-y-3">
                 <Section title="Отправитель">
                   <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                    <ClientStoreSelect
+                      label="Выбрать отправителя"
+                      value={formData.senderClientId}
+                      addressValue={formData.senderAddress}
+                      clients={clients}
+                      pointsMap={tcClientPointsMap}
+                      onClientChange={(id) => selectClient(id, 'sender')}
+                      onPointChange={(clientId, pointId) => selectClientPointForTask(clientId, pointId, 'sender')}
+                      className="xl:col-span-4"
+                    />
                     <Field label="Отправитель / компания *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required />
                     <Field label="Улица / адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required />
                     <Field label="Квартира / офис отправителя" value={formData.senderAddressDetails || ''} onChange={(value) => updateField('senderAddressDetails', value)} />
@@ -660,6 +686,16 @@ export function CreateTaskModal({
 
                 <Section title="Получатель">
                   <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                    <ClientStoreSelect
+                      label="Выбрать получателя"
+                      value={formData.recipientClientId}
+                      addressValue={formData.deliveryAddress}
+                      clients={clients}
+                      pointsMap={tcClientPointsMap}
+                      onClientChange={(id) => selectClient(id, 'recipient')}
+                      onPointChange={(clientId, pointId) => selectClientPointForTask(clientId, pointId, 'recipient')}
+                      className="xl:col-span-4"
+                    />
                     <Field label="Получатель / компания *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required />
                     <Field label="Улица / адрес получателя *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required />
                     <Field label="Квартира / офис получателя" value={formData.recipientAddress || ''} onChange={(value) => updateField('recipientAddress', value)} />
