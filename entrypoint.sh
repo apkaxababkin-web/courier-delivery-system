@@ -12,6 +12,48 @@ else
   echo "[Entrypoint] DATABASE_URL is not configured"
 fi
 
+wait_for_database() {
+  if [ -z "$DATABASE_URL" ]; then
+    echo "[Entrypoint] DATABASE_URL is not configured; skipping DB readiness wait"
+    return 0
+  fi
+
+  timeout="${WAIT_FOR_DB_TIMEOUT:-90}"
+  echo "[Entrypoint] Waiting for database readiness (timeout: ${timeout}s)..."
+
+  if node - "$timeout" <<'NODE'
+const postgres = require('postgres');
+const timeoutSeconds = Number(process.argv[2] || 90);
+const startedAt = Date.now();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function check() {
+  while (Date.now() - startedAt < timeoutSeconds * 1000) {
+    const sql = postgres(process.env.DATABASE_URL, { max: 1, idle_timeout: 1, connect_timeout: 5 });
+    try {
+      await sql`select 1`;
+      await sql.end({ timeout: 1 });
+      return true;
+    } catch {
+      try { await sql.end({ timeout: 1 }); } catch {}
+      await sleep(2000);
+    }
+  }
+  return false;
+}
+
+check().then((ok) => process.exit(ok ? 0 : 1));
+NODE
+  then
+    echo "[Entrypoint] Database is reachable"
+  else
+    echo "[Entrypoint] Database is not reachable before timeout; exiting so Docker restart policy can retry"
+    exit 1
+  fi
+}
+
+wait_for_database
+
 if [ "${RUN_DB_PUSH:-false}" = "true" ]; then
   echo "[Entrypoint] RUN_DB_PUSH=true; running explicit Drizzle schema push..."
   if [ -f "drizzle.config.ts" ]; then
