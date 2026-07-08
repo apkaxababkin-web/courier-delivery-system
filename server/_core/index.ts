@@ -13,6 +13,7 @@ import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
 import { managerApiAuthGate } from "./managerSecurity";
 import { toSafeCourier } from "./courierPublic";
+import { broadcastLive } from "./liveEvents";
 import { createContext } from "./context";
 import { mails, requests, tasks, taskStatusHistory } from "../../drizzle/schema";
 import * as db from "../db";
@@ -257,7 +258,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
   });
 
 
-  app.get("/api/manager/chat/messages", async (req, res) => {
+  app.get(["/api/manager/chat/messages", "/api/chat/messages"], async (req, res) => {
     try {
       const conn = await db.getDb();
       if (!conn) throw new Error("Database not available");
@@ -282,7 +283,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
     }
   });
 
-  app.post("/api/manager/chat/messages", async (req, res) => {
+  app.post(["/api/manager/chat/messages", "/api/chat/messages"], async (req, res) => {
     try {
       const conn = await db.getDb();
       if (!conn) throw new Error("Database not available");
@@ -306,6 +307,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
 
       const rawMessage = normalizeSqlRows(result)[0] || { success: true };
       const message = normalizeChatMessageRow(rawMessage);
+      broadcastLive("chat_changed", { messageId: rawMessage.id, senderRole: rawMessage.senderRole });
       void sendManagerChatPushToCouriers(rawMessage);
       res.json(message);
     } catch (error) {

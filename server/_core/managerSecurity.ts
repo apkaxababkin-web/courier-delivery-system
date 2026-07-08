@@ -115,7 +115,7 @@ function isManagerTrpcPath(pathname: string): boolean {
 }
 
 export async function managerApiAuthGate(req: Request, res: Response, next: NextFunction) {
-  if (req.path === "/api/manager/chat/messages") {
+  if (req.path === "/api/manager/chat/messages" || req.path === "/api/chat/messages") {
     await requireManagerOrCourierAuth(req, res, next);
     return;
   }

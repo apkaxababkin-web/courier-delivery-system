@@ -136,9 +136,56 @@ function ManagerChatPanel() {
   };
 
   useEffect(() => {
-    loadChatMessages();
-    const timer = window.setInterval(loadChatMessages, 5000);
-    return () => window.clearInterval(timer);
+    let closed = false;
+    let eventSource: EventSource | null = null;
+    let reconnectTimer: number | null = null;
+
+    const refreshChat = () => {
+      if (!closed) void loadChatMessages();
+    };
+
+    const connectLive = () => {
+      if (closed) return;
+
+      try {
+        eventSource = new EventSource('/api/live');
+        eventSource.addEventListener('chat_changed', refreshChat);
+        eventSource.onerror = () => {
+          try {
+            eventSource?.close();
+          } catch {}
+
+          if (!closed && !reconnectTimer) {
+            reconnectTimer = window.setTimeout(() => {
+              reconnectTimer = null;
+              connectLive();
+            }, 3000);
+          }
+        };
+      } catch {
+        if (!closed && !reconnectTimer) {
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null;
+            connectLive();
+          }, 3000);
+        }
+      }
+    };
+
+    refreshChat();
+    connectLive();
+    window.addEventListener('focus', refreshChat);
+
+    return () => {
+      closed = true;
+      window.removeEventListener('focus', refreshChat);
+
+      try {
+        eventSource?.close();
+      } catch {}
+
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+    };
   }, []);
 
   useEffect(() => {
