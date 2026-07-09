@@ -4,7 +4,6 @@ import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
 import { formatLocalDate } from '../lib/local-time';
 
-const HIDDEN_POINTS_STORAGE_KEY = 'courier-manager:hidden-sberbank-points';
 const POINT_ORDER_STORAGE_KEY = 'courier-manager:sberbank-point-order';
 
 const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200';
@@ -30,7 +29,9 @@ const saveNumberArray = (key: string, value: number[]) => {
   window.localStorage.setItem(key, JSON.stringify(value));
 };
 
-function sortPointsByOrder(points: api.SberbankPoint[], orderIds: number[]) {
+type SberbankPointRow = api.SberbankPoint & { listId?: number };
+
+function sortPointsByOrder<T extends api.SberbankPoint>(points: T[], orderIds: number[]) {
   const order = new Map(orderIds.map((id, index) => [id, index]));
 
   return [...points].sort((a, b) => {
@@ -57,8 +58,7 @@ function moveId(order: number[], id: number, targetId: number) {
 }
 
 export default function SberbankView({ archiveDate }: { archiveDate?: string }) {
-  const [points, setPoints] = useState<api.SberbankPoint[]>([]);
-  const [hiddenPointIds, setHiddenPointIds] = useState<number[]>(() => readNumberArray(HIDDEN_POINTS_STORAGE_KEY));
+  const [points, setPoints] = useState<SberbankPointRow[]>([]);
   const [pointOrderIds, setPointOrderIds] = useState<number[]>(() => readNumberArray(POINT_ORDER_STORAGE_KEY));
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState(archiveDate || new Date().toISOString().split('T')[0]);
@@ -74,10 +74,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
   });
   const [loading, setLoading] = useState(false);
 
-  const visiblePoints = sortPointsByOrder(
-    points.filter((point) => !hiddenPointIds.includes(point.id)),
-    pointOrderIds
-  );
+  const visiblePoints = sortPointsByOrder(points, pointOrderIds);
 
   useEffect(() => {
     if (archiveDate) setSelectedDate(archiveDate);
@@ -85,7 +82,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
 
   useEffect(() => {
     loadPoints();
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     if (points.length === 0) return;
@@ -105,8 +102,20 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
   const loadPoints = async () => {
     try {
       setLoading(true);
-      const data = await api.getAllSberbankPoints();
-      setPoints(data);
+      const [data, lists] = await Promise.all([
+        api.getAllSberbankPoints(),
+        api.getSberbankListsForDate(selectedDate),
+      ]);
+      const pointListIds = new Map<number, number>();
+
+      for (const list of lists) {
+        const fullList = await api.getSberbankList(list.id);
+        for (const point of fullList?.items ?? []) {
+          if (!pointListIds.has(point.id)) pointListIds.set(point.id, list.id);
+        }
+      }
+
+      setPoints(data.map((point) => ({ ...point, listId: pointListIds.get(point.id) })));
     } catch (error) {
       console.error('Error loading points:', error);
       setPoints([]);
@@ -131,13 +140,25 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
     }
   };
 
-  const handleHidePoint = (point: api.SberbankPoint) => {
+  const handleRemovePointFromList = async (point: SberbankPointRow) => {
+    if (!point.listId) {
+      alert('Эта точка не входит в рабочий список на выбранную дату');
+      return;
+    }
+
     if (!window.confirm(`Удалить точку «${point.name}» из рабочего списка?`)) return;
 
-    const nextHiddenIds = Array.from(new Set([...hiddenPointIds, point.id]));
-    setHiddenPointIds(nextHiddenIds);
-    saveNumberArray(HIDDEN_POINTS_STORAGE_KEY, nextHiddenIds);
-    setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
+    try {
+      setLoading(true);
+      await api.removePointFromSberbankList(point.listId, point.id);
+      setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
+      await loadPoints();
+    } catch (error) {
+      console.error('Error removing point from list:', error);
+      alert('Ошибка при удалении точки из списка');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openCreateForm = () => {
@@ -438,9 +459,10 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
 
                       <button
                         type="button"
-                        onClick={() => handleHidePoint(point)}
-                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
-                        title="Убрать точку из списка"
+                        onClick={() => handleRemovePointFromList(point)}
+                        disabled={!point.listId || loading}
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={point.listId ? 'Убрать точку из рабочего списка' : 'Точки нет в рабочем списке на выбранную дату'}
                       >
                         <Trash2 size={14} />
                         Удалить

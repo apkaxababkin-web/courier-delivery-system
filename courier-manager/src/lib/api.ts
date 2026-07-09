@@ -484,6 +484,10 @@ export async function addPointToHemotestList(listId: number, pointId: number): P
   await trpcPost('hemotest.addPointToList', { listId, pointId }, { success: true });
 }
 
+export async function removePointFromHemotestList(listId: number, pointId: number): Promise<void> {
+  await trpcPost('hemotest.removePointFromList', { listId, pointId }, { success: true });
+}
+
 export async function createOrAppendHemotestPickupList(date: string, name: string, pointIds: number[]): Promise<HemotestPickupList> {
   const existingLists = await getHemotestListsForDate(date);
   const existingList = existingLists[0];
@@ -570,6 +574,10 @@ export async function getSberbankList(listId: number): Promise<SberbankListWithI
 
 export async function addPointToSberbankList(listId: number, pointId: number): Promise<void> {
   await trpcPost('sberbank.addPointToList', { listId, pointId }, { success: true });
+}
+
+export async function removePointFromSberbankList(listId: number, pointId: number): Promise<void> {
+  await trpcPost('sberbank.removePointFromList', { listId, pointId }, { success: true });
 }
 
 export async function createOrAppendSberbankPickupList(
