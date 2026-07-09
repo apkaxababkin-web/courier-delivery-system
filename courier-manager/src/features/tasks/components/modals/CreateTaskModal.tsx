@@ -129,6 +129,33 @@ export function CreateTaskModal({
   const [extraPickupError, setExtraPickupError] = useState('');
   const requestFileInputRef = useRef<HTMLInputElement | null>(null);
   const requestType = formData.requestType || 'delivery';
+  const sortedBillingClients = useMemo(() => {
+    const getUsageScore = (client: Client) => {
+      const record = client as Client & Record<string, unknown>;
+      const numericScore = Number(record.usageCount ?? record.requestsCount ?? record.ordersCount ?? 0);
+      return Number.isFinite(numericScore) ? numericScore : 0;
+    };
+
+    const getLastUsedTime = (client: Client) => {
+      const record = client as Client & Record<string, unknown>;
+      const value = typeof record.lastUsedAt === 'string' ? record.lastUsedAt : '';
+      const timestamp = value ? Date.parse(value) : 0;
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+
+    return [...clients].sort((a, b) => {
+      const scoreDelta = getUsageScore(b) - getUsageScore(a);
+      if (scoreDelta !== 0) return scoreDelta;
+
+      const lastUsedDelta = getLastUsedTime(b) - getLastUsedTime(a);
+      if (lastUsedDelta !== 0) return lastUsedDelta;
+
+      const nameDelta = a.name.localeCompare(b.name, 'ru');
+      if (nameDelta !== 0) return nameDelta;
+
+      return a.id - b.id;
+    });
+  }, [clients]);
   const pickupPointsClientId = requestType === 'pickup_from_tc' ? formData.pickupRecipientClientId : formData.senderClientId;
 
   useEffect(() => {
@@ -636,21 +663,14 @@ export function CreateTaskModal({
                 onChange={(value) => updateField('requestType', value as RequestType)}
                 options={Object.entries(REQUEST_TYPE_LABELS)}
               />
-              {requestType !== 'nuts' && (requestType === 'pickup_from_tc' ? (
-                <TransportCompanySelect
-                  label="Транспортная компания"
-                  value={selectedTransportCompanyId}
-                  companies={transportCompanies}
-                  onChange={selectTransportCompanyForRequest}
-                />
-              ) : (
+              {requestType !== 'nuts' && (
                 <ClientSelect
                   label="Клиент / компания"
                   value={formData.clientId}
-                  clients={clients}
+                  clients={sortedBillingClients}
                   onChange={selectUniversalClient}
                 />
-              ))}
+              )}
               <Field label="Дата" type="date" value={formData.requestDate || getLocalDateKey()} onChange={(value) => updateField('requestDate', value)} required />
               {requestType !== 'nuts' && (
                 <>
@@ -677,6 +697,15 @@ export function CreateTaskModal({
                       onPointChange={(clientId, pointId) => selectClientPointForTask(clientId, pointId, 'sender')}
                       className="xl:col-span-4"
                     />
+                    {requestType === 'pickup_from_tc' && (
+                      <TransportCompanySelect
+                        label="Транспортная компания"
+                        value={selectedTransportCompanyId}
+                        companies={transportCompanies}
+                        onChange={selectTransportCompanyForRequest}
+                        className="xl:col-span-4"
+                      />
+                    )}
                     <Field label="Отправитель / компания *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required />
                     <Field label="Улица / адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required />
                     <Field label="Квартира / офис отправителя" value={formData.senderAddressDetails || ''} onChange={(value) => updateField('senderAddressDetails', value)} />
