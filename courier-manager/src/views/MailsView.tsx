@@ -15,6 +15,7 @@ interface Mail {
   status: 'not_delivered' | 'delivered' | 'failed';
   createdAt: string;
   deliveredAt?: string;
+  updatedAt?: string;
   recipientSignature?: string;
   courierName?: string;
   courier?: { name?: string; fullName?: string };
@@ -34,6 +35,8 @@ const statusLabels: Record<Exclude<MailStatus, 'all'>, string> = { delivered: '�
 const statusClass: Record<Exclude<MailStatus, 'all'>, string> = { delivered: 'border-slate-300 bg-white text-slate-950', not_delivered: 'border-slate-200 bg-slate-50 text-slate-600' };
 const statusDotClass: Record<Exclude<MailStatus, 'all'>, string> = { delivered: 'bg-slate-950', not_delivered: 'bg-slate-300' };
 
+const getMailReceivedBy = (mail: Mail) => mail.status === 'delivered' ? (mail.recipientSignature || mail.recipientName || '—') : '—';
+const getMailReceivedAt = (mail: Mail) => mail.status === 'delivered' ? (mail.deliveredAt || mail.updatedAt || '') : '';
 const getCourierName = (mail: Mail) => mail.courierName || mail.courier?.name || mail.courier?.fullName || 'Не назначен';
 const cellToText = (value: PreviewCell) => value === null || value === undefined ? '' : String(value).trim();
 
@@ -441,7 +444,83 @@ function MailCompletionProgress({
 function MailsTable({ mails, loading, compactTitle, showReportColumns = false }: { mails: Mail[]; loading: boolean; compactTitle: string; showReportColumns?: boolean }) {
   const deliveredCount = mails.filter((mail) => mail.status === 'delivered').length;
 
-  return <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3"><h2 className="text-sm font-semibold text-slate-950">{compactTitle}</h2><MailCompletionProgress completed={deliveredCount} total={mails.length} /></div>{loading ? <MailsSkeleton /> : mails.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500"><MailCheck className="mb-3 h-8 w-8 text-slate-300" /><p className="font-medium text-slate-950">Нет писем для отображения</p><p className="mt-1 max-w-sm">На выбранную дату нет писем. Недоставленные письма автоматически переходят на следующий день.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50"><tr className="border-b border-slate-200"><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Накладная</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Получатель</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адрес</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус</th>{showReportColumns && <><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Курьер</th><th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Доставка</th></>}<th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th></tr></thead><tbody className="divide-y divide-slate-100">{mails.map((mail) => <tr key={mail.id} className="hover:bg-slate-50/80"><td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-950">{mail.waybillNumber}</td><td className="px-3 py-2.5 text-slate-900"><div className="font-medium">{mail.recipientName}</div><div className="text-xs text-slate-500">{mail.recipientPhone || 'Телефон не указан'}</div></td><td className="max-w-[360px] px-3 py-2.5 text-slate-600"><span className="line-clamp-2">{mail.deliveryAddress}</span></td><td className="px-3 py-2.5"><span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[mail.status]}`}><span className={`h-1.5 w-1.5 rounded-full ${statusDotClass[mail.status]}`} />{statusLabels[mail.status]}</span></td>{showReportColumns && <><td className="px-3 py-2.5 text-slate-600">{getCourierName(mail)}</td><td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{mail.deliveredAt ? formatLocalDateTime(mail.deliveredAt) : '—'}</td></>}<td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{formatLocalDate(mail.createdAt)}</td></tr>)}</tbody></table></div>}</div>;
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3">
+        <h2 className="text-sm font-semibold text-slate-950">{compactTitle}</h2>
+        <MailCompletionProgress completed={deliveredCount} total={mails.length} />
+      </div>
+
+      {loading ? (
+        <MailsSkeleton />
+      ) : mails.length === 0 ? (
+        <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center text-sm text-slate-500">
+          <MailCheck className="mb-3 h-8 w-8 text-slate-300" />
+          <p className="font-medium text-slate-950">Нет писем для отображения</p>
+          <p className="mt-1 max-w-sm">
+            На выбранную дату нет писем. Недоставленные письма автоматически переходят на следующий день.
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1040px] text-sm">
+            <thead className="bg-slate-50">
+              <tr className="border-b border-slate-200">
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Накладная</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адресат</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Адрес</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Получатель</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Время получения</th>
+                {showReportColumns && (
+                  <>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Курьер</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Доставка</th>
+                  </>
+                )}
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {mails.map((mail) => {
+                const receivedAt = getMailReceivedAt(mail);
+
+                return (
+                  <tr key={mail.id} className="hover:bg-slate-50/80">
+                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-950">{mail.waybillNumber}</td>
+                    <td className="px-3 py-2.5 text-slate-900">
+                      <div className="font-medium">{mail.recipientName}</div>
+                      <div className="text-xs text-slate-500">{mail.recipientPhone || 'Телефон не указан'}</div>
+                    </td>
+                    <td className="max-w-[360px] px-3 py-2.5 text-slate-600">
+                      <span className="line-clamp-2">{mail.deliveryAddress}</span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[mail.status]}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${statusDotClass[mail.status]}`} />
+                        {statusLabels[mail.status]}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-700">{getMailReceivedBy(mail)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">
+                      {receivedAt ? formatLocalDateTime(receivedAt) : '—'}
+                    </td>
+                    {showReportColumns && (
+                      <>
+                        <td className="px-3 py-2.5 text-slate-600">{getCourierName(mail)}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{mail.deliveredAt ? formatLocalDateTime(mail.deliveredAt) : '—'}</td>
+                      </>
+                    )}
+                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{formatLocalDate(mail.createdAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function MailsSkeleton() {
