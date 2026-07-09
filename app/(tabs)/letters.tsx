@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { FlatList, Linking, Modal, Pressable, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Linking, Modal, Pressable, Text, TextInput, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { NetworkBanner } from "@/components/network-banner";
 import { trpc } from "@/lib/trpc";
@@ -98,6 +98,29 @@ export default function LettersScreen() {
       refetch();
     },
   });
+
+  const undoDeliveryMutation = (trpc.mails as any).undoDelivery.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+  });
+
+  const confirmUndoDelivery = (mailId: number) => {
+    if (!token || undoDeliveryMutation.isPending) return;
+
+    Alert.alert(
+      "Вернуть письмо в недоставленные?",
+      "Отметка доставки будет отменена, письмо снова появится в списке к доставке.",
+      [
+        { text: "Отмена", style: "cancel" },
+        {
+          text: "Вернуть",
+          style: "destructive",
+          onPress: () => undoDeliveryMutation.mutate({ token, mailId }),
+        },
+      ],
+    );
+  };
 
   const groupedMails = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -220,6 +243,25 @@ export default function LettersScreen() {
                   <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>{shortTime(mailDeliveredDate(mail) || mail.createdAt)}</Text>
                 </View>
               </View>
+              {delivered && (
+                <Pressable
+                  onPress={() => confirmUndoDelivery(mail.id)}
+                  disabled={undoDeliveryMutation.isPending}
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.error,
+                    paddingVertical: 10,
+                    alignItems: "center",
+                    opacity: undoDeliveryMutation.isPending ? 0.65 : 1,
+                  }}
+                >
+                  <Text style={{ color: colors.error, fontSize: 12, fontWeight: "900" }}>
+                    {undoDeliveryMutation.isPending ? "Возвращаю..." : "Вернуть в недоставленные"}
+                  </Text>
+                </Pressable>
+              )}
             </Pressable>
           );
         }}

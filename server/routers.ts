@@ -1115,6 +1115,20 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
         await db.updateMailDelivery(input.waybillNumber, input.recipientSignature, payload.courierId);
+        broadcastLive("mails_changed");
+        return { success: true };
+      }),
+
+    undoDelivery: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        mailId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid token");
+        await db.markMailUndelivered(input.mailId);
+        broadcastLive("mails_changed");
         return { success: true };
       }),
   }),

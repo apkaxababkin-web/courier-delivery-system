@@ -1184,6 +1184,19 @@ export function registerCompatRoutes(app: Express) {
     } catch (error) { sendError(res, error, "Failed to deliver mail"); }
   });
 
+  app.post("/api/trpc/mails.undoDelivery", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const courierId = await courierIdFromReq(req);
+      if (!courierId) throw new Error("Invalid courier token");
+      const mailId = Number(input.mailId || input.id);
+      if (!mailId) throw new Error("mailId is required");
+      const mail = await db.markMailUndelivered(mailId);
+      broadcastLive("mails_changed");
+      res.json(trpcBatchJson({ success: true, mail }));
+    } catch (error) { sendError(res, error, "Failed to undo mail delivery"); }
+  });
+
   app.get("/api/trpc/managerTasks.all", async (_req, res) => {
     try {
       const [active, completed] = await Promise.all([db.getAllTasksWithCourier(), db.getCompletedTasksWithCourier()]);

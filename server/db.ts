@@ -133,6 +133,25 @@ export async function updateMailDelivery(
   return result[0];
 }
 
+export async function markMailUndelivered(mailId: number): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(mails)
+    .set({
+      status: "not_delivered",
+      mailStatus: "not_delivered",
+      recipientSignature: null,
+      deliveredAt: null,
+      courierId: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(mails.id, mailId));
+  const result = await db.select().from(mails).where(eq(mails.id, mailId));
+  if (!result[0]) throw new Error("Письмо не найдено");
+  return result[0];
+}
+
 export async function bulkCreateMails(mailList: InsertMail[]): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
