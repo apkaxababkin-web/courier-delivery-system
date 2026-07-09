@@ -261,7 +261,7 @@ export async function incrementCourierDeliveries(courierId: number): Promise<voi
 // ─── Task helpers ─────────────────────────────────────────────────────────────
 
 /** Task with optional courier name attached */
-export type TaskWithCourier = Task & { courierName: string | null };
+export type TaskWithCourier = Task & { courierName: string | null; requestType?: Request["requestType"] | null; paymentAmount?: string | null };
 
 /** Join tasks with courier name */
 async function fetchTasksWithCourier(
@@ -364,23 +364,28 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
       .filter((id: number | null): id is number => id !== null)
   ));
 
-  const requestTypeMap = new Map<number, Request["requestType"]>();
+  const requestMetaMap = new Map<number, { requestType: Request["requestType"]; paymentAmount: string | null }>();
   if (requestIds.length > 0) {
     const requestRows = await db
-      .select({ id: requests.id, requestType: requests.requestType })
+      .select({ id: requests.id, requestType: requests.requestType, paymentAmount: requests.paymentAmount })
       .from(requests)
       .where(inArray(requests.id, requestIds));
 
     for (const request of requestRows) {
-      requestTypeMap.set(request.id, request.requestType);
+      requestMetaMap.set(request.id, {
+        requestType: request.requestType,
+        paymentAmount: request.paymentAmount,
+      });
     }
   }
 
   return allTasks.map((t: Task) => {
     const requestId = t.requestId ?? t.sourceRequestId ?? null;
+    const requestMeta = requestId ? requestMetaMap.get(requestId) : null;
     return {
       ...t,
-      requestType: requestId ? requestTypeMap.get(requestId) ?? null : null,
+      requestType: requestMeta?.requestType ?? null,
+      paymentAmount: requestMeta?.paymentAmount ?? null,
       courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
     };
   });
@@ -397,7 +402,24 @@ export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCo
     const courier = await getCourierById(task.courierId);
     courierName = courier?.name ?? null;
   }
-  return { ...task, courierName };
+
+  const requestId = task.requestId ?? task.sourceRequestId ?? null;
+  let requestMeta: { requestType: Request["requestType"]; paymentAmount: string | null } | null = null;
+  if (requestId) {
+    const requestRows = await db
+      .select({ requestType: requests.requestType, paymentAmount: requests.paymentAmount })
+      .from(requests)
+      .where(eq(requests.id, requestId))
+      .limit(1);
+    requestMeta = requestRows[0] ?? null;
+  }
+
+  return {
+    ...task,
+    requestType: requestMeta?.requestType ?? null,
+    paymentAmount: requestMeta?.paymentAmount ?? null,
+    courierName,
+  };
 }
 
 export async function getTaskById(taskId: number): Promise<Task | null> {

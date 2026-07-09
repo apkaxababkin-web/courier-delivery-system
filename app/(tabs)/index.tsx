@@ -253,19 +253,26 @@ export default function TaskListScreen() {
   };
 
   const getNutsOrderLines = (item: any) => {
-    return String(item.items || "")
-      .split(";")
+    return String(item.items || item.packageDescription || item.description || "")
+      .split(/[;\n]+/)
       .map((part) => part.trim())
       .filter(Boolean)
       .map((part) => {
-        const match = part.match(/^([^(:]+).*?:\s*(\d+)/);
-        if (!match) return part;
+        const legacyMatch = part.match(/^([^(:]+).*?:\s*(\d+)/);
+        if (!legacyMatch) return part;
 
-        return `${match[1].trim()} — ${match[2]} кор.`;
+        const name = legacyMatch[1].trim().replace(/,/g, ".");
+        const unit = name.toLocaleLowerCase("ru-RU").includes("масло") ? "шт." : "кор.";
+        return `${name} - ${legacyMatch[2]} ${unit}`;
       });
   };
 
   const getNutsSumLabel = (item: any) => {
+    const directAmount = Number(item.paymentAmount ?? item.total ?? item.price ?? item.cost);
+    if (Number.isFinite(directAmount) && directAmount > 0) {
+      return `${Math.round(directAmount).toLocaleString("ru-RU")} ₽`;
+    }
+
     const match = String(item.comments || "").match(/Сумма:\s*([0-9.]+)/);
     if (!match?.[1]) return null;
 

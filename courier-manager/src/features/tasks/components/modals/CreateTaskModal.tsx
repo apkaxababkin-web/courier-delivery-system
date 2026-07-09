@@ -56,6 +56,7 @@ const NUTS_TARIFF_STORAGE_KEY = 'courier-manager:nuts-tariff';
 const CEDROIL_TARIFF_STORAGE_KEY = 'courier-manager:cedroil-tariff';
 const NUTS_OWNER_CLIENT_STORAGE_KEY = 'courier-manager:nuts-owner-client-id';
 const NUTS_WEIGHTS: Record<string, number> = { '1': 15, '2': 16, '3': 16.5, '4': 18, '5': 18, '6': 0 };
+const NUTS_SHORT_LABELS: Record<string, string> = { '1': '0.1', '2': '0.2', '3': '0.3', '4': '0.5', '5': '1', '6': 'Кедровое масло' };
 const DEFAULT_NUTS_BOXES: NutsBox[] = [
   { id: '1', name: '0,1 (15 кг)', quantity: 0 },
   { id: '2', name: '0,2 (16 кг)', quantity: 0 },
@@ -84,7 +85,7 @@ const parseNutsBoxesFromItems = (items?: string, existingBoxes?: NutsBox[]): Nut
 
   if (!items) return boxes;
 
-  for (const part of items.split(';')) {
+  for (const part of items.split(/[;\n]+/)) {
     const text = part.trim();
     if (!text) continue;
 
@@ -92,7 +93,12 @@ const parseNutsBoxesFromItems = (items?: string, existingBoxes?: NutsBox[]): Nut
     const quantity = quantityMatch ? Number(quantityMatch[1]) : 0;
     if (!quantity) continue;
 
-    const target = boxes.find((box) => text.toLocaleLowerCase('ru-RU').includes(box.name.toLocaleLowerCase('ru-RU')));
+    const normalizedText = text.replace(/,/g, '.').toLocaleLowerCase('ru-RU');
+    const target = boxes.find((box) => {
+      const normalizedName = box.name.replace(/,/g, '.').toLocaleLowerCase('ru-RU');
+      const shortLabel = (NUTS_SHORT_LABELS[box.id] || box.name).toLocaleLowerCase('ru-RU');
+      return normalizedText.includes(normalizedName) || normalizedText.includes(shortLabel);
+    });
     if (target) target.quantity = quantity;
   }
 
@@ -111,12 +117,16 @@ const calculateNutsTotal = (boxes: NutsBox[] = [], nutsTariff = 0, cedroilTariff
 
 const buildNutsOrderLines = (boxes: NutsBox[] = []) => boxes
   .filter((box) => (Number(box.quantity) || 0) > 0)
-  .map((box) => `${box.name}: ${Number(box.quantity) || 0}`);
+  .map((box) => {
+    const quantity = Number(box.quantity) || 0;
+    return box.id === '6'
+      ? `Кедровое масло - ${quantity} шт.`
+      : `${NUTS_SHORT_LABELS[box.id] || box.name} - ${quantity} кор.`;
+  });
 
-const buildNutsOrderSummary = (boxes: NutsBox[] = [], total = 0) => {
+const buildNutsOrderSummary = (boxes: NutsBox[] = []) => {
   const lines = buildNutsOrderLines(boxes);
-  const order = lines.length ? `Орехи: ${lines.join('; ')}` : 'Орехи';
-  return total > 0 ? `${order}; сумма ${total.toFixed(2)}` : order;
+  return lines.length ? lines.join('\n') : 'Орехи';
 };
 
 const stripGeneratedNutsCommentLines = (comments?: string) => String(comments || '')
@@ -710,12 +720,9 @@ export function CreateTaskModal({
     const universalSenderAddress = [payload.senderAddress?.trim(), senderAddressDetails?.trim()].filter(Boolean).join(', ');
     const nutsSenderAddress = joinPickupAddresses(payload.senderAddress, extraPickupPoints || []);
     const selectedNutsBoxes = (nutsBoxes || []).filter((box) => (Number(box.quantity) || 0) > 0);
-    const nutsItems = buildNutsOrderLines(selectedNutsBoxes).join('; ');
-    const nutsSummary = buildNutsOrderSummary(selectedNutsBoxes, nutsTotal);
-    const nutsComments = [
-      stripGeneratedNutsCommentLines(payload.comments),
-      nutsTotal > 0 ? `Сумма: ${nutsTotal.toFixed(2)}` : '',
-    ].filter(Boolean).join('\n');
+    const nutsItems = buildNutsOrderLines(selectedNutsBoxes).join('\n');
+    const nutsSummary = buildNutsOrderSummary(selectedNutsBoxes);
+    const nutsComments = stripGeneratedNutsCommentLines(payload.comments);
 
     onSubmit({
       ...payload,
