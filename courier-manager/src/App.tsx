@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Package,
-  MapPin,
-  Landmark,
   BarChart3,
   Users,
   LogOut,
@@ -328,8 +326,6 @@ function ManagerChatPanel() {
 
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
-  { id: 'hemotest', label: 'Гемотест', icon: MapPin },
-  { id: 'sberbank', label: 'Сбербанк', icon: Landmark },
   { id: 'clients', label: 'Контрагенты', icon: Users },
   { id: 'reports', label: 'Отчёты', icon: BarChart3 },
   { id: 'couriers', label: 'Курьеры', icon: Users },
@@ -623,7 +619,7 @@ function App() {
         </header>
 
           <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 lg:px-7">
-            <div className="mx-auto max-w-[1180px] space-y-5">
+            <div className="w-full max-w-none space-y-5">
               <div className="md:hidden"><h1 className="text-2xl font-semibold tracking-tight text-slate-950">{getPageTitle()}</h1><p className="mt-1 text-sm text-slate-500">{getPageDescription()}</p></div>
               {renderView()}
             </div>
