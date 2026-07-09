@@ -167,30 +167,31 @@ export function CreateTaskModal({
     });
   }, [clients]);
 
-  const routePartyOptions = useMemo<RoutePartyOption[]>(() => (
-    clients.flatMap((client) => {
-      const clientOption: RoutePartyOption = {
-        key: `client:${client.id}`,
-        name: client.name,
-        address: client.address || '',
-        phone: client.phone || '',
-        description: client.address || 'Основной адрес',
-        clientId: client.id,
-      };
+  const routePartyOptions = useMemo<RoutePartyOption[]>(() => {
+    const client = formData.clientId ? clients.find((item) => item.id === formData.clientId) : undefined;
+    if (!client) return [];
 
-      const pointOptions = (tcClientPointsMap[client.id] || []).map((point) => ({
-        key: `point:${client.id}:${point.id}`,
-        name: point.name ? `${client.name} / ${point.name}` : client.name,
-        address: point.address || '',
-        phone: point.phone || client.phone || '',
-        description: [point.address, point.phone || client.phone].filter(Boolean).join(' · ') || 'Точка клиента',
-        clientId: client.id,
-        pointId: point.id,
-      }));
+    const clientOption: RoutePartyOption = {
+      key: `client:${client.id}`,
+      name: client.name,
+      address: client.address || '',
+      phone: client.phone || '',
+      description: client.address || 'Основной адрес',
+      clientId: client.id,
+    };
 
-      return [clientOption, ...pointOptions];
-    })
-  ), [clients, tcClientPointsMap]);
+    const pointOptions = (tcClientPointsMap[client.id] || []).map((point) => ({
+      key: `point:${client.id}:${point.id}`,
+      name: point.name ? `${client.name} / ${point.name}` : client.name,
+      address: point.address || '',
+      phone: point.phone || client.phone || '',
+      description: [point.address, point.phone || client.phone].filter(Boolean).join(' · ') || 'Точка клиента',
+      clientId: client.id,
+      pointId: point.id,
+    }));
+
+    return [clientOption, ...pointOptions];
+  }, [clients, formData.clientId, tcClientPointsMap]);
   const pickupPointsClientId = requestType === 'pickup_from_tc' ? formData.pickupRecipientClientId : formData.senderClientId;
 
   useEffect(() => {
@@ -733,6 +734,7 @@ export function CreateTaskModal({
                       options={routePartyOptions}
                       onChange={(value) => updateField('senderName', value)}
                       onSelect={(option) => selectRoutePartyOption(option, 'sender')}
+                      emptyText={formData.clientId ? 'Нет точек по запросу' : 'Сначала выберите клиента / компанию'}
                       required
                     />
                     <Field label="Улица / адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required />
@@ -749,6 +751,7 @@ export function CreateTaskModal({
                       options={routePartyOptions}
                       onChange={(value) => updateField('recipientName', value)}
                       onSelect={(option) => selectRoutePartyOption(option, 'recipient')}
+                      emptyText={formData.clientId ? 'Нет точек по запросу' : 'Сначала выберите клиента / компанию'}
                       required
                     />
                     <Field label="Улица / адрес получателя *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required />
@@ -1018,6 +1021,7 @@ function RoutePartyField({
   onChange,
   onSelect,
   required,
+  emptyText = 'Нет вариантов',
 }: {
   label: string;
   value: string;
@@ -1025,6 +1029,7 @@ function RoutePartyField({
   onChange: (value: string) => void;
   onSelect: (option: RoutePartyOption) => void;
   required?: boolean;
+  emptyText?: string;
 }) {
   const [open, setOpen] = useState(false);
   const query = value.trim().toLocaleLowerCase('ru-RU');
@@ -1051,9 +1056,11 @@ function RoutePartyField({
         required={required}
         className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
       />
-      {open && filteredOptions.length > 0 && (
+      {open && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15">
-          {filteredOptions.map((option) => (
+          {filteredOptions.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-400">{emptyText}</div>
+          ) : filteredOptions.map((option) => (
             <button
               key={option.key}
               type="button"
