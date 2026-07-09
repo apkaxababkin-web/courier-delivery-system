@@ -50,6 +50,26 @@ function shortTime(value?: string | Date | null) {
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+function localDateKey(value?: string | Date | null) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Irkutsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function isMailDelivered(mail: any) {
+  return ["delivered", "completed", "done"].includes(String(mail.status || "").toLowerCase());
+}
+
+function mailDeliveredDate(mail: any) {
+  return mail.deliveredAt || mail.receivedAt || mail.completedAt || mail.updatedAt || null;
+}
+
 export default function LettersScreen() {
   const colors = useColors();
   const { token } = useCourierAuth();
@@ -81,8 +101,7 @@ export default function LettersScreen() {
 
   const groupedMails = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const selectedDateKey = selectedDate.toISOString().slice(0, 10);
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = localDateKey(new Date());
 
     const filtered = mails.filter((mail: any) => {
       const matchesSearch =
@@ -94,22 +113,17 @@ export default function LettersScreen() {
 
       if (!matchesSearch) return false;
 
-      const delivered = mail.status === "delivered";
+      const delivered = isMailDelivered(mail);
+      if (!delivered) return true;
 
-      if (!delivered) {
-        return selectedDateKey === todayKey;
-      }
-
-      const deliveredKey = String(mail.deliveredAt || "").slice(0, 10);
-
-      return deliveredKey === selectedDateKey;
+      return localDateKey(mailDeliveredDate(mail)) === todayKey;
     });
 
     const rows: Array<{ type: "header"; title: string } | { type: "mail"; mail: any }> = [];
     let current = "";
     filtered.forEach((mail: any) => {
-      const delivered = mail.status === "delivered";
-      const label = delivered ? groupLabel(mail.deliveredAt) : "Сегодня";
+      const delivered = isMailDelivered(mail);
+      const label = delivered ? groupLabel(mailDeliveredDate(mail)) : "К доставке";
       if (label !== current) {
         current = label;
         rows.push({ type: "header", title: label });
@@ -172,7 +186,7 @@ export default function LettersScreen() {
           }
 
           const mail = item.mail;
-          const delivered = mail.status === "delivered";
+          const delivered = isMailDelivered(mail);
           const hasPhone = Boolean(normalizePhoneForDial(mail.recipientPhone));
 
           return (
@@ -203,7 +217,7 @@ export default function LettersScreen() {
                   <View style={{ backgroundColor: delivered ? "rgba(34,197,94,0.16)" : "rgba(59,130,246,0.14)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 }}>
                     <Text style={{ color: delivered ? "#22C55E" : colors.primary, fontSize: 11, fontWeight: "900" }}>{delivered ? "Получено" : "В пути"}</Text>
                   </View>
-                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>{shortTime(mail.deliveredAt || mail.createdAt)}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "800" }}>{shortTime(mailDeliveredDate(mail) || mail.createdAt)}</Text>
                 </View>
               </View>
             </Pressable>

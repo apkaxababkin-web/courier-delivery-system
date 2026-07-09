@@ -1091,7 +1091,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
-        return await db.getNotDeliveredMails();
+        return await db.getCourierVisibleMails();
       }),
 
     getByWaybill: publicProcedure

@@ -76,6 +76,35 @@ export async function getNotDeliveredMails(): Promise<Mail[]> {
   return await db.select().from(mails).where(eq(mails.status, "not_delivered")).orderBy(desc(mails.createdAt));
 }
 
+export async function getCourierVisibleMails(targetDate: Date = new Date()): Promise<Mail[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const dateKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Irkutsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(targetDate);
+  const startOfDay = new Date(`${dateKey}T00:00:00.000+08:00`);
+  const endOfDay = new Date(`${dateKey}T23:59:59.999+08:00`);
+
+  return await db
+    .select()
+    .from(mails)
+    .where(
+      or(
+        eq(mails.status, "not_delivered"),
+        and(
+          eq(mails.status, "delivered"),
+          gte(mails.deliveredAt, startOfDay),
+          lte(mails.deliveredAt, endOfDay),
+        ),
+      ),
+    )
+    .orderBy(desc(mails.createdAt));
+}
+
 export async function createMail(mail: InsertMail): Promise<Mail> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
