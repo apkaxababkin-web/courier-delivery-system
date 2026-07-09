@@ -71,6 +71,60 @@ const readStoredTariff = (key: string) => {
   return Number.isFinite(value) ? value : 0;
 };
 
+const cloneDefaultNutsBoxes = () => DEFAULT_NUTS_BOXES.map((box) => ({ ...box }));
+
+const parseNutsBoxesFromItems = (items?: string, existingBoxes?: NutsBox[]): NutsBox[] => {
+  const boxes = cloneDefaultNutsBoxes();
+  const sourceBoxes = existingBoxes?.length ? existingBoxes : [];
+
+  for (const box of sourceBoxes) {
+    const target = boxes.find((item) => item.id === box.id || item.name === box.name);
+    if (target) target.quantity = Number(box.quantity) || 0;
+  }
+
+  if (!items) return boxes;
+
+  for (const part of items.split(';')) {
+    const text = part.trim();
+    if (!text) continue;
+
+    const quantityMatch = text.match(/(?:[:—-])\s*(\d+)/);
+    const quantity = quantityMatch ? Number(quantityMatch[1]) : 0;
+    if (!quantity) continue;
+
+    const target = boxes.find((box) => text.toLocaleLowerCase('ru-RU').includes(box.name.toLocaleLowerCase('ru-RU')));
+    if (target) target.quantity = quantity;
+  }
+
+  return boxes;
+};
+
+const getNutsBoxTotal = (box: NutsBox, nutsTariff = 0, cedroilTariff = 0) => {
+  const tariff = box.id === '6' ? cedroilTariff : (NUTS_WEIGHTS[box.id] || 0) * nutsTariff;
+  return (Number(box.quantity) || 0) * tariff;
+};
+
+const calculateNutsTotal = (boxes: NutsBox[] = [], nutsTariff = 0, cedroilTariff = 0) => boxes.reduce(
+  (sum, box) => sum + getNutsBoxTotal(box, nutsTariff, cedroilTariff),
+  0,
+);
+
+const buildNutsOrderLines = (boxes: NutsBox[] = []) => boxes
+  .filter((box) => (Number(box.quantity) || 0) > 0)
+  .map((box) => `${box.name}: ${Number(box.quantity) || 0}`);
+
+const buildNutsOrderSummary = (boxes: NutsBox[] = [], total = 0) => {
+  const lines = buildNutsOrderLines(boxes);
+  const order = lines.length ? `Орехи: ${lines.join('; ')}` : 'Орехи';
+  return total > 0 ? `${order}; сумма ${total.toFixed(2)}` : order;
+};
+
+const stripGeneratedNutsCommentLines = (comments?: string) => String(comments || '')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line && !line.startsWith('Орехи:') && !line.startsWith('Сумма:'))
+  .join('\n');
+
 const makeInitialFormData = (): LocalFormData => ({
   requestType: 'delivery',
   requestDate: getLocalDateKey(),
@@ -99,7 +153,7 @@ const makeInitialFormData = (): LocalFormData => ({
   comments: '',
   paymentMethod: 'paid',
   paymentAmount: 0,
-  nutsBoxes: DEFAULT_NUTS_BOXES.map((box) => ({ ...box })),
+  nutsBoxes: cloneDefaultNutsBoxes(),
   nutsTariff: readStoredTariff(NUTS_TARIFF_STORAGE_KEY),
   cedroilTariff: readStoredTariff(CEDROIL_TARIFF_STORAGE_KEY),
   tcName: '',
@@ -198,20 +252,29 @@ export function CreateTaskModal({
     if (!isOpen) return;
 
     const base = makeInitialFormData();
+    const initialNutsBoxes = parseNutsBoxesFromItems(
+      initialData?.items,
+      (initialData as Partial<LocalFormData> | null)?.nutsBoxes,
+    );
+
     setFormData({
       ...base,
       ...(initialData || {}),
       requestType: initialData?.requestType || base.requestType,
-      nutsBoxes: base.nutsBoxes,
+      comments: initialData?.requestType === 'nuts'
+        ? stripGeneratedNutsCommentLines(initialData.comments)
+        : initialData?.comments || base.comments,
+      nutsBoxes: initialNutsBoxes,
       nutsTariff: base.nutsTariff,
       cedroilTariff: base.cedroilTariff,
     });
   }, [isOpen, initialData]);
 
-  const nutsTotal = useMemo(() => (formData.nutsBoxes || []).reduce((sum, box, index) => {
-    const tariff = index === 5 ? formData.cedroilTariff || 0 : (NUTS_WEIGHTS[box.id] || 0) * (formData.nutsTariff || 0);
-    return sum + (box.quantity || 0) * tariff;
-  }, 0), [formData.nutsBoxes, formData.nutsTariff, formData.cedroilTariff]);
+  const nutsTotal = useMemo(() => calculateNutsTotal(
+    formData.nutsBoxes || [],
+    formData.nutsTariff || 0,
+    formData.cedroilTariff || 0,
+  ), [formData.nutsBoxes, formData.nutsTariff, formData.cedroilTariff]);
 
   useEffect(() => {
     if (!isOpen || requestType !== 'nuts') {
@@ -646,6 +709,13 @@ export function CreateTaskModal({
     const isUniversalRequest = requestType !== 'nuts';
     const universalSenderAddress = [payload.senderAddress?.trim(), senderAddressDetails?.trim()].filter(Boolean).join(', ');
     const nutsSenderAddress = joinPickupAddresses(payload.senderAddress, extraPickupPoints || []);
+    const selectedNutsBoxes = (nutsBoxes || []).filter((box) => (Number(box.quantity) || 0) > 0);
+    const nutsItems = buildNutsOrderLines(selectedNutsBoxes).join('; ');
+    const nutsSummary = buildNutsOrderSummary(selectedNutsBoxes, nutsTotal);
+    const nutsComments = [
+      stripGeneratedNutsCommentLines(payload.comments),
+      nutsTotal > 0 ? `Сумма: ${nutsTotal.toFixed(2)}` : '',
+    ].filter(Boolean).join('\n');
 
     onSubmit({
       ...payload,
@@ -657,9 +727,11 @@ export function CreateTaskModal({
       deliveryAddress: isUniversalRequest
         ? (payload.deliveryAddress || payload.recipientAddress || '')
         : (payload.deliveryAddress || payload.recipientAddress || nutsSenderAddress || payload.senderAddress || ''),
-      items: requestType === 'nuts' ? (nutsBoxes || []).filter((box) => box.quantity > 0).map((box) => `${box.name}: ${box.quantity}`).join('; ') : payload.items,
-      description: requestType === 'nuts' ? `Орехи. Сумма: ${nutsTotal.toFixed(2)}` : payload.description,
-      comments: payload.comments,
+      packageDescription: requestType === 'nuts' ? nutsSummary : payload.packageDescription,
+      items: requestType === 'nuts' ? nutsItems : payload.items,
+      description: requestType === 'nuts' ? nutsSummary : payload.description,
+      comments: requestType === 'nuts' ? nutsComments : payload.comments,
+      paymentAmount: requestType === 'nuts' ? nutsTotal : payload.paymentAmount,
       requestFiles,
       clientId: payload.clientId,
     });
@@ -796,7 +868,7 @@ export function CreateTaskModal({
             </div>
           )}
 
-          {requestType === 'nuts' && <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]"><Section title="Коробки Орехов"><div className="space-y-2">{(formData.nutsBoxes || []).map((box, index) => <div key={box.id} className="grid grid-cols-[1fr_76px_108px] items-center gap-2"><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{box.name}</div><input aria-label={`Количество ${box.name}`} type="number" min="0" value={box.quantity} onChange={(event) => updateNutsBox(box.id, { quantity: Number(event.target.value) || 0 })} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-slate-300 focus:bg-white" /><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-medium text-slate-700">{(index === 5 ? (box.quantity || 0) * (formData.cedroilTariff || 0) : (box.quantity || 0) * (NUTS_WEIGHTS[box.id] || 0) * (formData.nutsTariff || 0)).toFixed(2)}</div></div>)}<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><div className="flex justify-between gap-4"><span className="font-semibold text-slate-900">Итого сумма:</span><span className="font-bold text-slate-950">{nutsTotal.toFixed(2)}</span></div></div><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} /></div></Section><div className="space-y-3"><Section title="Получатель"><div className="grid gap-2.5"><ClientSelect label="Клиент Орехов" value={nutsOwnerClientId} clients={clients} onChange={selectNutsOwnerClient} /><NutsRegularClientSelect label="Выберите получателя" value={nutsRegularClients.find((item) => item.name === formData.recipientName && item.address === formData.deliveryAddress)?.id ?? null} items={nutsRegularClients} loading={nutsRegularClientsLoading} ownerFound={Boolean(nutsOwnerClient)} onChange={selectNutsRegularClient} /><Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required /><Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required /><Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required /></div></Section><Section title="Тарифы"><div className="grid gap-2.5"><Field label="Орехи, руб. за кг" type="number" value={formData.nutsTariff || ''} onChange={(value) => updateTariff('nutsTariff', Number(value) || 0)} /><Field label="Кедровое масло, руб." type="number" value={formData.cedroilTariff || ''} onChange={(value) => updateTariff('cedroilTariff', Number(value) || 0)} /><p className="text-xs leading-4 text-slate-500">Сейчас тарифы сохраняются на этом рабочем месте. Для общего хранения нужна backend-настройка в базе.</p></div></Section></div></div>}
+          {requestType === 'nuts' && <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]"><Section title="Коробки Орехов"><div className="space-y-2">{(formData.nutsBoxes || []).map((box) => <div key={box.id} className="grid grid-cols-[1fr_76px_108px] items-center gap-2"><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{box.name}</div><input aria-label={`Количество ${box.name}`} type="number" min="0" value={box.quantity} onChange={(event) => updateNutsBox(box.id, { quantity: Number(event.target.value) || 0 })} className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-slate-300 focus:bg-white" /><div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-medium text-slate-700">{getNutsBoxTotal(box, formData.nutsTariff || 0, formData.cedroilTariff || 0).toFixed(2)}</div></div>)}<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><div className="flex justify-between gap-4"><span className="font-semibold text-slate-900">Итого сумма:</span><span className="font-bold text-slate-950">{nutsTotal.toFixed(2)}</span></div></div><TextareaField label="Комментарии" value={formData.comments || ''} onChange={(value) => updateField('comments', value)} /></div></Section><div className="space-y-3"><Section title="Получатель"><div className="grid gap-2.5"><ClientSelect label="Клиент Орехов" value={nutsOwnerClientId} clients={clients} onChange={selectNutsOwnerClient} /><NutsRegularClientSelect label="Выберите получателя" value={nutsRegularClients.find((item) => item.name === formData.recipientName && item.address === formData.deliveryAddress)?.id ?? null} items={nutsRegularClients} loading={nutsRegularClientsLoading} ownerFound={Boolean(nutsOwnerClient)} onChange={selectNutsRegularClient} /><Field label="Получатель *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required /><Field label="Телефон получателя *" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} required /><Field label="Адрес доставки *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required /></div></Section><Section title="Тарифы"><div className="grid gap-2.5"><Field label="Орехи, руб. за кг" type="number" value={formData.nutsTariff || ''} onChange={(value) => updateTariff('nutsTariff', Number(value) || 0)} /><Field label="Кедровое масло, руб." type="number" value={formData.cedroilTariff || ''} onChange={(value) => updateTariff('cedroilTariff', Number(value) || 0)} /><p className="text-xs leading-4 text-slate-500">Сейчас тарифы сохраняются на этом рабочем месте. Для общего хранения нужна backend-настройка в базе.</p></div></Section></div></div>}
         </div>
 
         <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">Отмена</button><button type="submit" disabled={isLoading} className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-medium text-white shadow-lg shadow-slate-950/10 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? (mode === 'edit' ? 'Сохранение...' : 'Создание...') : (submitLabel || (mode === 'edit' ? 'Сохранить изменения' : 'Создать заявку'))}</button></div>
