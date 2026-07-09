@@ -21,6 +21,16 @@ interface CreateTaskModalProps {
 type RequestType = NonNullable<TaskFormData['requestType']>;
 type ExtraPickupPoint = NonNullable<TaskFormData['extraPickupPoints']>[number];
 
+type RoutePartyOption = {
+  key: string;
+  name: string;
+  address: string;
+  phone: string;
+  description: string;
+  clientId: number;
+  pointId?: number;
+};
+
 type LocalFormData = TaskFormData & {
   senderAddressDetails?: string;
   senderClientId?: number;
@@ -156,6 +166,31 @@ export function CreateTaskModal({
       return a.id - b.id;
     });
   }, [clients]);
+
+  const routePartyOptions = useMemo<RoutePartyOption[]>(() => (
+    clients.flatMap((client) => {
+      const clientOption: RoutePartyOption = {
+        key: `client:${client.id}`,
+        name: client.name,
+        address: client.address || '',
+        phone: client.phone || '',
+        description: client.address || 'Основной адрес',
+        clientId: client.id,
+      };
+
+      const pointOptions = (tcClientPointsMap[client.id] || []).map((point) => ({
+        key: `point:${client.id}:${point.id}`,
+        name: point.name ? `${client.name} / ${point.name}` : client.name,
+        address: point.address || '',
+        phone: point.phone || client.phone || '',
+        description: [point.address, point.phone || client.phone].filter(Boolean).join(' · ') || 'Точка клиента',
+        clientId: client.id,
+        pointId: point.id,
+      }));
+
+      return [clientOption, ...pointOptions];
+    })
+  ), [clients, tcClientPointsMap]);
   const pickupPointsClientId = requestType === 'pickup_from_tc' ? formData.pickupRecipientClientId : formData.senderClientId;
 
   useEffect(() => {
@@ -519,33 +554,29 @@ export function CreateTaskModal({
     }));
   };
 
-  const selectClientPointForTask = (clientId: number, pointId: number, target: 'sender' | 'recipient') => {
-    const client = clients.find((item) => item.id === clientId);
-    const point = (tcClientPointsMap[clientId] || []).find((item) => item.id === pointId);
-
-    if (!client || !point) return;
-
+  const selectRoutePartyOption = (option: RoutePartyOption, target: 'sender' | 'recipient') => {
     setFormData((prev) => {
       if (target === 'sender') {
         return {
           ...prev,
-          senderClientId: client.id,
-          senderName: point.name || client.name,
-          senderPhone: point.phone || client.phone || '',
-          senderAddress: point.address || client.address,
-          packageDescription: buildSenderTitle(point.name || client.name, point.address || client.address),
+          senderClientId: option.clientId,
+          senderName: option.name,
+          senderPhone: option.phone,
+          senderAddress: option.address,
+          packageDescription: buildSenderTitle(option.name, option.address),
         };
       }
 
       return {
         ...prev,
-        recipientClientId: client.id,
-        recipientName: point.name || client.name,
-        recipientPhone: point.phone || client.phone || '',
-        deliveryAddress: point.address || client.address,
+        recipientClientId: option.clientId,
+        recipientName: option.name,
+        recipientPhone: option.phone,
+        deliveryAddress: option.address,
       };
     });
   };
+
 
   const toggleTcRecipientClient = (clientId: number) => {
     const client = clients.find((item) => item.id === clientId);
@@ -687,16 +718,6 @@ export function CreateTaskModal({
               <div className="space-y-3">
                 <Section title="Отправитель">
                   <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-                    <ClientStoreSelect
-                      label="Выбрать отправителя"
-                      value={formData.senderClientId}
-                      addressValue={formData.senderAddress}
-                      clients={clients}
-                      pointsMap={tcClientPointsMap}
-                      onClientChange={(id) => selectClient(id, 'sender')}
-                      onPointChange={(clientId, pointId) => selectClientPointForTask(clientId, pointId, 'sender')}
-                      className="xl:col-span-4"
-                    />
                     {requestType === 'pickup_from_tc' && (
                       <TransportCompanySelect
                         label="Транспортная компания"
@@ -706,7 +727,14 @@ export function CreateTaskModal({
                         className="xl:col-span-4"
                       />
                     )}
-                    <Field label="Отправитель / компания *" value={formData.senderName || ''} onChange={(value) => updateField('senderName', value)} required />
+                    <RoutePartyField
+                      label="Отправитель / компания *"
+                      value={formData.senderName || ''}
+                      options={routePartyOptions}
+                      onChange={(value) => updateField('senderName', value)}
+                      onSelect={(option) => selectRoutePartyOption(option, 'sender')}
+                      required
+                    />
                     <Field label="Улица / адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required />
                     <Field label="Квартира / офис отправителя" value={formData.senderAddressDetails || ''} onChange={(value) => updateField('senderAddressDetails', value)} />
                     <Field label="Телефон отправителя" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} />
@@ -715,17 +743,14 @@ export function CreateTaskModal({
 
                 <Section title="Получатель">
                   <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-                    <ClientStoreSelect
-                      label="Выбрать получателя"
-                      value={formData.recipientClientId}
-                      addressValue={formData.deliveryAddress}
-                      clients={clients}
-                      pointsMap={tcClientPointsMap}
-                      onClientChange={(id) => selectClient(id, 'recipient')}
-                      onPointChange={(clientId, pointId) => selectClientPointForTask(clientId, pointId, 'recipient')}
-                      className="xl:col-span-4"
+                    <RoutePartyField
+                      label="Получатель / компания *"
+                      value={formData.recipientName || ''}
+                      options={routePartyOptions}
+                      onChange={(value) => updateField('recipientName', value)}
+                      onSelect={(option) => selectRoutePartyOption(option, 'recipient')}
+                      required
                     />
-                    <Field label="Получатель / компания *" value={formData.recipientName || ''} onChange={(value) => updateField('recipientName', value)} required />
                     <Field label="Улица / адрес получателя *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required />
                     <Field label="Квартира / офис получателя" value={formData.recipientAddress || ''} onChange={(value) => updateField('recipientAddress', value)} />
                     <Field label="Телефон получателя" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} />
@@ -986,61 +1011,65 @@ function NutsRegularClientSelect({
 }
 
 
-function ClientStoreSelect({
+function RoutePartyField({
   label,
   value,
-  addressValue,
-  clients,
-  pointsMap,
-  onClientChange,
-  onPointChange,
-  className = '',
+  options,
+  onChange,
+  onSelect,
+  required,
 }: {
   label: string;
-  value?: number;
-  addressValue?: string;
-  clients: Client[];
-  pointsMap: Record<number, ClientPoint[]>;
-  onClientChange: (value: number | undefined) => void;
-  onPointChange: (clientId: number, pointId: number) => void;
-  className?: string;
+  value: string;
+  options: RoutePartyOption[];
+  onChange: (value: string) => void;
+  onSelect: (option: RoutePartyOption) => void;
+  required?: boolean;
 }) {
-  const selectedPoint = value
-    ? (pointsMap[value] || []).find((point) => point.address && point.address === addressValue)
-    : undefined;
-  const selectedValue = selectedPoint && value ? `point:${value}:${selectedPoint.id}` : value ? `client:${value}` : null;
-  const options = [
-    { value: null, label: '-- Не выбрано --' },
-    ...clients.flatMap((client) => [
-      { value: `client:${client.id}`, label: client.name, description: client.address || 'Основной адрес' },
-      ...(pointsMap[client.id] || []).map((point) => ({
-        value: `point:${client.id}:${point.id}`,
-        label: `${client.name} / ${point.name || 'Магазин'}`,
-        description: point.address || 'Адрес не указан',
-      })),
-    ]),
-  ];
+  const [open, setOpen] = useState(false);
+  const query = value.trim().toLocaleLowerCase('ru-RU');
+  const filteredOptions = options
+    .filter((option) => {
+      if (!query) return true;
+      return `${option.name} ${option.address} ${option.phone}`.toLocaleLowerCase('ru-RU').includes(query);
+    })
+    .slice(0, 12);
 
   return (
-    <div className={className}>
+    <div className="relative">
       <label className="mb-1 block text-sm font-medium leading-none text-slate-700">{label}</label>
-      <AppSelect
-        value={selectedValue}
-        options={options}
-        placeholder="-- Не выбрано --"
-        emptyText="Нет клиентов"
-        searchable
-        onChange={(nextValue) => {
-          if (typeof nextValue !== 'string') {
-            onClientChange(undefined);
-            return;
-          }
-          const [kind, clientIdText, pointIdText] = nextValue.split(':');
-          const clientId = Number(clientIdText);
-          if (kind === 'point') onPointChange(clientId, Number(pointIdText));
-          else onClientChange(clientId);
+      <input
+        type="text"
+        value={value}
+        onFocus={() => setOpen(true)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
         }}
+        placeholder={label}
+        required={required}
+        className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white"
       />
+      {open && filteredOptions.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15">
+          {filteredOptions.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onSelect(option);
+                setOpen(false);
+              }}
+              className="mt-0.5 flex w-full flex-col rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-100"
+            >
+              <span className="font-medium text-slate-900">{option.name}</span>
+              <span className="mt-0.5 truncate text-xs text-slate-400">{option.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
