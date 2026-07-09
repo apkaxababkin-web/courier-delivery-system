@@ -227,14 +227,6 @@ function localDayRangeInIrkutsk(dateKey: string) {
   };
 }
 
-function isCourierVisibleTask(task: Task & { courierName?: string | null }, courierId: number) {
-  const status = String(task.status || "");
-  const isDone = status === "completed" || status === "cancelled";
-  if (task.courierId === courierId) return true;
-  return !isDone && !task.courierId;
-}
-
-
 function normalizeTaskStatus(status: unknown): Task["status"] {
   if (status === "in_progress" || status === "completed" || status === "cancelled") return status;
   return "assigned";
@@ -586,8 +578,7 @@ async function courierSnapshot(courierId: number, dateKey = localDateKeyInIrkuts
           .limit(300)
       : Promise.resolve([]),
   ]);
-  const visibleTasks = dayTasks.filter((task) => isCourierVisibleTask(task as Task & { courierName?: string | null }, courierId));
-  const allTasks = await tasksWithRequestType(visibleTasks);
+  const allTasks = await tasksWithRequestType(dayTasks);
   return {
     ok: true,
     updatedAt: new Date().toISOString(),
@@ -1146,9 +1137,7 @@ export function registerCompatRoutes(app: Express) {
       const input = inputFrom(req);
       const dateKey = normalizeDateKey(input.date || req.query.date);
       const dayTasks = await db.getTasksByDateWithCourier(dateKey);
-      const visibleTasks = dayTasks.filter((task) => isCourierVisibleTask(task as Task & { courierName?: string | null }, courierId));
-
-      res.json(trpcJson(await tasksWithRequestType(visibleTasks)));
+      res.json(trpcJson(await tasksWithRequestType(dayTasks)));
     } catch (error) {
       sendError(res, error, "Failed to load tasks");
     }
