@@ -3,7 +3,16 @@ import { X } from 'lucide-react';
 import { Modal } from '../../../../components/Modal';
 import { AppSelect } from '../../../../components/AppSelect';
 import { getLocalDateKey } from '../../../../lib/local-time';
-import { getClientPoints, getClientRegularClients, type ClientPoint, type ClientRegularClient, getTransportCompanies, type TransportCompany} from '../../../../lib/api';
+import {
+  getClientPoints,
+  getClientRegularClients,
+  getPartners,
+  getTransportCompanies,
+  type ClientPoint,
+  type ClientRegularClient,
+  type Partner,
+  type TransportCompany,
+} from '../../../../lib/api';
 import type { TaskFormData, Client, NutsBox } from '../../model/types';
 
 interface CreateTaskModalProps {
@@ -187,6 +196,7 @@ export function CreateTaskModal({
   const [formData, setFormData] = useState<LocalFormData>(makeInitialFormData);
   const [pickupClientPoints, setPickupClientPoints] = useState<ClientPoint[]>([]);
   const [transportCompanies, setTransportCompanies] = useState<TransportCompany[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
   const [nutsOwnerClient, setNutsOwnerClient] = useState<Client | null>(null);
   const [nutsOwnerClientId, setNutsOwnerClientId] = useState<number | undefined>(() => {
     if (typeof window === 'undefined') return undefined;
@@ -256,7 +266,7 @@ export function CreateTaskModal({
 
     return [clientOption, ...pointOptions];
   }, [clients, formData.clientId, tcClientPointsMap]);
-  const pickupPointsClientId = requestType === 'pickup_from_tc' ? formData.pickupRecipientClientId : formData.senderClientId;
+  const pickupPointsClientId = formData.clientId;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -368,6 +378,37 @@ export function CreateTaskModal({
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) {
+      setPartners([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPartnersForCourierCall() {
+      try {
+        const items = await getPartners();
+
+        if (!cancelled) {
+          setPartners((items || []).filter((item) => item.isActive !== false));
+        }
+      } catch (error) {
+        console.error('Failed to load partners:', error);
+
+        if (!cancelled) {
+          setPartners([]);
+        }
+      }
+    }
+
+    void loadPartnersForCourierCall();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen || clients.length === 0) {
       setTcClientPointsMap({});
       return;
@@ -439,22 +480,16 @@ export function CreateTaskModal({
 
   if (!isOpen) return null;
 
-  const buildSenderTitle = (name?: string, address?: string) => (
-    [name?.trim() || '', address?.trim() || ''].filter(Boolean).join(', ')
-  );
-
-  const updateField = <K extends keyof LocalFormData>(field: K, value: LocalFormData[K]) => setFormData((prev) => {
-    if (field === 'senderName') {
-      const senderName = typeof value === 'string' ? value : '';
-      return { ...prev, [field]: value, packageDescription: senderName };
-    }
-
-    return { ...prev, [field]: value };
-  });
+  const updateField = <K extends keyof LocalFormData>(
+    field: K,
+    value: LocalFormData[K],
+  ) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
   const addExtraPickupPoint = () => {
     if (!pickupPointsClientId) {
-      setExtraPickupError('Сначала выберите основного отправителя');
+      setExtraPickupError('Сначала выберите клиента / компанию');
       return;
     }
 
@@ -521,7 +556,6 @@ export function CreateTaskModal({
         tcAddress: '',
         senderName: '',
         senderAddress: '',
-        packageDescription: '',
       }));
       return;
     }
@@ -535,7 +569,6 @@ export function CreateTaskModal({
       tcAddress: company.address,
       senderName: company.name,
       senderAddress: company.address,
-      packageDescription: buildSenderTitle(company.name, company.address),
     }));
   };
 
@@ -568,7 +601,6 @@ export function CreateTaskModal({
           senderName: client.name,
           senderPhone: client.phone || '',
           senderAddress: client.address,
-          packageDescription: buildSenderTitle(client.name, client.address),
         };
       }
       if (target === 'recipient') return { ...prev, recipientClientId: client.id, recipientName: client.name, recipientPhone: client.phone || '', deliveryAddress: client.address };
@@ -578,7 +610,32 @@ export function CreateTaskModal({
   };
 
   const selectUniversalClient = (clientId: number | undefined) => {
-    setFormData((prev) => ({ ...prev, clientId }));
+    setExtraPickupError('');
+    setFormData((prev) => ({
+      ...prev,
+      clientId,
+      extraPickupPoints: [],
+    }));
+  };
+
+  const selectCourierCallPartner = (partnerId: number | undefined) => {
+    const partner = partners.find((item) => item.id === partnerId);
+
+    if (!partner) {
+      setFormData((prev) => ({
+        ...prev,
+        senderCompany: '',
+      }));
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      clientId: undefined,
+      senderName: partner.name,
+      senderCompany: partner.name,
+      senderPhone: partner.phone || '',
+    }));
   };
 
   const selectNutsOwnerClient = (clientId: number | undefined) => {
@@ -637,7 +694,6 @@ export function CreateTaskModal({
           senderName: option.name,
           senderPhone: option.phone,
           senderAddress: option.address,
-          packageDescription: buildSenderTitle(option.name, option.address),
         };
       }
 
@@ -717,18 +773,65 @@ export function CreateTaskModal({
     event.preventDefault();
     const { senderAddressDetails, senderClientId, recipientClientId, pickupRecipientClientId, pickupDirection, nutsBoxes, nutsTariff, cedroilTariff, extraPickupPoints, requestFiles, ...payload } = formData;
     const isUniversalRequest = requestType !== 'nuts';
-    const universalSenderAddress = [payload.senderAddress?.trim(), senderAddressDetails?.trim()].filter(Boolean).join(', ');
-    const nutsSenderAddress = joinPickupAddresses(payload.senderAddress, extraPickupPoints || []);
-    const selectedNutsBoxes = (nutsBoxes || []).filter((box) => (Number(box.quantity) || 0) > 0);
+    const supportsExtraPickupPoints = (
+      requestType === 'delivery'
+      || requestType === 'movement'
+      || requestType === 'pickup_from_tc'
+    );
+
+    const mainSenderAddress = [
+      payload.senderAddress?.trim(),
+      senderAddressDetails?.trim(),
+    ].filter(Boolean).join(', ');
+
+    const extraPickupAddresses = supportsExtraPickupPoints
+      ? getExtraPickupAddresses(extraPickupPoints || [])
+      : [];
+
+    const universalSenderAddress = requestType === 'pickup_from_tc'
+      ? mainSenderAddress
+      : [mainSenderAddress, ...extraPickupAddresses].filter(Boolean).join(', ');
+
+    const nutsSenderAddress = joinPickupAddresses(
+      payload.senderAddress,
+      extraPickupPoints || [],
+    );
+
+    const selectedNutsBoxes = (nutsBoxes || [])
+      .filter((box) => (Number(box.quantity) || 0) > 0);
+
     const nutsItems = buildNutsOrderLines(selectedNutsBoxes).join('\n');
     const nutsSummary = buildNutsOrderSummary(selectedNutsBoxes);
     const nutsComments = stripGeneratedNutsCommentLines(payload.comments);
+
+    const manualComments = String(payload.comments || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => (
+        line
+        && !line.startsWith('Направление:')
+        && !line.startsWith('Дополнительные точки:')
+      ))
+      .join('\n');
+
+    const requestComments = [
+      requestType === 'pickup_from_tc'
+        ? (
+          pickupDirection === 'recipient_to_tc'
+            ? 'Направление: получатель → ТК'
+            : 'Направление: ТК → получатель'
+        )
+        : '',
+      extraPickupAddresses.length > 0
+        ? `Дополнительные точки: ${extraPickupAddresses.join('; ')}`
+        : '',
+      manualComments,
+    ].filter(Boolean).join('\n');
 
     onSubmit({
       ...payload,
       requestType,
       senderAddress: isUniversalRequest ? universalSenderAddress : (nutsSenderAddress || payload.senderAddress),
-      tcAddress: requestType === 'pickup_from_tc' ? universalSenderAddress : payload.tcAddress,
       recipientName: isUniversalRequest ? (payload.recipientName || '') : (payload.recipientName || payload.senderName || ''),
       recipientPhone: isUniversalRequest ? (payload.recipientPhone || '') : (payload.recipientPhone || payload.senderPhone || ''),
       deliveryAddress: isUniversalRequest
@@ -737,7 +840,7 @@ export function CreateTaskModal({
       packageDescription: requestType === 'nuts' ? nutsSummary : payload.packageDescription,
       items: requestType === 'nuts' ? nutsItems : payload.items,
       description: requestType === 'nuts' ? nutsSummary : payload.description,
-      comments: requestType === 'nuts' ? nutsComments : payload.comments,
+      comments: requestType === 'nuts' ? nutsComments : requestComments,
       paymentAmount: requestType === 'nuts' ? nutsTotal : payload.paymentAmount,
       requestFiles,
       clientId: payload.clientId,
@@ -749,6 +852,11 @@ export function CreateTaskModal({
   const selectedTransportCompanyId = transportCompanies.find((company) => (
     company.name === formData.tcName && company.address === formData.tcAddress
   ))?.id ?? null;
+
+  const selectedCourierCallPartnerId = partners.find((partner) => (
+    partner.name === formData.senderCompany
+    || partner.name === formData.senderName
+  ))?.id;
 
   const requestTypeLabel = REQUEST_TYPE_LABELS[requestType] || "Заявка";
 
@@ -775,12 +883,21 @@ export function CreateTaskModal({
                 options={Object.entries(REQUEST_TYPE_LABELS)}
               />
               {requestType !== 'nuts' && (
-                <ClientSelect
-                  label="Клиент / компания"
-                  value={formData.clientId}
-                  clients={sortedBillingClients}
-                  onChange={selectUniversalClient}
-                />
+                requestType === 'courier_call' ? (
+                  <PartnerSelect
+                    label="Клиент / компания"
+                    value={selectedCourierCallPartnerId}
+                    partners={partners}
+                    onChange={selectCourierCallPartner}
+                  />
+                ) : (
+                  <ClientSelect
+                    label="Клиент / компания"
+                    value={formData.clientId}
+                    clients={sortedBillingClients}
+                    onChange={selectUniversalClient}
+                  />
+                )
               )}
               <Field label="Дата" type="date" value={formData.requestDate || getLocalDateKey()} onChange={(value) => updateField('requestDate', value)} required />
               {requestType !== 'nuts' && (
@@ -798,6 +915,40 @@ export function CreateTaskModal({
               <div className="space-y-3">
                 <Section title="Отправитель">
                   <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                    {requestType === 'pickup_from_tc' && (
+                      <div className="xl:col-span-4">
+                        <label className="mb-1 block text-sm font-medium leading-none text-slate-700">
+                          Направление
+                        </label>
+
+                        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                          <button
+                            type="button"
+                            onClick={() => updateField('pickupDirection', 'tc_to_recipient')}
+                            className={`h-10 rounded-xl px-3 text-sm font-semibold transition ${
+                              formData.pickupDirection !== 'recipient_to_tc'
+                                ? 'bg-slate-950 text-white shadow-sm'
+                                : 'text-slate-600 hover:bg-white'
+                            }`}
+                          >
+                            ТК → клиент
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => updateField('pickupDirection', 'recipient_to_tc')}
+                            className={`h-10 rounded-xl px-3 text-sm font-semibold transition ${
+                              formData.pickupDirection === 'recipient_to_tc'
+                                ? 'bg-slate-950 text-white shadow-sm'
+                                : 'text-slate-600 hover:bg-white'
+                            }`}
+                          >
+                            Клиент → ТК
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {requestType === 'pickup_from_tc' && (
                       <TransportCompanySelect
                         label="Транспортная компания"
@@ -819,6 +970,63 @@ export function CreateTaskModal({
                     <Field label="Улица / адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required />
                     <Field label="Квартира / офис отправителя" value={formData.senderAddressDetails || ''} onChange={(value) => updateField('senderAddressDetails', value)} />
                     <Field label="Телефон отправителя" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} />
+
+                    {(requestType === 'delivery'
+                      || requestType === 'movement'
+                      || requestType === 'pickup_from_tc') && (
+                      <div className="space-y-2 xl:col-span-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={addExtraPickupPoint}
+                            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100"
+                          >
+                            + Добавить дополнительную точку
+                          </button>
+
+                          {extraPickupError && (
+                            <span className="text-sm font-medium text-red-600">
+                              {extraPickupError}
+                            </span>
+                          )}
+                        </div>
+
+                        {(formData.extraPickupPoints || []).map((point, index) => (
+                          <div
+                            key={`extra-pickup-${index}`}
+                            className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+                          >
+                            <PointSelect
+                              label={`Дополнительная точка ${index + 1}`}
+                              value={point.address || ''}
+                              points={pickupClientPoints}
+                              loading={pickupClientPointsLoading}
+                              disabled={!pickupPointsClientId || pickupClientPointsLoading}
+                              onChange={(value) => {
+                                const selectedPoint = pickupClientPoints.find(
+                                  (item) => item.address === value,
+                                );
+
+                                updateExtraPickupPoint(index, 'address', value);
+                                updateExtraPickupPoint(
+                                  index,
+                                  'name',
+                                  selectedPoint?.name || '',
+                                );
+                              }}
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => removeExtraPickupPoint(index)}
+                              className="h-11 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50"
+                            >
+                              Удалить
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Section>
 
@@ -1160,6 +1368,49 @@ function RoutePartyField({
   );
 }
 
+
+function PartnerSelect({
+  label,
+  value,
+  partners,
+  onChange,
+  className = '',
+}: {
+  label: string;
+  value?: number;
+  partners: Partner[];
+  onChange: (value: number | undefined) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label className="mb-1 block text-sm font-medium leading-none text-slate-700">
+        {label}
+      </label>
+
+      <AppSelect
+        value={value ?? null}
+        searchable
+        placeholder={partners.length === 0 ? 'Нет активных контрагентов' : 'Выберите контрагента'}
+        options={[
+          { value: null, label: 'Не выбрано' },
+          ...partners.map((partner) => ({
+            value: partner.id,
+            label: partner.name,
+            description: [
+              partner.contactPerson,
+              partner.phone,
+              partner.email,
+            ].filter(Boolean).join(' • '),
+          })),
+        ]}
+        onChange={(nextValue) => onChange(
+          typeof nextValue === 'number' ? nextValue : undefined,
+        )}
+      />
+    </div>
+  );
+}
 
 function ClientSelect({ label, value, clients, onChange, className = '' }: { label: string; value?: number; clients: Client[]; onChange: (value: number | undefined) => void; className?: string }) {
   return (
