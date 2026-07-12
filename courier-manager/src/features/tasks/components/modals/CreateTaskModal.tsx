@@ -206,6 +206,7 @@ export function CreateTaskModal({
   });
   const [nutsRegularClients, setNutsRegularClients] = useState<ClientRegularClient[]>([]);
   const [nutsRegularClientsLoading, setNutsRegularClientsLoading] = useState(false);
+  const [routeRegularClients, setRouteRegularClients] = useState<ClientRegularClient[]>([]);
   const [tcClientPointsMap, setTcClientPointsMap] = useState<Record<number, ClientPoint[]>>({});
   const [tcRecipientDropdownOpen, setTcRecipientDropdownOpen] = useState(false);
   const [expandedTcClientId, setExpandedTcClientId] = useState<number | null>(null);
@@ -213,6 +214,10 @@ export function CreateTaskModal({
   const [extraPickupError, setExtraPickupError] = useState('');
   const requestFileInputRef = useRef<HTMLInputElement | null>(null);
   const requestType = formData.requestType || 'delivery';
+  const allFieldsOptional = (
+    requestType === 'courier_call'
+    || requestType === 'simple'
+  );
   const sortedBillingClients = useMemo(() => {
     const getUsageScore = (client: Client) => {
       const record = client as Client & Record<string, unknown>;
@@ -242,7 +247,10 @@ export function CreateTaskModal({
   }, [clients]);
 
   const routePartyOptions = useMemo<RoutePartyOption[]>(() => {
-    const client = formData.clientId ? clients.find((item) => item.id === formData.clientId) : undefined;
+    const client = formData.clientId
+      ? clients.find((item) => item.id === formData.clientId)
+      : undefined;
+
     if (!client) return [];
 
     const clientOption: RoutePartyOption = {
@@ -254,19 +262,69 @@ export function CreateTaskModal({
       clientId: client.id,
     };
 
-    const pointOptions = (tcClientPointsMap[client.id] || []).map((point) => ({
+    const pointOptions: RoutePartyOption[] = (
+      tcClientPointsMap[client.id] || []
+    ).map((point) => ({
       key: `point:${client.id}:${point.id}`,
-      name: point.name ? `${client.name} / ${point.name}` : client.name,
+      name: point.name
+        ? `${client.name} / ${point.name}`
+        : client.name,
       address: point.address || '',
       phone: point.phone || client.phone || '',
-      description: [point.address, point.phone || client.phone].filter(Boolean).join(' · ') || 'Точка клиента',
+      description: [
+        'Точка',
+        point.address,
+        point.phone || client.phone,
+      ].filter(Boolean).join(' · '),
       clientId: client.id,
       pointId: point.id,
     }));
 
-    return [clientOption, ...pointOptions];
-  }, [clients, formData.clientId, tcClientPointsMap]);
+    const regularClientOptions: RoutePartyOption[] = routeRegularClients.map(
+      (regularClient) => ({
+        key: `regular:${client.id}:${regularClient.id}`,
+        name: regularClient.name || '',
+        address: regularClient.address || '',
+        phone: regularClient.phone || '',
+        description: [
+          'Постоянный клиент',
+          regularClient.address,
+          regularClient.phone,
+        ].filter(Boolean).join(' · '),
+        clientId: client.id,
+      }),
+    );
+
+    return [
+      clientOption,
+      ...pointOptions,
+      ...regularClientOptions,
+    ];
+  }, [
+    clients,
+    formData.clientId,
+    tcClientPointsMap,
+    routeRegularClients,
+  ]);
+
   const pickupPointsClientId = formData.clientId;
+
+  const selectedBillingClient = formData.clientId
+    ? clients.find((client) => client.id === formData.clientId)
+    : undefined;
+
+  const automaticTitle = (
+    requestType === 'delivery'
+    || requestType === 'movement'
+    || requestType === 'pickup_from_tc'
+  )
+    ? (selectedBillingClient?.name || '')
+    : (
+      requestType === 'courier_call'
+      || requestType === 'simple'
+    )
+      ? (formData.senderName?.trim() || '')
+      : (formData.packageDescription || '');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -441,6 +499,37 @@ export function CreateTaskModal({
   }, [isOpen, requestType, clients]);
 
   useEffect(() => {
+    if (!isOpen || !formData.clientId) {
+      setRouteRegularClients([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadRouteRegularClients() {
+      try {
+        const items = await getClientRegularClients(formData.clientId!);
+
+        if (!cancelled) {
+          setRouteRegularClients(items || []);
+        }
+      } catch (error) {
+        console.error('Failed to load route regular clients:', error);
+
+        if (!cancelled) {
+          setRouteRegularClients([]);
+        }
+      }
+    }
+
+    void loadRouteRegularClients();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, formData.clientId]);
+
+  useEffect(() => {
     setExtraPickupError('');
 
     if (!isOpen || !pickupPointsClientId) {
@@ -548,28 +637,101 @@ export function CreateTaskModal({
     }));
   };
 
+  const applyPickupDirection = (
+    direction: 'tc_to_recipient' | 'recipient_to_tc',
+  ) => {
+    setFormData((prev) => {
+      const previousDirection = prev.pickupDirection || 'tc_to_recipient';
+
+      if (previousDirection === direction) {
+        return {
+          ...prev,
+          pickupDirection: direction,
+        };
+      }
+
+      return {
+        ...prev,
+        pickupDirection: direction,
+
+        senderName: prev.recipientName || '',
+        senderCompany: prev.recipientCompany || '',
+        senderPhone: prev.recipientPhone || '',
+        senderAddress: prev.deliveryAddress || '',
+        senderAddressDetails: prev.recipientAddress || '',
+
+        recipientName: prev.senderName || '',
+        recipientCompany: prev.senderCompany || '',
+        recipientPhone: prev.senderPhone || '',
+        deliveryAddress: prev.senderAddress || '',
+        recipientAddress: prev.senderAddressDetails || '',
+      };
+    });
+  };
+
   const selectTransportCompanyForRequest = (companyId: number | null) => {
     if (!companyId) {
-      setFormData((prev) => ({
-        ...prev,
-        tcName: '',
-        tcAddress: '',
-        senderName: '',
-        senderAddress: '',
-      }));
+      setFormData((prev) => {
+        const direction = prev.pickupDirection || 'tc_to_recipient';
+
+        return {
+          ...prev,
+          tcName: '',
+          tcAddress: '',
+          trackingNumber: '',
+
+          ...(direction === 'recipient_to_tc'
+            ? {
+                recipientName: '',
+                recipientCompany: '',
+                recipientPhone: '',
+                deliveryAddress: '',
+                recipientAddress: '',
+              }
+            : {
+                senderName: '',
+                senderCompany: '',
+                senderPhone: '',
+                senderAddress: '',
+                senderAddressDetails: '',
+              }),
+        };
+      });
+
       return;
     }
 
-    const company = transportCompanies.find((item) => item.id === companyId);
+    const company = transportCompanies.find(
+      (item) => item.id === companyId,
+    );
+
     if (!company) return;
 
-    setFormData((prev) => ({
-      ...prev,
-      tcName: company.name,
-      tcAddress: company.address,
-      senderName: company.name,
-      senderAddress: company.address,
-    }));
+    setFormData((prev) => {
+      const direction = prev.pickupDirection || 'tc_to_recipient';
+
+      return {
+        ...prev,
+        tcName: company.name,
+        tcAddress: company.address,
+
+        ...(direction === 'recipient_to_tc'
+          ? {
+              recipientName: company.name,
+              recipientCompany: company.name,
+              recipientPhone: company.phone || '',
+              deliveryAddress: company.address || '',
+              recipientAddress: '',
+            }
+          : {
+              senderName: company.name,
+              senderCompany: company.name,
+              senderPhone: company.phone || '',
+              senderAddress: company.address || '',
+              senderAddressDetails: '',
+            }),
+      };
+    });
   };
 
   const getExtraPickupAddresses = (points: ExtraPickupPoint[]) => (
@@ -685,7 +847,10 @@ export function CreateTaskModal({
     }));
   };
 
-  const selectRoutePartyOption = (option: RoutePartyOption, target: 'sender' | 'recipient') => {
+  const selectRoutePartyOption = (
+    option: RoutePartyOption,
+    target: 'sender' | 'recipient',
+  ) => {
     setFormData((prev) => {
       if (target === 'sender') {
         return {
@@ -837,7 +1002,7 @@ export function CreateTaskModal({
       deliveryAddress: isUniversalRequest
         ? (payload.deliveryAddress || payload.recipientAddress || '')
         : (payload.deliveryAddress || payload.recipientAddress || nutsSenderAddress || payload.senderAddress || ''),
-      packageDescription: requestType === 'nuts' ? nutsSummary : payload.packageDescription,
+      packageDescription: requestType === 'nuts' ? nutsSummary : automaticTitle,
       items: requestType === 'nuts' ? nutsItems : payload.items,
       description: requestType === 'nuts' ? nutsSummary : payload.description,
       comments: requestType === 'nuts' ? nutsComments : requestComments,
@@ -899,10 +1064,21 @@ export function CreateTaskModal({
                   />
                 )
               )}
-              <Field label="Дата" type="date" value={formData.requestDate || getLocalDateKey()} onChange={(value) => updateField('requestDate', value)} required />
+              <Field
+                label="Дата"
+                type="date"
+                value={formData.requestDate || getLocalDateKey()}
+                onChange={(value) => updateField('requestDate', value)}
+                required={!allFieldsOptional}
+              />
               {requestType !== 'nuts' && (
                 <>
-                  <Field label="Заголовок" value={formData.packageDescription || ''} onChange={(value) => updateField('packageDescription', value)} />
+                  <Field
+                    label="Заголовок"
+                    value={automaticTitle}
+                    onChange={() => undefined}
+                    readOnly
+                  />
                   <Field label="Время от" type="time" value={formData.deliveryTimeFrom || ''} onChange={(value) => updateField('deliveryTimeFrom', value)} />
                   <Field label="Время до" type="time" value={formData.deliveryTimeTo || ''} onChange={(value) => updateField('deliveryTimeTo', value)} />
                 </>
@@ -924,7 +1100,7 @@ export function CreateTaskModal({
                         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
                           <button
                             type="button"
-                            onClick={() => updateField('pickupDirection', 'tc_to_recipient')}
+                            onClick={() => applyPickupDirection('tc_to_recipient')}
                             className={`h-10 rounded-xl px-3 text-sm font-semibold transition ${
                               formData.pickupDirection !== 'recipient_to_tc'
                                 ? 'bg-slate-950 text-white shadow-sm'
@@ -936,7 +1112,7 @@ export function CreateTaskModal({
 
                           <button
                             type="button"
-                            onClick={() => updateField('pickupDirection', 'recipient_to_tc')}
+                            onClick={() => applyPickupDirection('recipient_to_tc')}
                             className={`h-10 rounded-xl px-3 text-sm font-semibold transition ${
                               formData.pickupDirection === 'recipient_to_tc'
                                 ? 'bg-slate-950 text-white shadow-sm'
@@ -959,15 +1135,20 @@ export function CreateTaskModal({
                       />
                     )}
                     <RoutePartyField
-                      label="Отправитель / компания *"
+                      label={`Отправитель / компания${allFieldsOptional ? '' : ' *'}`}
                       value={formData.senderName || ''}
                       options={routePartyOptions}
                       onChange={(value) => updateField('senderName', value)}
                       onSelect={(option) => selectRoutePartyOption(option, 'sender')}
                       emptyText={formData.clientId ? 'Нет точек по запросу' : 'Сначала выберите клиента / компанию'}
-                      required
+                      required={!allFieldsOptional}
                     />
-                    <Field label="Улица / адрес отправителя *" value={formData.senderAddress || ''} onChange={(value) => updateField('senderAddress', value)} required />
+                    <Field
+                      label={`Улица / адрес отправителя${allFieldsOptional ? '' : ' *'}`}
+                      value={formData.senderAddress || ''}
+                      onChange={(value) => updateField('senderAddress', value)}
+                      required={!allFieldsOptional}
+                    />
                     <Field label="Квартира / офис отправителя" value={formData.senderAddressDetails || ''} onChange={(value) => updateField('senderAddressDetails', value)} />
                     <Field label="Телефон отправителя" value={formData.senderPhone || ''} onChange={(value) => updateField('senderPhone', value)} />
 
@@ -983,6 +1164,12 @@ export function CreateTaskModal({
                           >
                             + Добавить дополнительную точку
                           </button>
+
+                          {(formData.extraPickupPoints || []).length > 0 && (
+                            <span className="text-sm font-medium text-slate-500">
+                              Добавлено точек: {(formData.extraPickupPoints || []).length}
+                            </span>
+                          )}
 
                           {extraPickupError && (
                             <span className="text-sm font-medium text-red-600">
@@ -1033,15 +1220,20 @@ export function CreateTaskModal({
                 <Section title="Получатель">
                   <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
                     <RoutePartyField
-                      label="Получатель / компания *"
+                      label={`Получатель / компания${allFieldsOptional ? '' : ' *'}`}
                       value={formData.recipientName || ''}
                       options={routePartyOptions}
                       onChange={(value) => updateField('recipientName', value)}
                       onSelect={(option) => selectRoutePartyOption(option, 'recipient')}
                       emptyText={formData.clientId ? 'Нет точек по запросу' : 'Сначала выберите клиента / компанию'}
-                      required
+                      required={!allFieldsOptional}
                     />
-                    <Field label="Улица / адрес получателя *" value={formData.deliveryAddress || ''} onChange={(value) => updateField('deliveryAddress', value)} required />
+                    <Field
+                      label={`Улица / адрес получателя${allFieldsOptional ? '' : ' *'}`}
+                      value={formData.deliveryAddress || ''}
+                      onChange={(value) => updateField('deliveryAddress', value)}
+                      required={!allFieldsOptional}
+                    />
                     <Field label="Квартира / офис получателя" value={formData.recipientAddress || ''} onChange={(value) => updateField('recipientAddress', value)} />
                     <Field label="Телефон получателя" value={formData.recipientPhone || ''} onChange={(value) => updateField('recipientPhone', value)} />
                   </div>
@@ -1114,7 +1306,23 @@ function RequestFilesField({ files, inputRef, onAdd, onRemove }: { files: File[]
   );
 }
 
-function Field({ label, value, onChange, required, type = 'text', className = '' }: { label: string; value: string | number; onChange: (value: string) => void; required?: boolean; type?: string; className?: string }) {
+function Field({
+  label,
+  value,
+  onChange,
+  required,
+  type = 'text',
+  className = '',
+  readOnly = false,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  required?: boolean;
+  type?: string;
+  className?: string;
+  readOnly?: boolean;
+}) {
   const isAddressField = label.toLowerCase().includes('адрес');
   const inputType = isAddressField && type === 'text' ? 'search' : type;
 
@@ -1131,19 +1339,19 @@ function Field({ label, value, onChange, required, type = 'text', className = ''
         data-form-type={isAddressField ? 'other' : undefined}
         data-lpignore={isAddressField ? 'true' : undefined}
         data-1p-ignore={isAddressField ? 'true' : undefined}
-        readOnly={isAddressField ? true : undefined}
+        readOnly={readOnly || (isAddressField ? true : undefined)}
         onMouseDown={(event) => {
-          if (isAddressField) {
+          if (isAddressField && !readOnly) {
             event.currentTarget.removeAttribute('readonly');
           }
         }}
         onTouchStart={(event) => {
-          if (isAddressField) {
+          if (isAddressField && !readOnly) {
             event.currentTarget.removeAttribute('readonly');
           }
         }}
         onFocus={(event) => {
-          if (isAddressField) {
+          if (isAddressField && !readOnly) {
             event.currentTarget.removeAttribute('readonly');
           }
         }}
