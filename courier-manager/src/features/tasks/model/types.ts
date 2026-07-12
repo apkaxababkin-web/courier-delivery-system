@@ -11,6 +11,7 @@ export interface NutsBox {
 export interface TaskFormData {
   requestType?: 'delivery' | 'movement' | 'nuts' | 'courier_call' | 'pickup_from_tc' | 'simple';
   requestDate?: string;
+  isHistoricalCompleted?: boolean;
   requestFiles?: File[];
   extraPickupPoints?: Array<{
     name: string;

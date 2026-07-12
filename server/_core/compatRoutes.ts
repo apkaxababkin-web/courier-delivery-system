@@ -606,6 +606,61 @@ async function courierIdFromReq(req: Request): Promise<number | null> {
 }
 
 export function registerCompatRoutes(app: Express) {
+  // Маршруты браузерного расширения для уже доставленных писем.
+  app.get("/api/extension/checkpoints", async (_req: Request, res: Response) => {
+    try {
+      const rows = await db.getAllMails();
+
+      const checkpoints = rows
+        .filter((mail) => mail.status === "delivered")
+        .map((mail) => {
+          const deliveredAt = mail.deliveredAt
+            ? new Date(mail.deliveredAt)
+            : null;
+
+          const receivedAtText = deliveredAt
+            ? new Intl.DateTimeFormat("ru-RU", {
+                timeZone: "Asia/Irkutsk",
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(deliveredAt)
+            : "";
+
+          return {
+            id: mail.id,
+            waybillNumber: mail.waybillNumber,
+            recipientName:
+              mail.recipientSignature || mail.recipientName || "",
+            receivedAtText,
+            receivedAt: mail.deliveredAt,
+          };
+        });
+
+      res.json(checkpoints);
+    } catch (error) {
+      console.error("Failed to load extension checkpoints", error);
+      res.status(500).json({
+        ok: false,
+        error: "Failed to load extension checkpoints",
+      });
+    }
+  });
+
+  app.post(
+    "/api/extension/checkpoints/:id/result",
+    async (req: Request, res: Response) => {
+      console.log("[extension-checkpoint-result]", {
+        id: req.params.id,
+        body: req.body,
+      });
+
+      res.json({ ok: true });
+    },
+  );
+
   app.get("/api/live", (req: Request, res: Response) => {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -1680,6 +1735,43 @@ export function registerCompatRoutes(app: Express) {
     try { res.json(trpcBatchJson(await requestRows())); } catch (error) { sendError(res, error, "Failed to load requests"); }
   });
 
+  app.post("/api/trpc/requests.updateClient", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const input = inputFrom(req);
+      const id = Number(input.id);
+
+      if (!id) throw new Error("request id is required");
+
+      const clientId = input.clientId == null || input.clientId === ""
+        ? null
+        : Number(input.clientId);
+
+      if (clientId !== null && !Number.isFinite(clientId)) {
+        throw new Error("client id is invalid");
+      }
+
+      await conn
+        .update(requests)
+        .set({
+          clientId,
+          updatedAt: new Date(),
+        })
+        .where(eq(requests.id, id));
+
+      broadcastLive("requests_changed", {
+        requestId: id,
+        clientId,
+      });
+
+      res.json(trpcBatchJson({ success: true }));
+    } catch (error) {
+      sendError(res, error, "Failed to update request client");
+    }
+  });
+
   app.post("/api/trpc/requests.create", async (req, res) => {
     try {
       const conn = await db.getDb();
@@ -1687,6 +1779,9 @@ export function registerCompatRoutes(app: Express) {
       const input = inputFrom(req);
       const rawRequestDate = input.requestDate || input.scheduledDate || input.deliveryDate;
       const rawScheduledAt = input.scheduledAt;
+      const isHistoricalCompleted = input.isHistoricalCompleted === true
+        || input.isHistoricalCompleted === "true";
+
       let scheduledAt: Date | null = null;
 
       if (rawScheduledAt) {
@@ -1694,13 +1789,24 @@ export function registerCompatRoutes(app: Express) {
         if (!Number.isNaN(parsed.getTime())) scheduledAt = parsed;
       } else if (rawRequestDate) {
         const [year, month, day] = String(rawRequestDate).slice(0, 10).split("-").map(Number);
-        if (year && month && day) scheduledAt = new Date(year, month - 1, day);
+        if (year && month && day) {
+          scheduledAt = new Date(year, month - 1, day, 12, 0, 0);
+        }
       }
+
+      const completedAt = isHistoricalCompleted
+        ? (scheduledAt || new Date())
+        : null;
+
+      const initialStatus: InsertRequest["status"] = isHistoricalCompleted
+        ? "completed"
+        : (input.courierId ? "assigned" : "pending");
 
       const payload: InsertRequest = {
         createdByUserId: Number(input.createdByUserId || 1),
         requestType: (input.requestType as InsertRequest["requestType"]) || "delivery",
-        status: input.courierId ? "assigned" : "pending",
+        status: initialStatus,
+        requestStatus: initialStatus,
         courierId: typeof input.courierId === "number" ? input.courierId : null,
         clientId: typeof input.clientId === "number" ? input.clientId : null,
         recipientName: input.recipientName ? String(input.recipientName) : null,
@@ -1731,39 +1837,42 @@ export function registerCompatRoutes(app: Express) {
         deliveryTimeFrom: input.deliveryTimeFrom ? String(input.deliveryTimeFrom) : null,
         deliveryTimeTo: input.deliveryTimeTo ? String(input.deliveryTimeTo) : null,
         estimatedMinutes: input.estimatedMinutes ? Number(input.estimatedMinutes) : null,
-        scheduledAt: scheduledAt,
+        scheduledAt,
+        completedAt,
       };
       const inserted = await conn.insert(requests).values(payload).returning();
       const request = inserted[0] as DeliveryRequest;
       const taskId = await syncTaskForRequest(request);
 
-      const requestForPush = await db.getRequestById(request.id);
+      if (!isHistoricalCompleted) {
+        const requestForPush = await db.getRequestById(request.id);
 
-      const push = buildNewRequestPush({
-        id: request.id,
-        requestType: requestForPush?.requestType || request.requestType,
-        deliveryAddress: requestForPush?.deliveryAddress || request.deliveryAddress,
-        recipientAddress: requestForPush?.recipientAddress || request.recipientAddress,
-        senderAddress: requestForPush?.senderAddress || request.senderAddress,
-        senderName: requestForPush?.senderName || request.senderName,
-        senderCompany: requestForPush?.senderCompany || request.senderCompany,
-        recipientName: requestForPush?.recipientName || request.recipientName,
-        recipientCompany: requestForPush?.recipientCompany || request.recipientCompany,
-        tcName: requestForPush?.tcName || request.tcName,
-        packageDescription: requestForPush?.packageDescription || request.packageDescription,
-        placesCount: requestForPush?.placesCount || request.placesCount,
-        paymentMethod: requestForPush?.paymentMethod || request.paymentMethod,
-      });
+        const push = buildNewRequestPush({
+          id: request.id,
+          requestType: requestForPush?.requestType || request.requestType,
+          deliveryAddress: requestForPush?.deliveryAddress || request.deliveryAddress,
+          recipientAddress: requestForPush?.recipientAddress || request.recipientAddress,
+          senderAddress: requestForPush?.senderAddress || request.senderAddress,
+          senderName: requestForPush?.senderName || request.senderName,
+          senderCompany: requestForPush?.senderCompany || request.senderCompany,
+          recipientName: requestForPush?.recipientName || request.recipientName,
+          recipientCompany: requestForPush?.recipientCompany || request.recipientCompany,
+          tcName: requestForPush?.tcName || request.tcName,
+          packageDescription: requestForPush?.packageDescription || request.packageDescription,
+          placesCount: requestForPush?.placesCount || request.placesCount,
+          paymentMethod: requestForPush?.paymentMethod || request.paymentMethod,
+        });
 
-      await sendPushToAllCouriers(
-        push.title,
-        push.body,
-        {
-          type: "new_request_available",
-          requestId: request.id,
-          requestType: request.requestType,
-        },
-      );
+        await sendPushToAllCouriers(
+          push.title,
+          push.body,
+          {
+            type: "new_request_available",
+            requestId: request.id,
+            requestType: request.requestType,
+          },
+        );
+      }
 
       broadcastLive("requests_changed");
       broadcastLive("tasks_changed");

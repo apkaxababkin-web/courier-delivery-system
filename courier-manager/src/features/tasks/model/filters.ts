@@ -15,7 +15,11 @@ export function getFilteredRequests(
 
     // selected day
     if (selectedDate) {
-      const requestDate = toLocalDateKey(request.createdAt);
+      const effectiveDate = request.status === 'completed'
+        ? (request.completedAt || request.scheduledAt || request.createdAt)
+        : (request.scheduledAt || request.createdAt);
+
+      const requestDate = toLocalDateKey(effectiveDate);
 
       if (requestDate !== selectedDate) {
         return false;

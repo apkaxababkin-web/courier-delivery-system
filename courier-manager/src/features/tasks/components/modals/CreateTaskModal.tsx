@@ -147,6 +147,7 @@ const stripGeneratedNutsCommentLines = (comments?: string) => String(comments ||
 const makeInitialFormData = (): LocalFormData => ({
   requestType: 'delivery',
   requestDate: getLocalDateKey(),
+  isHistoricalCompleted: false,
   extraPickupPoints: [],
   clientId: undefined,
   senderClientId: undefined,
@@ -936,7 +937,7 @@ export function CreateTaskModal({
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const { senderAddressDetails, senderClientId, recipientClientId, pickupRecipientClientId, pickupDirection, nutsBoxes, nutsTariff, cedroilTariff, extraPickupPoints, requestFiles, ...payload } = formData;
+    const { senderAddressDetails, senderClientId, recipientClientId, pickupRecipientClientId, pickupDirection, nutsBoxes, nutsTariff, cedroilTariff, extraPickupPoints, requestFiles, isHistoricalCompleted, ...payload } = formData;
     const isUniversalRequest = requestType !== 'nuts';
     const supportsExtraPickupPoints = (
       requestType === 'delivery'
@@ -996,6 +997,7 @@ export function CreateTaskModal({
     onSubmit({
       ...payload,
       requestType,
+      isHistoricalCompleted: Boolean(isHistoricalCompleted),
       senderAddress: isUniversalRequest ? universalSenderAddress : (nutsSenderAddress || payload.senderAddress),
       recipientName: isUniversalRequest ? (payload.recipientName || '') : (payload.recipientName || payload.senderName || ''),
       recipientPhone: isUniversalRequest ? (payload.recipientPhone || '') : (payload.recipientPhone || payload.senderPhone || ''),
@@ -1071,6 +1073,7 @@ export function CreateTaskModal({
                 onChange={(value) => updateField('requestDate', value)}
                 required={!allFieldsOptional}
               />
+
               {requestType !== 'nuts' && (
                 <>
                   <Field
@@ -1082,6 +1085,29 @@ export function CreateTaskModal({
                   <Field label="Время от" type="time" value={formData.deliveryTimeFrom || ''} onChange={(value) => updateField('deliveryTimeFrom', value)} />
                   <Field label="Время до" type="time" value={formData.deliveryTimeTo || ''} onChange={(value) => updateField('deliveryTimeTo', value)} />
                 </>
+              )}
+
+              {mode === 'create' && requestType !== 'nuts' && (
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 md:col-start-3">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formData.isHistoricalCompleted)}
+                    onChange={(event) => updateField(
+                      'isHistoricalCompleted',
+                      event.target.checked,
+                    )}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-slate-800">
+                      Заявка уже выполнена
+                    </span>
+                    <span className="block text-xs leading-4 text-slate-500">
+                      Сохранить сразу в выполненные на выбранную дату
+                    </span>
+                  </span>
+                </label>
               )}
             </div>
           </Section>

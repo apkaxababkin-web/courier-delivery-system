@@ -680,6 +680,8 @@ export interface Request {
   deliveryTimeFrom?: string;
   deliveryTimeTo?: string;
   estimatedMinutes?: number;
+  scheduledAt?: string | null;
+  completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -711,6 +713,10 @@ export async function getRequestById(id: number): Promise<Request | null> {
 
 export async function updateRequestStatus(id: number, status: Request['status']): Promise<void> {
   await trpcPost('requests.updateStatus', { id, status }, { success: true });
+}
+
+export async function updateRequestClient(id: number, clientId: number | null): Promise<void> {
+  await trpcPost('requests.updateClient', { id, clientId }, { success: true });
 }
 
 export interface RequestAttachment {
