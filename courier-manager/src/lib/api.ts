@@ -129,6 +129,107 @@ export async function deleteClient(id: number): Promise<void> {
 }
 
 
+export interface ClientPortalProfile {
+  account: {
+    id: number;
+    clientId: number;
+    ownerName: string;
+    login: string;
+    role: string;
+    lastLoginAt?: string | null;
+  };
+  client: {
+    id: number;
+    name: string;
+    address: string;
+    contactPerson?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  };
+}
+
+export interface ClientPortalLoginResult extends ClientPortalProfile {
+  token: string;
+}
+
+async function clientPortalJson<T>(
+  url: string,
+  options?: RequestInit,
+): Promise<T> {
+  const token = localStorage.getItem('clientPortalToken');
+  const headers = new Headers(options?.headers);
+
+  if (!headers.has('Content-Type') && options?.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  const data = await readJson(response);
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message
+      || data?.error
+      || 'Ошибка клиентского кабинета',
+    );
+  }
+
+  return data as T;
+}
+
+export async function loginClientPortal(
+  login: string,
+  password: string,
+): Promise<ClientPortalLoginResult> {
+  return await clientPortalJson<ClientPortalLoginResult>(
+    '/api/client-portal/login',
+    {
+      method: 'POST',
+      body: JSON.stringify({ login, password }),
+    },
+  );
+}
+
+export async function getClientPortalProfile():
+Promise<ClientPortalProfile> {
+  return await clientPortalJson<ClientPortalProfile>(
+    '/api/client-portal/me',
+  );
+}
+
+export async function getClientPortalRequests():
+Promise<Request[]> {
+  return await clientPortalJson<Request[]>(
+    '/api/client-portal/requests',
+  );
+}
+
+export interface ClientPortalHemotestReconciliation {
+  items: HemotestReconciliationItem[];
+  tariffs: {
+    pointPrice: number;
+    sundayFirstPointPrice: number;
+    sundayNextPointPrice: number;
+  };
+}
+
+export async function getClientPortalHemotestReconciliation():
+Promise<ClientPortalHemotestReconciliation> {
+  return await clientPortalJson<ClientPortalHemotestReconciliation>(
+    '/api/client-portal/hemotest-reconciliation',
+  );
+}
+
 export interface ClientPortalAccount {
   id: number;
   clientId: number;
@@ -301,6 +402,19 @@ export async function deleteClientRegularClient(id: number): Promise<void> {
   await restJson<{ success: boolean }>(`/api/manager/regular-clients/${id}`, {
     method: 'DELETE',
   });
+}
+
+export async function updateRequestDeliveryFee(
+  requestId: number,
+  deliveryFee: number | null,
+): Promise<{ success: boolean; request: Request }> {
+  return await restJson<{ success: boolean; request: Request }>(
+    `/api/manager/requests/${requestId}/delivery-fee`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ deliveryFee }),
+    },
+  );
 }
 
 export async function getClientTariffs(clientId: number): Promise<ClientTariffsDto> {
@@ -677,6 +791,7 @@ export interface Request {
   comments?: string;
   paymentMethod?: 'paid' | 'transfer' | 'cash' | 'terminal' | 'qr';
   paymentAmount?: number;
+  deliveryFee?: string | number | null;
   deliveryTimeFrom?: string;
   deliveryTimeTo?: string;
   estimatedMinutes?: number;

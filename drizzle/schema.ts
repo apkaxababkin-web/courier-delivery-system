@@ -595,6 +595,8 @@ export const requests = pgTable("requests", {
   paymentMethod: paymentMethodEnum("paymentMethod"),
   /** Payment amount in rubles */
   paymentAmount: decimal("paymentAmount", { precision: 10, scale: 2 }),
+  /** Final delivery fee approved by manager */
+  deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 }),
   /** Delivery time from (HH:MM) */
   deliveryTimeFrom: varchar("deliveryTimeFrom", { length: 5 }),
   /** Delivery time to (HH:MM) */

@@ -98,17 +98,62 @@ export default function ClientsViewV2() {
   }, []);
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('mig-client-reconciliation-delivery-fees');
-      if (!saved) return;
+    void (async () => {
+      try {
+        const saved = window.localStorage.getItem(
+          'mig-client-reconciliation-delivery-fees',
+        );
 
-      const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === 'object') {
-        setDeliveryFeesByRequestId(parsed as Record<number, string>);
+        if (!saved) return;
+
+        const parsed = JSON.parse(saved);
+
+        if (!parsed || typeof parsed !== 'object') return;
+
+        const values = parsed as Record<number, string>;
+        setDeliveryFeesByRequestId(values);
+
+        const entries = Object.entries(values)
+          .map(([requestId, rawValue]) => ({
+            requestId: Number(requestId),
+            deliveryFee: Number(String(rawValue).replace(',', '.')),
+          }))
+          .filter(
+            (item) =>
+              Number.isInteger(item.requestId)
+              && item.requestId > 0
+              && Number.isFinite(item.deliveryFee)
+              && item.deliveryFee >= 0,
+          );
+
+        if (entries.length === 0) return;
+
+        await Promise.all(
+          entries.map((item) =>
+            api.updateRequestDeliveryFee(
+              item.requestId,
+              item.deliveryFee,
+            ),
+          ),
+        );
+
+        window.localStorage.removeItem(
+          'mig-client-reconciliation-delivery-fees',
+        );
+
+        setDeliveryFeesByRequestId({});
+        await loadRequests();
+
+        console.info(
+          `Перенесено сумм доставки в БД: ${entries.length}`,
+        );
+      } catch (error) {
+        console.error(
+          'Не удалось перенести стоимости доставки в БД',
+          error,
+        );
       }
-    } catch {
-      setDeliveryFeesByRequestId({});
-    }
+    })();
   }, []);
 
   async function loadMails() {
@@ -270,7 +315,11 @@ export default function ClientsViewV2() {
       setPortalForm((value) => ({ ...value, password: '' }));
     } catch (error) {
       console.error(error);
-      alert('Ошибка при создании доступа. Возможно, такой логин уже существует.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Ошибка при создании доступа',
+      );
     } finally {
       setIsCreatingPortalAccess(false);
     }
@@ -830,10 +879,19 @@ export default function ClientsViewV2() {
   }
 
   function getDeliveryFeeForRequest(request: Request): number {
-    const manual = deliveryFeesByRequestId[request.id];
-    if (manual) {
-      const value = Number(String(manual).replace(',', '.'));
-      if (Number.isFinite(value) && value > 0) return value;
+    const editingValue = deliveryFeesByRequestId[request.id];
+
+    if (editingValue !== undefined && editingValue !== '') {
+      const value = Number(String(editingValue).replace(',', '.'));
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+
+    const storedValue = Number(
+      String(request.deliveryFee ?? '').replace(',', '.'),
+    );
+
+    if (Number.isFinite(storedValue) && request.deliveryFee != null) {
+      return storedValue;
     }
 
     return getRequestTariff(request);
@@ -842,10 +900,137 @@ export default function ClientsViewV2() {
   function handleDeliveryFeeChange(requestId: number, value: string) {
     setDeliveryFeesByRequestId((current) => {
       const next = { ...current, [requestId]: value };
-      window.localStorage.setItem('mig-client-reconciliation-delivery-fees', JSON.stringify(next));
+
+      window.localStorage.setItem(
+        'mig-client-reconciliation-delivery-fees',
+        JSON.stringify(next),
+      );
+
       return next;
     });
   }
+
+  async function handleDeliveryFeeSave(
+    requestId: number,
+    value: string,
+  ) {
+    const normalized = value.trim().replace(',', '.');
+    const parsed = normalized === '' ? null : Number(normalized);
+
+    if (
+      parsed !== null
+      && (!Number.isFinite(parsed) || parsed < 0)
+    ) {
+      alert('Введите корректную стоимость доставки');
+      return;
+    }
+
+    try {
+      const result = await api.updateRequestDeliveryFee(
+        requestId,
+        parsed,
+      );
+
+      setRequests((current) =>
+        current.map((request) =>
+          request.id === requestId
+            ? {
+                ...request,
+                deliveryFee: result.request.deliveryFee,
+              }
+            : request,
+        ),
+      );
+
+      setDeliveryFeesByRequestId((current) => {
+        const next = { ...current };
+        delete next[requestId];
+
+        if (Object.keys(next).length === 0) {
+          window.localStorage.removeItem(
+            'mig-client-reconciliation-delivery-fees',
+          );
+        } else {
+          window.localStorage.setItem(
+            'mig-client-reconciliation-delivery-fees',
+            JSON.stringify(next),
+          );
+        }
+
+        return next;
+      });
+    } catch (error) {
+      console.error(error);
+      alert('Не удалось сохранить стоимость доставки');
+    }
+  }
+
+  useEffect(() => {
+    if (!selected || selectedClientSection !== 'reconciliation') return;
+
+    const missingFees = requests
+      .filter((request) => request.status === 'completed')
+      .filter((request) => requestBelongsToClient(request, selected))
+      .filter(
+        (request) =>
+          request.deliveryFee === null
+          || request.deliveryFee === undefined
+          || request.deliveryFee === '',
+      )
+      .map((request) => ({
+        requestId: request.id,
+        deliveryFee: getDeliveryFeeForRequest(request),
+      }))
+      .filter(
+        (item) =>
+          Number.isFinite(item.deliveryFee)
+          && item.deliveryFee >= 0,
+      );
+
+    if (missingFees.length === 0) return;
+
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          missingFees.map((item) =>
+            api.updateRequestDeliveryFee(
+              item.requestId,
+              item.deliveryFee,
+            ),
+          ),
+        );
+
+        const updatedById = new Map(
+          results.map((result) => [
+            result.request.id,
+            result.request.deliveryFee,
+          ]),
+        );
+
+        setRequests((current) =>
+          current.map((request) =>
+            updatedById.has(request.id)
+              ? {
+                  ...request,
+                  deliveryFee: updatedById.get(request.id),
+                }
+              : request,
+          ),
+        );
+      } catch (error) {
+        console.error(
+          'Не удалось автоматически сохранить стоимости доставки',
+          error,
+        );
+      }
+    })();
+  }, [
+    selected,
+    selectedClientSection,
+    requests,
+    clientTariffs,
+    deliveryFeesByRequestId,
+  ]);
 
   function escapeHtml(value: unknown): string {
     const text = value == null ? '' : String(value);
@@ -1534,8 +1719,26 @@ export default function ClientsViewV2() {
                             type="number"
                             min="0"
                             step="50"
-                            value={deliveryFeesByRequestId[request.id] ?? (getRequestTariff(request) || '')}
-                            onChange={(event) => handleDeliveryFeeChange(request.id, event.target.value)}
+                            value={
+                              deliveryFeesByRequestId[request.id]
+                              ?? (
+                                request.deliveryFee
+                                ?? getRequestTariff(request)
+                                ?? ''
+                              )
+                            }
+                            onChange={(event) =>
+                              handleDeliveryFeeChange(
+                                request.id,
+                                event.target.value,
+                              )
+                            }
+                            onBlur={(event) =>
+                              void handleDeliveryFeeSave(
+                                request.id,
+                                event.target.value,
+                              )
+                            }
                             placeholder="0"
                             className="h-10 w-32 rounded-xl border border-slate-200 bg-white px-3 text-right text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400"
                           />

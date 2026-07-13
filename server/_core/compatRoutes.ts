@@ -4,11 +4,15 @@ import { isExpoPushToken, sendExpoPush } from "./expoPush";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
+import { SignJWT, jwtVerify } from "jose";
 
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import {
   clientPoints,
   clientRegularClients,
+  clientPortalAccounts,
+  clients,
   partners,
   transportCompanies,
   couriers,
@@ -605,7 +609,330 @@ async function courierIdFromReq(req: Request): Promise<number | null> {
   return payload?.courierId ?? null;
 }
 
+const CLIENT_PORTAL_JWT_SECRET = new TextEncoder().encode(
+  process.env.CLIENT_PORTAL_JWT_SECRET
+    ?? process.env.JWT_SECRET
+    ?? "client-portal-secret-key-change-in-production",
+);
+
+const CLIENT_PORTAL_TOKEN_EXPIRY = "30d";
+
+async function signClientPortalToken(
+  accountId: number,
+  clientId: number,
+): Promise<string> {
+  return new SignJWT({
+    accountId,
+    clientId,
+    type: "client_portal",
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(CLIENT_PORTAL_TOKEN_EXPIRY)
+    .sign(CLIENT_PORTAL_JWT_SECRET);
+}
+
+async function verifyClientPortalToken(token: string): Promise<{
+  accountId: number;
+  clientId: number;
+} | null> {
+  try {
+    const { payload } = await jwtVerify(
+      token,
+      CLIENT_PORTAL_JWT_SECRET,
+    );
+
+    if (
+      payload.type !== "client_portal"
+      || typeof payload.accountId !== "number"
+      || typeof payload.clientId !== "number"
+    ) {
+      return null;
+    }
+
+    return {
+      accountId: payload.accountId,
+      clientId: payload.clientId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clientPortalBearerToken(req: Request): string {
+  const header = req.headers.authorization;
+
+  if (!header?.startsWith("Bearer ")) {
+    return "";
+  }
+
+  return header.slice("Bearer ".length).trim();
+}
+
+async function requireClientPortalAccount(req: Request) {
+  const token = clientPortalBearerToken(req);
+
+  if (!token) {
+    throw new Error("Требуется авторизация");
+  }
+
+  const payload = await verifyClientPortalToken(token);
+
+  if (!payload) {
+    throw new Error("Недействительный токен");
+  }
+
+  const conn = await db.getDb();
+
+  if (!conn) {
+    throw new Error("Database not available");
+  }
+
+  const accountRows = await conn
+    .select()
+    .from(clientPortalAccounts)
+    .where(eq(clientPortalAccounts.id, payload.accountId))
+    .limit(1);
+
+  const account = accountRows[0];
+
+  if (
+    !account
+    || !account.isActive
+    || account.clientId !== payload.clientId
+  ) {
+    throw new Error("Аккаунт клиента недоступен");
+  }
+
+  const clientRows = await conn
+    .select()
+    .from(clients)
+    .where(eq(clients.id, account.clientId))
+    .limit(1);
+
+  const client = clientRows[0];
+
+  if (!client) {
+    throw new Error("Клиент не найден");
+  }
+
+  return { account, client };
+}
+
 export function registerCompatRoutes(app: Express) {
+  app.post("/api/client-portal/login", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+
+      if (!conn) {
+        throw new Error("Database not available");
+      }
+
+      const login = String(req.body?.login || "")
+        .trim()
+        .toLowerCase();
+
+      const password = String(req.body?.password || "");
+
+      if (!login || !password) {
+        res.status(400).json({
+          error: "Введите логин и пароль",
+        });
+        return;
+      }
+
+      const accountRows = await conn
+        .select()
+        .from(clientPortalAccounts)
+        .where(sql`lower(${clientPortalAccounts.login}) = ${login}`)
+        .limit(1);
+
+      const account = accountRows[0];
+
+      if (!account) {
+        res.status(401).json({
+          error: "Неверный логин или пароль",
+        });
+        return;
+      }
+
+      if (!account.isActive) {
+        res.status(403).json({
+          error: "Аккаунт клиента отключён",
+        });
+        return;
+      }
+
+      const passwordValid = await bcrypt.compare(
+        password,
+        account.passwordHash,
+      );
+
+      if (!passwordValid) {
+        res.status(401).json({
+          error: "Неверный логин или пароль",
+        });
+        return;
+      }
+
+      const clientRows = await conn
+        .select()
+        .from(clients)
+        .where(eq(clients.id, account.clientId))
+        .limit(1);
+
+      const client = clientRows[0];
+
+      if (!client) {
+        throw new Error("Клиент не найден");
+      }
+
+      const token = await signClientPortalToken(
+        account.id,
+        account.clientId,
+      );
+
+      await conn
+        .update(clientPortalAccounts)
+        .set({
+          lastLoginAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(clientPortalAccounts.id, account.id));
+
+      res.json({
+        token,
+        account: {
+          id: account.id,
+          clientId: account.clientId,
+          ownerName: account.ownerName,
+          login: account.login,
+          role: account.role,
+        },
+        client: {
+          id: client.id,
+          name: client.name,
+          address: client.address,
+          contactPerson: client.contactPerson,
+          phone: client.phone,
+          email: client.email,
+        },
+      });
+    } catch (error) {
+      sendError(res, error, "Failed to login client portal");
+    }
+  });
+
+  app.get("/api/client-portal/me", async (req, res) => {
+    try {
+      const { account, client } =
+        await requireClientPortalAccount(req);
+
+      res.json({
+        account: {
+          id: account.id,
+          clientId: account.clientId,
+          ownerName: account.ownerName,
+          login: account.login,
+          role: account.role,
+          lastLoginAt: account.lastLoginAt,
+        },
+        client: {
+          id: client.id,
+          name: client.name,
+          address: client.address,
+          contactPerson: client.contactPerson,
+          phone: client.phone,
+          email: client.email,
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unauthorized";
+
+      res.status(401).json({ error: message });
+    }
+  });
+
+  app.get("/api/client-portal/requests", async (req, res) => {
+    try {
+      const { account } =
+        await requireClientPortalAccount(req);
+
+      const rows = await requestRows();
+
+      res.json(
+        rows.filter(
+          (request: DeliveryRequest & {
+            courierName?: string | null;
+          }) => request.clientId === account.clientId,
+        ),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unauthorized";
+
+      res.status(401).json({ error: message });
+    }
+  });
+
+  app.get("/api/client-portal/hemotest-reconciliation", async (req, res) => {
+    try {
+      const { account } =
+        await requireClientPortalAccount(req);
+
+      if (account.clientId !== 6) {
+        res.status(403).json({
+          error: "Сверка Гемотест недоступна",
+        });
+        return;
+      }
+
+      const conn = await db.getDb();
+
+      if (!conn) {
+        throw new Error("Database not available");
+      }
+
+      const items = await hemotestReconciliationRows();
+
+      const tariffResult = await conn.execute(sql`
+        SELECT
+          "hemotestPointPrice",
+          "hemotestSundayFirstPointPrice",
+          "hemotestSundayNextPointPrice"
+        FROM "clientTariffs"
+        WHERE "clientId" = ${account.clientId}
+        ORDER BY "id" DESC
+        LIMIT 1
+      `) as any;
+
+      const tariffRow = Array.isArray(tariffResult)
+        ? tariffResult[0]
+        : tariffResult?.rows?.[0];
+
+      res.json({
+        items,
+        tariffs: {
+          pointPrice: Number(tariffRow?.hemotestPointPrice ?? 0),
+          sundayFirstPointPrice: Number(
+            tariffRow?.hemotestSundayFirstPointPrice ?? 0,
+          ),
+          sundayNextPointPrice: Number(
+            tariffRow?.hemotestSundayNextPointPrice ?? 0,
+          ),
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Не удалось загрузить сверку Гемотест";
+
+      res.status(401).json({ error: message });
+    }
+  });
+
   // Маршруты браузерного расширения для уже доставленных писем.
   app.get("/api/extension/checkpoints", async (_req: Request, res: Response) => {
     try {
@@ -1366,6 +1693,305 @@ export function registerCompatRoutes(app: Express) {
     } catch (error) { sendError(res, error, "Failed to assign manager task courier"); }
   });
 
+
+  app.get("/api/manager/clients/:clientId/portal-accounts", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.clientId);
+
+      if (!clientId) {
+        return res.status(400).json({
+          error: { message: "Некорректный ID клиента" },
+        });
+      }
+
+      const rows = await conn
+        .select()
+        .from(clientPortalAccounts)
+        .where(eq(clientPortalAccounts.clientId, clientId))
+        .orderBy(desc(clientPortalAccounts.createdAt));
+
+      res.json(
+        rows.map((account: typeof rows[number]) => ({
+          ...account,
+          passwordHash: undefined,
+        })),
+      );
+    } catch (error) {
+      sendError(res, error, "Failed to load client portal accounts");
+    }
+  });
+
+  app.post("/api/manager/clients/:clientId/portal-accounts", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const clientId = Number(req.params.clientId);
+      const ownerName = String(req.body?.ownerName || "").trim();
+      const login = String(req.body?.login || "").trim().toLowerCase();
+      const requestedPassword = String(req.body?.password || "");
+      const role = String(req.body?.role || "owner").trim() || "owner";
+
+      if (!clientId) {
+        return res.status(400).json({
+          error: { message: "Некорректный ID клиента" },
+        });
+      }
+
+      if (!ownerName) {
+        return res.status(400).json({
+          error: { message: "Укажите ФИО руководителя" },
+        });
+      }
+
+      if (!login) {
+        return res.status(400).json({
+          error: { message: "Укажите логин" },
+        });
+      }
+
+      const clientRows = await conn
+        .select({ id: clients.id })
+        .from(clients)
+        .where(eq(clients.id, clientId))
+        .limit(1);
+
+      if (!clientRows[0]) {
+        return res.status(404).json({
+          error: { message: "Клиент не найден" },
+        });
+      }
+
+      const duplicateRows = await conn
+        .select({ id: clientPortalAccounts.id })
+        .from(clientPortalAccounts)
+        .where(sql`lower(${clientPortalAccounts.login}) = ${login}`)
+        .limit(1);
+
+      if (duplicateRows[0]) {
+        return res.status(409).json({
+          error: { message: "Такой логин уже используется" },
+        });
+      }
+
+      const generatedPassword = requestedPassword || crypto
+        .randomBytes(9)
+        .toString("base64url")
+        .slice(0, 12);
+
+      if (generatedPassword.length < 6) {
+        return res.status(400).json({
+          error: { message: "Пароль должен содержать минимум 6 символов" },
+        });
+      }
+
+      const passwordHash = await bcrypt.hash(generatedPassword, 10);
+
+      const inserted = await conn
+        .insert(clientPortalAccounts)
+        .values({
+          clientId,
+          ownerName,
+          login,
+          passwordHash,
+          temporaryPassword: generatedPassword,
+          role,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      const account = inserted[0];
+
+      if (!account) {
+        throw new Error("Не удалось создать доступ");
+      }
+
+      res.status(201).json({
+        id: account.id,
+        clientId: account.clientId,
+        ownerName: account.ownerName,
+        login: account.login,
+        temporaryPassword: generatedPassword,
+        role: account.role,
+        isActive: account.isActive,
+        lastLoginAt: account.lastLoginAt,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+      });
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        return res.status(409).json({
+          error: { message: "Такой логин уже используется" },
+        });
+      }
+
+      sendError(res, error, "Failed to create client portal account");
+    }
+  });
+
+  app.post("/api/manager/client-portal-accounts/:id/reset-password", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const accountId = Number(req.params.id);
+
+      if (!accountId) {
+        return res.status(400).json({
+          error: { message: "Некорректный ID аккаунта" },
+        });
+      }
+
+      const generatedPassword = crypto
+        .randomBytes(9)
+        .toString("base64url")
+        .slice(0, 12);
+
+      const passwordHash = await bcrypt.hash(generatedPassword, 10);
+
+      const updated = await conn
+        .update(clientPortalAccounts)
+        .set({
+          passwordHash,
+          temporaryPassword: generatedPassword,
+          updatedAt: new Date(),
+        })
+        .where(eq(clientPortalAccounts.id, accountId))
+        .returning();
+
+      const account = updated[0];
+
+      if (!account) {
+        return res.status(404).json({
+          error: { message: "Аккаунт не найден" },
+        });
+      }
+
+      res.json({
+        id: account.id,
+        clientId: account.clientId,
+        ownerName: account.ownerName,
+        login: account.login,
+        temporaryPassword: generatedPassword,
+        role: account.role,
+        isActive: account.isActive,
+        lastLoginAt: account.lastLoginAt,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+      });
+    } catch (error) {
+      sendError(res, error, "Failed to reset client portal password");
+    }
+  });
+
+  app.put("/api/manager/client-portal-accounts/:id/active", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const accountId = Number(req.params.id);
+      const isActive = req.body?.isActive === true;
+
+      if (!accountId) {
+        return res.status(400).json({
+          error: { message: "Некорректный ID аккаунта" },
+        });
+      }
+
+      const updated = await conn
+        .update(clientPortalAccounts)
+        .set({
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(clientPortalAccounts.id, accountId))
+        .returning();
+
+      const account = updated[0];
+
+      if (!account) {
+        return res.status(404).json({
+          error: { message: "Аккаунт не найден" },
+        });
+      }
+
+      res.json({
+        id: account.id,
+        clientId: account.clientId,
+        ownerName: account.ownerName,
+        login: account.login,
+        temporaryPassword: account.temporaryPassword,
+        role: account.role,
+        isActive: account.isActive,
+        lastLoginAt: account.lastLoginAt,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+      });
+    } catch (error) {
+      sendError(res, error, "Failed to update client portal account");
+    }
+  });
+
+  app.put("/api/manager/requests/:id/delivery-fee", async (req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const requestId = Number(req.params.id);
+      if (!requestId) {
+        return res.status(400).json({
+          error: { message: "Некорректный ID заявки" },
+        });
+      }
+
+      const rawValue = req.body?.deliveryFee;
+      let deliveryFee: string | null = null;
+
+      if (rawValue !== null && rawValue !== undefined && rawValue !== "") {
+        const numericValue = Number(String(rawValue).replace(",", "."));
+
+        if (!Number.isFinite(numericValue) || numericValue < 0) {
+          return res.status(400).json({
+            error: { message: "Некорректная стоимость доставки" },
+          });
+        }
+
+        deliveryFee = numericValue.toFixed(2);
+      }
+
+      const updated = await conn
+        .update(requests)
+        .set({
+          deliveryFee,
+          updatedAt: new Date(),
+        })
+        .where(eq(requests.id, requestId))
+        .returning();
+
+      if (!updated[0]) {
+        return res.status(404).json({
+          error: { message: "Заявка не найдена" },
+        });
+      }
+
+      broadcastLive("requests_changed", {
+        requestId,
+        deliveryFee,
+      });
+
+      res.json({
+        success: true,
+        request: updated[0],
+      });
+    } catch (error) {
+      sendError(res, error, "Failed to update request delivery fee");
+    }
+  });
 
   app.get("/api/manager/requests/:id/attachments", async (req, res) => {
     try {
