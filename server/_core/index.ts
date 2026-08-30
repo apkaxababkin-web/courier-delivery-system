@@ -8,6 +8,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
+import { mirrorLegacyChatMessageToV2, registerChatV2Routes } from "./chatV2Routes";
 import { sendExpoPush } from "./expoPush";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
@@ -73,6 +74,7 @@ function truncatePushText(value: string, max = 120) {
 
 async function sendManagerChatPushToCouriers(message: {
   id?: number | null;
+  senderId?: number | null;
   senderName?: string | null;
   senderRole?: string | null;
   text?: string | null;
@@ -85,7 +87,7 @@ async function sendManagerChatPushToCouriers(message: {
     const targets = allCouriers.filter((courier) => {
       const token = courier.pushToken || "";
       const hasExpoToken = token.startsWith("ExponentPushToken") || token.startsWith("ExpoPushToken");
-      const isSenderCourier = senderRole === "courier" && courier.name === senderName;
+      const isSenderCourier = senderRole === "courier" && courier.id === Number(message.senderId || 0);
       return hasExpoToken && !isSenderCourier;
     });
     const body = truncatePushText(`${senderName}: ${String(message.text || "").trim()}`, 120);
@@ -151,7 +153,7 @@ async function startServer() {
     if (origin && isAllowedOrigin) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header("Access-Control-Allow-Credentials", "true");
-      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       res.header(
         "Access-Control-Allow-Headers",
         "Origin, X-Requested-With, Content-Type, Accept, Authorization",
@@ -252,6 +254,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
 }
 
   registerCompatRoutes(app);
+  registerChatV2Routes(app);
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
@@ -291,11 +294,27 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
       await ensureManagerChatTable(conn);
 
       const text = String(req.body?.text || "").trim();
-      const senderName = String(req.body?.senderName || "Менеджер").trim().slice(0, 255) || "Менеджер";
-      const senderRole = String(req.body?.senderRole || "manager").trim().slice(0, 40) || "manager";
+      const managerId = Number(res.locals.manager?.managerId || 0);
+      const courierId = Number(res.locals.courier?.courierId || 0);
+      const actor = managerId
+        ? await db.getManagerById(managerId)
+        : courierId
+          ? await db.getCourierById(courierId)
+          : null;
+      if (!actor?.isActive) {
+        res.status(403).json({ error: { message: "Chat account is unavailable" } });
+        return;
+      }
+      const senderName = actor.name;
+      const senderRole = managerId ? "manager" : "courier";
+      const senderId = managerId || courierId;
 
       if (!text) {
         res.status(400).json({ error: { message: "Message text is required" } });
+        return;
+      }
+      if (text.length > 4000) {
+        res.status(400).json({ error: { message: "Message is too long" } });
         return;
       }
 
@@ -308,7 +327,15 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
       const rawMessage = normalizeSqlRows(result)[0] || { success: true };
       const message = normalizeChatMessageRow(rawMessage);
       broadcastLive("chat_changed", { messageId: rawMessage.id, senderRole: rawMessage.senderRole });
-      void sendManagerChatPushToCouriers(rawMessage);
+      void mirrorLegacyChatMessageToV2({
+        id: Number(rawMessage.id),
+        senderType: senderRole,
+        senderId,
+        senderName,
+        text,
+        createdAt: rawMessage.createdAt,
+      });
+      void sendManagerChatPushToCouriers({ ...rawMessage, senderId });
       res.json(message);
     } catch (error) {
       console.error("[manager.chat.send] failed", error);

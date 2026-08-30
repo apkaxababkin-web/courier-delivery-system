@@ -689,6 +689,139 @@ export const managers = pgTable("managers", {
 export type Manager = typeof managers.$inferSelect;
 export type InsertManager = typeof managers.$inferInsert;
 
+// --- Chat V2 ---------------------------------------------------------------
+
+/**
+ * Conversations for the shared chat and private manager/courier dialogs.
+ * Participant identity is polymorphic because managers and couriers live in
+ * separate account tables.
+ */
+export const chatV2Conversations = pgTable(
+  "chatV2Conversations",
+  {
+    id: serial("id").primaryKey(),
+    kind: varchar("kind", { length: 20 }).notNull(), // general | direct
+    title: varchar("title", { length: 255 }).notNull(),
+    slug: varchar("slug", { length: 80 }),
+    directKey: varchar("directKey", { length: 160 }),
+    createdByType: varchar("createdByType", { length: 20 }),
+    createdById: integer("createdById"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("chatV2Conversations_slug_key").on(table.slug),
+    unique("chatV2Conversations_directKey_key").on(table.directKey),
+    index("chatV2Conversations_updatedAt_idx").on(table.updatedAt),
+  ],
+);
+
+export type ChatV2Conversation = typeof chatV2Conversations.$inferSelect;
+export type InsertChatV2Conversation = typeof chatV2Conversations.$inferInsert;
+
+export const chatV2Participants = pgTable(
+  "chatV2Participants",
+  {
+    id: serial("id").primaryKey(),
+    conversationId: integer("conversationId").notNull(),
+    participantType: varchar("participantType", { length: 20 }).notNull(),
+    participantId: integer("participantId").notNull(),
+    lastReadMessageId: integer("lastReadMessageId"),
+    lastReadAt: timestamp("lastReadAt"),
+    isMuted: boolean("isMuted").default(false).notNull(),
+    joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("chatV2Participants_member_key").on(
+      table.conversationId,
+      table.participantType,
+      table.participantId,
+    ),
+    index("chatV2Participants_actor_idx").on(table.participantType, table.participantId),
+    index("chatV2Participants_conversation_idx").on(table.conversationId),
+  ],
+);
+
+export type ChatV2Participant = typeof chatV2Participants.$inferSelect;
+export type InsertChatV2Participant = typeof chatV2Participants.$inferInsert;
+
+export const chatV2Messages = pgTable(
+  "chatV2Messages",
+  {
+    id: serial("id").primaryKey(),
+    conversationId: integer("conversationId").notNull(),
+    senderType: varchar("senderType", { length: 20 }).notNull(),
+    senderId: integer("senderId"),
+    senderNameSnapshot: varchar("senderNameSnapshot", { length: 255 }).notNull(),
+    clientMessageId: varchar("clientMessageId", { length: 80 }),
+    text: text("text").notNull(),
+    replyToMessageId: integer("replyToMessageId"),
+    legacySource: varchar("legacySource", { length: 40 }),
+    legacySourceId: integer("legacySourceId"),
+    editedAt: timestamp("editedAt"),
+    deletedAt: timestamp("deletedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("chatV2Messages_client_key").on(
+      table.senderType,
+      table.senderId,
+      table.clientMessageId,
+    ),
+    unique("chatV2Messages_legacy_key").on(table.legacySource, table.legacySourceId),
+    index("chatV2Messages_conversation_id_idx").on(table.conversationId, table.id),
+    index("chatV2Messages_reply_idx").on(table.replyToMessageId),
+  ],
+);
+
+export type ChatV2Message = typeof chatV2Messages.$inferSelect;
+export type InsertChatV2Message = typeof chatV2Messages.$inferInsert;
+
+export const chatV2MessageReceipts = pgTable(
+  "chatV2MessageReceipts",
+  {
+    id: serial("id").primaryKey(),
+    messageId: integer("messageId").notNull(),
+    conversationId: integer("conversationId").notNull(),
+    participantType: varchar("participantType", { length: 20 }).notNull(),
+    participantId: integer("participantId").notNull(),
+    deliveredAt: timestamp("deliveredAt"),
+    readAt: timestamp("readAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("chatV2MessageReceipts_recipient_key").on(
+      table.messageId,
+      table.participantType,
+      table.participantId,
+    ),
+    index("chatV2MessageReceipts_recipient_idx").on(table.participantType, table.participantId),
+    index("chatV2MessageReceipts_conversation_idx").on(table.conversationId),
+  ],
+);
+
+export type ChatV2MessageReceipt = typeof chatV2MessageReceipts.$inferSelect;
+export type InsertChatV2MessageReceipt = typeof chatV2MessageReceipts.$inferInsert;
+
+export const chatV2Attachments = pgTable(
+  "chatV2Attachments",
+  {
+    id: serial("id").primaryKey(),
+    messageId: integer("messageId").notNull(),
+    originalName: varchar("originalName", { length: 255 }).notNull(),
+    storageKey: text("storageKey").notNull(),
+    fileUrl: text("fileUrl").notNull(),
+    mimeType: varchar("mimeType", { length: 255 }),
+    sizeBytes: integer("sizeBytes").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [index("chatV2Attachments_message_idx").on(table.messageId)],
+);
+
+export type ChatV2Attachment = typeof chatV2Attachments.$inferSelect;
+export type InsertChatV2Attachment = typeof chatV2Attachments.$inferInsert;
+
 // --- Runtime Chat Tables -----------------------------------------------------
 
 /**
