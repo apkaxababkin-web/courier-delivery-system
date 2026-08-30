@@ -118,13 +118,79 @@ function ManagerChatPanel() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [chatError, setChatError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const incomingMessageAudioRef = useRef<HTMLAudioElement | null>(null);
+  const knownMessageIdsRef = useRef<Set<number>>(new Set());
+  const chatInitializedRef = useRef(false);
 
   const managerName = localStorage.getItem('managerName') || 'Менеджер';
+
+  const playIncomingMessageSound = () => {
+    const audio = incomingMessageAudioRef.current;
+    if (!audio) return;
+
+    audio.currentTime = 0;
+    void audio.play().catch(() => {
+      // Браузер ещё не разрешил воспроизведение звука.
+    });
+  };
+
+  useEffect(() => {
+    const audio = new Audio('/sounds/chat-message.wav');
+    audio.preload = 'auto';
+    audio.volume = 0.75;
+    incomingMessageAudioRef.current = audio;
+
+    const unlockAudio = () => {
+      audio.volume = 0;
+
+      void audio.play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = 0.75;
+        })
+        .catch(() => {
+          audio.volume = 0.75;
+        });
+    };
+
+    window.addEventListener('pointerdown', unlockAudio, {
+      once: true,
+    });
+    window.addEventListener('keydown', unlockAudio, {
+      once: true,
+    });
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      audio.pause();
+      incomingMessageAudioRef.current = null;
+    };
+  }, []);
 
   const loadChatMessages = async () => {
     try {
       setChatError('');
       const data = await getChatMessages(120);
+
+      if (chatInitializedRef.current) {
+        const hasNewIncomingMessage = data.some(
+          message =>
+            !knownMessageIdsRef.current.has(message.id)
+            && message.senderRole !== 'manager',
+        );
+
+        if (hasNewIncomingMessage) {
+          playIncomingMessageSound();
+        }
+      }
+
+      for (const message of data) {
+        knownMessageIdsRef.current.add(message.id);
+      }
+
+      chatInitializedRef.current = true;
       setMessages(data);
     } catch (error) {
       setChatError(error instanceof Error ? error.message : 'Не удалось загрузить чат');
@@ -206,6 +272,7 @@ function ManagerChatPanel() {
         senderRole: 'manager',
       });
 
+      knownMessageIdsRef.current.add(message.id);
       setMessages((current) => [...current, message]);
       setDraft('');
     } catch (error) {
