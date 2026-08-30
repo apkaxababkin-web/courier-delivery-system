@@ -4,6 +4,8 @@ import { verifyCourierToken, verifyManagerToken } from "../routers";
 const MANAGER_TPRC_PREFIXES = [
   "managerTasks.",
   "managerMails.",
+  "managerHemotest.",
+  "managerSberbank.",
   "requests.",
   "clients.",
   "ai.",

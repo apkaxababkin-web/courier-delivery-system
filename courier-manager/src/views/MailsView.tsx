@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileSpreadsheet, MailPlus, MailCheck, Search } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, Loader2, MailPlus, MailCheck, RotateCcw, Search } from 'lucide-react';
 import * as api from '../lib/api';
 import * as XLSX from 'xlsx';
 import { formatLocalDate, formatLocalDateTime } from '../lib/local-time';
@@ -53,6 +53,22 @@ function getTodayDateKey(): string {
   return toDateKey(new Date());
 }
 
+function toDateTimeLocalValue(date: Date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return [
+    date.getFullYear(),
+    '-',
+    pad(date.getMonth() + 1),
+    '-',
+    pad(date.getDate()),
+    'T',
+    pad(date.getHours()),
+    ':',
+    pad(date.getMinutes()),
+  ].join('');
+}
+
 function isMailVisibleOnArchiveDate(mail: Mail, archiveDate: string): boolean {
   const createdDate = toDateKey(mail.createdAt);
   const deliveredDate = mail.deliveredAt ? toDateKey(mail.deliveredAt) : '';
@@ -87,6 +103,10 @@ function indexToColumn(index: number): string {
 export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const [mails, setMails] = useState<Mail[]>([]);
   const [loading, setLoading] = useState(false);
+  const [updatingMailId, setUpdatingMailId] = useState<number | null>(null);
+  const [completionMail, setCompletionMail] = useState<Mail | null>(null);
+  const [completionReceivedBy, setCompletionReceivedBy] = useState('');
+  const [completionDeliveredAt, setCompletionDeliveredAt] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showMappingForm, setShowMappingForm] = useState(false);
   const [fileData, setFileData] = useState<PreviewCell[][]>([]);
@@ -222,6 +242,71 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
     }
   };
 
+  const closeCompletionModal = () => {
+    if (updatingMailId !== null) return;
+    setCompletionMail(null);
+    setCompletionReceivedBy('');
+    setCompletionDeliveredAt('');
+  };
+
+  const handleToggleMailCompletion = async (mail: Mail) => {
+    if (mail.status === 'delivered') {
+      if (!window.confirm(`Вернуть письмо ${mail.waybillNumber} в работу?`)) return;
+
+      try {
+        setUpdatingMailId(mail.id);
+        await api.undoMailDeliveryByManager(mail.id);
+        await loadMails();
+      } catch (error) {
+        console.error('Failed to undo mail delivery:', error);
+        alert(`Ошибка при возврате письма: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+      } finally {
+        setUpdatingMailId(null);
+      }
+
+      return;
+    }
+
+    setCompletionMail(mail);
+    setCompletionReceivedBy(mail.recipientName || '');
+    setCompletionDeliveredAt(toDateTimeLocalValue());
+  };
+
+  const handleConfirmMailCompletion = async () => {
+    if (!completionMail) return;
+
+    const receivedBy = completionReceivedBy.trim();
+    const deliveredAt = new Date(completionDeliveredAt);
+
+    if (!receivedBy) {
+      alert('Укажите, кто получил письмо');
+      return;
+    }
+
+    if (!completionDeliveredAt || Number.isNaN(deliveredAt.getTime())) {
+      alert('Укажите корректные дату и время получения');
+      return;
+    }
+
+    try {
+      setUpdatingMailId(completionMail.id);
+      await api.markMailDeliveredByManager(
+        completionMail.id,
+        receivedBy,
+        deliveredAt.toISOString(),
+      );
+      await loadMails();
+      setCompletionMail(null);
+      setCompletionReceivedBy('');
+      setCompletionDeliveredAt('');
+    } catch (error) {
+      console.error('Failed to deliver mail:', error);
+      alert(`Ошибка при отметке письма: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      setUpdatingMailId(null);
+    }
+  };
+
   const filteredMails = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
@@ -292,9 +377,92 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
           />
         </div>
 
-        <MailsTable mails={filteredMails} loading={loading} compactTitle="Письма выбранного дня" />
+        <MailsTable mails={filteredMails} loading={loading} compactTitle="Письма выбранного дня" updatingMailId={updatingMailId} onToggleComplete={handleToggleMailCompletion} />
       </div>
 
+
+      {completionMail && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                  <MailCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-950">Письмо доставлено</h3>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Накладная {completionMail.waybillNumber}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleConfirmMailCompletion();
+              }}
+              className="space-y-4 p-5"
+            >
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  Кто получил *
+                </span>
+                <input
+                  type="text"
+                  value={completionReceivedBy}
+                  onChange={(event) => setCompletionReceivedBy(event.target.value)}
+                  className={inputClass}
+                  placeholder="ФИО или название организации"
+                  autoFocus
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  Дата и время получения *
+                </span>
+                <input
+                  type="datetime-local"
+                  value={completionDeliveredAt}
+                  onChange={(event) => setCompletionDeliveredAt(event.target.value)}
+                  className={inputClass}
+                  required
+                />
+              </label>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={closeCompletionModal}
+                  disabled={updatingMailId !== null}
+                  className={secondaryButtonClass}
+                >
+                  Отмена
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={
+                    updatingMailId !== null
+                    || !completionReceivedBy.trim()
+                    || !completionDeliveredAt
+                  }
+                  className={primaryButtonClass}
+                >
+                  {updatingMailId === completionMail.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CheckCircle2 className="h-4 w-4" />}
+                  Сохранить
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showManualForm && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
@@ -441,7 +609,7 @@ function MailCompletionProgress({
   );
 }
 
-function MailsTable({ mails, loading, compactTitle, showReportColumns = false }: { mails: Mail[]; loading: boolean; compactTitle: string; showReportColumns?: boolean }) {
+function MailsTable({ mails, loading, compactTitle, showReportColumns = false, updatingMailId = null, onToggleComplete }: { mails: Mail[]; loading: boolean; compactTitle: string; showReportColumns?: boolean; updatingMailId?: number | null; onToggleComplete?: (mail: Mail) => void }) {
   const deliveredCount = mails.filter((mail) => mail.status === 'delivered').length;
 
   return (
@@ -479,6 +647,7 @@ function MailsTable({ mails, loading, compactTitle, showReportColumns = false }:
                   </>
                 )}
                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Создано</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">Действия</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -512,6 +681,25 @@ function MailsTable({ mails, loading, compactTitle, showReportColumns = false }:
                       </>
                     )}
                     <td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{formatLocalDate(mail.createdAt)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        disabled={updatingMailId === mail.id || !onToggleComplete}
+                        onClick={() => onToggleComplete?.(mail)}
+                        className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-semibold shadow-sm transition disabled:cursor-wait disabled:opacity-60 ${
+                          mail.status === 'delivered'
+                            ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {updatingMailId === mail.id
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : mail.status === 'delivered'
+                            ? <RotateCcw className="h-3.5 w-3.5" />
+                            : <CheckCircle2 className="h-3.5 w-3.5" />}
+                        {mail.status === 'delivered' ? 'Вернуть' : 'Доставлено'}
+                      </button>
+                    </td>
                   </tr>
                 );
               })}

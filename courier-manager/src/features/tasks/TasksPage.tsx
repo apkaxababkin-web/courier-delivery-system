@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, CheckCircle2, Landmark, Mail, MapPin } from 'lucide-react';
+import { Activity, CheckCircle2, Landmark, Loader2, Mail, MapPin, RotateCcw } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -7,6 +7,7 @@ import {
   uploadRequestAttachment,
   parseRequestWithAI,
   assignRequestCourier,
+  updateRequestStatus,
   post,
   managerFetch,
 } from '../../lib/api';
@@ -54,6 +55,8 @@ const parseAiPaymentAmount = (value: unknown): number => {
 type CourierOption = { id: number; name: string; isActive?: boolean };
 type OperationPoint = {
   id: number;
+  pointId?: number;
+  courierId?: number | null;
   name: string;
   address: string;
   phone?: string;
@@ -202,6 +205,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [operationMode, setOperationMode] = useState<OperationMode>('requests');
   const [operationLists, setOperationLists] = useState<OperationList[]>([]);
   const [isOperationLoading, setIsOperationLoading] = useState(false);
+  const [updatingPickupKey, setUpdatingPickupKey] = useState<string | null>(null);
   const [hemotestDate, setHemotestDate] = useState(getTodayDate());
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const selectedDate = archiveDate || getTodayDate();
@@ -214,6 +218,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [isParsingAi, setIsParsingAi] = useState(false);
   const [isUpdatingRequest, setIsUpdatingRequest] = useState(false);
   const [assigningRequestId, setAssigningRequestId] = useState<number | null>(null);
+  const [updatingRequestStatusId, setUpdatingRequestStatusId] = useState<number | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<number | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [selectedRequestNumber, setSelectedRequestNumber] = useState<number | null>(null);
@@ -306,6 +311,46 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     }
   };
 
+  const handleTogglePickupCompletion = async (point: OperationPoint) => {
+    if (operationMode !== 'hemotest' && operationMode !== 'sberbank') return;
+
+    const pointId = point.pointId || point.id;
+    const courierId = point.courierId;
+
+    if (!courierId) {
+      alert('Сначала назначьте точке курьера');
+      return;
+    }
+
+    const pickup = getPickupMeta(point);
+    const procedure = operationMode === 'hemotest'
+      ? 'managerHemotest.setPickupStatus'
+      : 'managerSberbank.setPickupStatus';
+    const updateKey = `${operationMode}-${pointId}`;
+
+    try {
+      setUpdatingPickupKey(updateKey);
+
+      await trpcMutation(procedure, {
+        pointId,
+        courierId,
+        date: selectedDate,
+        isPicked: !pickup.isPicked,
+      });
+
+      if (operationMode === 'hemotest') {
+        await loadHemotestLists(false);
+      } else {
+        await loadSberbankLists(false);
+      }
+    } catch (error) {
+      console.error('Failed to update pickup completion:', error);
+      alert(`Ошибка при изменении отметки: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      setUpdatingPickupKey(null);
+    }
+  };
+
   const filteredRequests = getFilteredRequests(requests, selectedStatus, selectedDate, searchQuery);
   const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
@@ -331,6 +376,23 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
       alert(`Ошибка при назначении курьера: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
     } finally {
       setAssigningRequestId(null);
+    }
+  };
+
+  const handleToggleRequestCompletion = async (request: Request) => {
+    const nextStatus: Request['status'] = request.status === 'completed'
+      ? (request.courierId ? 'assigned' : 'pending')
+      : 'completed';
+
+    try {
+      setUpdatingRequestStatusId(request.id);
+      await updateRequestStatus(request.id, nextStatus);
+      await loadData(false);
+    } catch (error) {
+      console.error('Failed to update request completion:', error);
+      alert(`Ошибка при изменении статуса заявки: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      setUpdatingRequestStatusId(null);
     }
   };
 
@@ -528,7 +590,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
             window.dispatchEvent(new Event('mig-close-floating-ui'));
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
             setShowAiModal(true);
-          }} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
+          }} /> : <TasksTable requests={filteredRequests} couriers={couriers} isLoading={isLoading} assigningRequestId={assigningRequestId} updatingRequestStatusId={updatingRequestStatusId} deletingRequestId={deletingRequestId} onAssignCourier={handleAssignCourier} onToggleComplete={handleToggleRequestCompletion} onOpenRequest={handleOpenRequest} onDeleteRequest={handleDeleteRequest} />}
         </>
       ) : operationMode === 'mails' ? (
         <MailsView archiveDate={archiveDate} />
@@ -571,6 +633,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                     <th className="px-5 py-3 font-semibold">Статус</th>
                     <th className="px-5 py-3 font-semibold">Курьер</th>
                     <th className="px-5 py-3 font-semibold">Время</th>
+                    <th className="px-5 py-3 text-right font-semibold">Действия</th>
                   </tr>
                 </thead>
 
@@ -610,6 +673,26 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
                         <td className="whitespace-nowrap px-5 py-4 align-middle text-slate-500">
                           {pickupTime}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-4 text-right align-middle">
+                          <button
+                            type="button"
+                            disabled={updatingPickupKey === `${operationMode}-${point.pointId || point.id}`}
+                            onClick={() => handleTogglePickupCompletion(point)}
+                            className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-semibold shadow-sm transition disabled:cursor-wait disabled:opacity-60 ${
+                              pickup.isPicked
+                                ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            }`}
+                            title={!point.courierId ? 'Сначала назначьте курьера' : undefined}
+                          >
+                            {updatingPickupKey === `${operationMode}-${point.pointId || point.id}`
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : pickup.isPicked
+                                ? <RotateCcw className="h-3.5 w-3.5" />
+                                : <CheckCircle2 className="h-3.5 w-3.5" />}
+                            {pickup.isPicked ? 'Вернуть' : 'Забрано'}
+                          </button>
                         </td>
                       </tr>
                     );

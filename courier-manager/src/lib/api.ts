@@ -757,6 +757,26 @@ export async function bulkCreateMails(mails: Array<Omit<Mail, 'id' | 'createdAt'
   return await trpcPost('managerMails.bulkCreate', { mails }, { created: 0, skipped: 0, errors: [] });
 }
 
+export async function markMailDeliveredByManager(
+  mailId: number,
+  recipientSignature: string,
+  deliveredAt: string,
+): Promise<void> {
+  await trpcPost(
+    'managerMails.deliver',
+    { mailId, recipientSignature, deliveredAt },
+    { success: true },
+  );
+}
+
+export async function undoMailDeliveryByManager(mailId: number): Promise<void> {
+  await trpcPost(
+    'managerMails.undoDelivery',
+    { mailId },
+    { success: true },
+  );
+}
+
 // ─── Requests API (multi-type requests) ─────────────────────────────────────
 
 export interface Request {

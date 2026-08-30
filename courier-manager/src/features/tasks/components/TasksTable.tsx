@@ -1,4 +1,4 @@
-import { FileText, Loader2, Trash2 } from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import { AppSelect } from '../../../components/AppSelect';
 import type { Request } from '../model/types';
 import { getStatusLabel, getStatusBadgeClass, getStatusIcon } from '../model/stats';
@@ -14,8 +14,10 @@ interface TasksTableProps {
   couriers?: CourierOption[];
   isLoading?: boolean;
   assigningRequestId?: number | null;
+  updatingRequestStatusId?: number | null;
   deletingRequestId?: number | null;
   onAssignCourier?: (requestId: number, courierId: number | null) => void;
+  onToggleComplete?: (request: Request) => void;
   onOpenRequest?: (request: Request, displayNumber: number) => void;
   onDeleteRequest?: (request: Request, displayNumber: number) => void;
 }
@@ -73,8 +75,10 @@ export function TasksTable({
   couriers = [],
   isLoading,
   assigningRequestId = null,
+  updatingRequestStatusId = null,
   deletingRequestId = null,
   onAssignCourier,
+  onToggleComplete,
   onOpenRequest,
   onDeleteRequest,
 }: TasksTableProps) {
@@ -141,6 +145,7 @@ export function TasksTable({
             {requests.map((request, index) => {
               const displayNumber = index + 1;
               const isDeleting = deletingRequestId === request.id;
+              const isUpdatingStatus = updatingRequestStatusId === request.id;
 
               return (
                 <tr
@@ -193,6 +198,24 @@ export function TasksTable({
                   </td>
 
                   <td className="whitespace-nowrap px-5 py-4 text-right align-middle" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      disabled={isUpdatingStatus}
+                      onClick={() => onToggleComplete?.(request)}
+                      className={`mr-2 inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-semibold shadow-sm transition disabled:cursor-wait disabled:opacity-60 ${
+                        request.status === 'completed'
+                          ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      }`}
+                    >
+                      {isUpdatingStatus
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : request.status === 'completed'
+                          ? <RotateCcw className="h-3.5 w-3.5" />
+                          : <CheckCircle2 className="h-3.5 w-3.5" />}
+                      {request.status === 'completed' ? 'Вернуть' : 'Выполнено'}
+                    </button>
+
                     <button
                       type="button"
                       disabled={isDeleting}

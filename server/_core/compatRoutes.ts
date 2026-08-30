@@ -1619,6 +1619,62 @@ export function registerCompatRoutes(app: Express) {
   app.post("/api/trpc/tasks.updateDate", handleTaskReschedule);
   app.post("/api/trpc/rescheduleTask", handleTaskReschedule);
 
+  app.post("/api/trpc/managerHemotest.setPickupStatus", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const pointId = Number(input.pointId);
+      const courierId = Number(input.courierId);
+      const date = String(input.date || "").slice(0, 10);
+      const isPicked = input.isPicked === true;
+
+      if (!pointId) throw new Error("pointId is required");
+      if (!courierId) throw new Error("courierId is required");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new Error("Valid date is required");
+      }
+
+      await db.setHemotestPickupStatusByManager(
+        courierId,
+        pointId,
+        new Date(`${date}T12:00:00+08:00`),
+        isPicked
+      );
+
+      broadcastLive("hemotest_changed");
+      res.json(trpcBatchJson({ success: true }));
+    } catch (error) {
+      sendError(res, error, "Failed to update Hemotest pickup status");
+    }
+  });
+
+  app.post("/api/trpc/managerSberbank.setPickupStatus", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const pointId = Number(input.pointId);
+      const courierId = Number(input.courierId);
+      const date = String(input.date || "").slice(0, 10);
+      const isPicked = input.isPicked === true;
+
+      if (!pointId) throw new Error("pointId is required");
+      if (!courierId) throw new Error("courierId is required");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new Error("Valid date is required");
+      }
+
+      await db.setSberbankPickupStatusByManager(
+        courierId,
+        pointId,
+        new Date(`${date}T12:00:00+08:00`),
+        isPicked
+      );
+
+      broadcastLive("sberbank_changed");
+      res.json(trpcBatchJson({ success: true }));
+    } catch (error) {
+      sendError(res, error, "Failed to update Sberbank pickup status");
+    }
+  });
+
   app.post("/api/trpc/managerTasks.create", async (req, res) => {
     try {
       const input = inputFrom(req);
@@ -2777,6 +2833,51 @@ export function registerCompatRoutes(app: Express) {
       broadcastLive("mails_changed");
       res.json(trpcBatchJson(mail));
     } catch (error) { sendError(res, error, "Failed to create mail"); }
+  });
+
+  app.post("/api/trpc/managerMails.deliver", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const mailId = Number(input.mailId || input.id);
+      const recipientSignature = String(
+        input.recipientSignature || input.receivedBy || ""
+      ).trim();
+
+      const deliveredAt = new Date(String(input.deliveredAt || ""));
+
+      if (!mailId) throw new Error("mailId is required");
+      if (!recipientSignature) throw new Error("recipientSignature is required");
+      if (Number.isNaN(deliveredAt.getTime())) {
+        throw new Error("deliveredAt is required");
+      }
+
+      const mail = await db.updateMailDeliveryByManager(
+        mailId,
+        recipientSignature,
+        deliveredAt
+      );
+
+      broadcastLive("mails_changed");
+      res.json(trpcBatchJson({ success: true, mail }));
+    } catch (error) {
+      sendError(res, error, "Failed to deliver mail by manager");
+    }
+  });
+
+  app.post("/api/trpc/managerMails.undoDelivery", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const mailId = Number(input.mailId || input.id);
+
+      if (!mailId) throw new Error("mailId is required");
+
+      const mail = await db.markMailUndeliveredByManager(mailId);
+
+      broadcastLive("mails_changed");
+      res.json(trpcBatchJson({ success: true, mail }));
+    } catch (error) {
+      sendError(res, error, "Failed to undo mail delivery by manager");
+    }
   });
 
   app.post("/api/trpc/managerMails.delete", async (req, res) => {

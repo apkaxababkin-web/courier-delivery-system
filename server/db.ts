@@ -133,6 +133,50 @@ export async function updateMailDelivery(
   return result[0];
 }
 
+export async function updateMailDeliveryByManager(
+  mailId: number,
+  recipientSignature: string,
+  deliveredAt: Date
+): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(mails)
+    .set({
+      status: "delivered",
+      mailStatus: "delivered",
+      recipientSignature,
+      deliveredAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(mails.id, mailId));
+
+  const result = await db.select().from(mails).where(eq(mails.id, mailId));
+  if (!result[0]) throw new Error("Письмо не найдено");
+  return result[0];
+}
+
+export async function markMailUndeliveredByManager(mailId: number): Promise<Mail> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(mails)
+    .set({
+      status: "not_delivered",
+      mailStatus: "not_delivered",
+      recipientSignature: null,
+      deliveredAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(mails.id, mailId));
+
+  const result = await db.select().from(mails).where(eq(mails.id, mailId));
+  if (!result[0]) throw new Error("Письмо не найдено");
+  return result[0];
+}
+
 export async function markMailUndelivered(mailId: number): Promise<Mail> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -956,6 +1000,50 @@ export async function toggleHemotestPickup(
 }
 
 
+export async function setHemotestPickupStatusByManager(
+  courierId: number,
+  pointId: number,
+  targetDate: Date,
+  isPicked: boolean
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = formatCourierDate(targetDate);
+  const existing = await db
+    .select()
+    .from(hemotestPickups)
+    .where(and(
+      eq(hemotestPickups.pointId, pointId),
+      eq(hemotestPickups.date, dateStr)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db
+      .update(hemotestPickups)
+      .set({
+        courierId,
+        isPicked,
+        pickedAt: isPicked ? new Date() : null,
+        isCancelled: false,
+        cancelledAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(hemotestPickups.id, existing[0].id));
+  } else {
+    await db.insert(hemotestPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked,
+      pickedAt: isPicked ? new Date() : null,
+      isCancelled: false,
+      cancelledAt: null,
+    });
+  }
+}
+
 export async function cancelHemotestPickup(
   courierId: number,
   pointId: number,
@@ -1185,6 +1273,50 @@ export async function toggleSberbankPickup(
   }
 }
 
+
+export async function setSberbankPickupStatusByManager(
+  courierId: number,
+  pointId: number,
+  targetDate: Date,
+  isPicked: boolean
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const dateStr = formatCourierDate(targetDate);
+  const existing = await db
+    .select()
+    .from(sberbankPickups)
+    .where(and(
+      eq(sberbankPickups.pointId, pointId),
+      eq(sberbankPickups.date, dateStr)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db
+      .update(sberbankPickups)
+      .set({
+        courierId,
+        isPicked,
+        pickedAt: isPicked ? new Date() : null,
+        isCancelled: false,
+        cancelledAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sberbankPickups.id, existing[0].id));
+  } else {
+    await db.insert(sberbankPickups).values({
+      courierId,
+      pointId,
+      date: dateStr,
+      isPicked,
+      pickedAt: isPicked ? new Date() : null,
+      isCancelled: false,
+      cancelledAt: null,
+    });
+  }
+}
 
 export async function cancelSberbankPickup(
   courierId: number,
