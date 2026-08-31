@@ -917,8 +917,110 @@ export async function getRealtimeSnapshot(): Promise<RealtimeSnapshot> {
 }
 
 
-// ─── Manager Chat API ───────────────────────────────────────────────────────
+// ─── Chat V2 API ────────────────────────────────────────────────────────────
 
+export type ChatV2ActorType = 'manager' | 'courier';
+
+export interface ChatV2Actor {
+  type: ChatV2ActorType;
+  id: number;
+  name: string;
+}
+
+export interface ChatV2Contacts {
+  me: ChatV2Actor;
+  managers: ChatV2Actor[];
+  couriers: ChatV2Actor[];
+}
+
+export interface ChatV2Conversation {
+  id: number;
+  kind: 'general' | 'direct';
+  title: string;
+  slug?: string | null;
+  updatedAt: string;
+  lastReadMessageId?: number | null;
+  lastReadAt?: string | null;
+  lastMessageId?: number | null;
+  lastMessageSenderName?: string | null;
+  lastMessageText?: string | null;
+  lastMessageAt?: string | null;
+  unreadCount: number;
+}
+
+export interface ChatV2Message {
+  id: number;
+  conversationId: number;
+  senderType: ChatV2ActorType;
+  senderId: number;
+  senderName: string;
+  clientMessageId?: string | null;
+  text: string;
+  replyToMessageId?: number | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deliveredCount: number;
+  readCount: number;
+}
+
+export interface ChatV2MessagePage {
+  messages: ChatV2Message[];
+  nextCursor: number | null;
+}
+
+export async function getChatV2Contacts(): Promise<ChatV2Contacts> {
+  return await restJson<ChatV2Contacts>('/api/chat/v2/contacts');
+}
+
+export async function getChatV2Conversations(): Promise<ChatV2Conversation[]> {
+  return await restJson<ChatV2Conversation[]>('/api/chat/v2/conversations');
+}
+
+export async function createChatV2DirectConversation(target: ChatV2Actor): Promise<{ id: number; created: boolean }> {
+  return await restJson('/api/chat/v2/conversations/direct', {
+    method: 'POST',
+    body: JSON.stringify({ targetType: target.type, targetId: target.id }),
+  });
+}
+
+export async function getChatV2Messages(
+  conversationId: number,
+  options: { before?: number | null; limit?: number } = {},
+): Promise<ChatV2MessagePage> {
+  const params = new URLSearchParams({ limit: String(options.limit || 50) });
+  if (options.before) params.set('before', String(options.before));
+  return await restJson<ChatV2MessagePage>(`/api/chat/v2/conversations/${conversationId}/messages?${params}`);
+}
+
+export async function sendChatV2Message(
+  conversationId: number,
+  input: { text: string; clientMessageId: string; replyToMessageId?: number | null },
+): Promise<ChatV2Message> {
+  return await restJson<ChatV2Message>(`/api/chat/v2/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function markChatV2ConversationRead(conversationId: number): Promise<void> {
+  await restJson(`/api/chat/v2/conversations/${conversationId}/read`, { method: 'POST' });
+}
+
+export async function updateChatV2Message(messageId: number, text: string): Promise<ChatV2Message> {
+  return await restJson<ChatV2Message>(`/api/chat/v2/messages/${messageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function deleteChatV2Message(messageId: number): Promise<void> {
+  await restJson(`/api/chat/v2/messages/${messageId}`, { method: 'DELETE' });
+}
+
+// Legacy exports stay temporarily while the released manager bundle is being
+// replaced by ManagerChatPanel V2. They can be removed after the rollout.
 export interface ChatMessage {
   id: number;
   senderName: string;

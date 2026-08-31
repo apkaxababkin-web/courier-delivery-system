@@ -271,7 +271,7 @@ export function registerChatV2Routes(app: Express) {
         ORDER BY "name", "id"
       `));
 
-      res.json({ managers, couriers });
+      res.json({ me: actor, managers, couriers });
     } catch (error) {
       sendRouteError(res, error);
     }

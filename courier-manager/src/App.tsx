@@ -21,6 +21,7 @@ import ReportsView from './views/ReportsView';
 import CouriersView from './views/CouriersView';
 import LoginView from './views/LoginView';
 import ClientPortalView from './views/ClientPortalView';
+import ManagerChatPanelV2 from './components/ManagerChatPanel';
 import { type ChatMessage, getChatMessages, sendChatMessage } from './lib/api';
 import { formatLocalDateWithOptions, formatLocalTime, getLocalDateKey } from './lib/local-time';
 
@@ -111,7 +112,8 @@ function formatChatTime(value: string) {
   return formatLocalTime(value, '');
 }
 
-function ManagerChatPanel() {
+// Kept temporarily as a rollback path until both released clients use Chat V2.
+function LegacyManagerChatPanel() {
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(true);
@@ -693,7 +695,7 @@ function App() {
           </main>
         </section>
 
-        <ManagerChatPanel />
+        <ManagerChatPanelV2 />
       </div>
     </div>
   );
