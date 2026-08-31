@@ -1,11 +1,14 @@
 import { Tabs } from "expo-router";
-import { Platform, Text, View } from "react-native";
+import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import type { ComponentProps } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { useColors } from "@/hooks/use-colors";
+import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
+import { useCourierAuth } from "@/lib/courier-auth";
+import { chatV2 } from "@/lib/chat-v2";
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
@@ -42,6 +45,29 @@ export default function TabLayout() {
   const tabBarHeight = 64 + bottomSafeArea;
   const activeColor = dark ? "#C7D8F8" : "#1D6FF2";
   const inactiveColor = dark ? "#7C8797" : "#64748B";
+  const { token } = useCourierAuth();
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+
+  const loadChatUnreadCount = useCallback(async () => {
+    if (!token) {
+      setChatUnreadCount(0);
+      return;
+    }
+    try {
+      const conversations = await chatV2.conversations(token);
+      setChatUnreadCount(conversations.reduce((total, conversation) => total + conversation.unreadCount, 0));
+    } catch {}
+  }, [token]);
+
+  useEffect(() => {
+    void loadChatUnreadCount();
+  }, [loadChatUnreadCount]);
+
+  useMobileLiveSync({
+    enabled: Boolean(token),
+    events: ["app_active", "chat_v2_changed", "chat_v2_read"],
+    onSync: loadChatUnreadCount,
+  });
 
   return (
     <Tabs
@@ -50,7 +76,7 @@ export default function TabLayout() {
         tabBarInactiveTintColor: inactiveColor,
         tabBarAllowFontScaling: false,
         headerShown: false,
-        tabBarHideOnKeyboard: true,
+        tabBarHideOnKeyboard: Platform.OS !== "android",
         tabBarButton: HapticTab,
         tabBarBackground: () => null,
         sceneStyle: { paddingBottom: 0, backgroundColor: colors.background },
@@ -92,7 +118,16 @@ export default function TabLayout() {
       <Tabs.Screen name="pickup-gemotest" options={{ title: "Гемотест", tabBarIcon: ({ color, focused }) => <TabIcon name="biotech" color={color} focused={focused} /> }} />
       <Tabs.Screen name="pickup-sberbank" options={{ title: "Сбербанк", tabBarIcon: ({ color, focused }) => <TabIcon name="account-balance" color={color} focused={focused} /> }} />
       <Tabs.Screen name="letters" options={{ title: "Письма", tabBarIcon: ({ color, focused }) => <TabIcon name="description" color={color} focused={focused} /> }} />
-      <Tabs.Screen name="profile" options={{ title: "Профиль", tabBarIcon: ({ color, focused }) => <TabIcon name="person" color={color} focused={focused} /> }} />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: "Чат",
+          tabBarBadge: chatUnreadCount > 0 ? (chatUnreadCount > 99 ? "99+" : chatUnreadCount) : undefined,
+          tabBarBadgeStyle: { backgroundColor: "#EF4444", color: "#FFFFFF", fontSize: 10, fontWeight: "700" },
+          tabBarIcon: ({ color, focused }) => <TabIcon name="chat-bubble-outline" color={color} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }
