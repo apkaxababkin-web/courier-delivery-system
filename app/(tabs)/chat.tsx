@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -64,10 +65,19 @@ function isMessageFromActor(message: ChatV2Message, actor?: ChatV2Actor | null) 
 
 const CHAT_TIME_ZONE = "Asia/Irkutsk";
 
+function parseChatDate(value?: string | null) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const hasTime = /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(trimmed);
+  const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/.test(trimmed);
+  const normalized = hasTime && !hasTimezone ? `${trimmed.replace(" ", "T")}Z` : trimmed;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function chatDateKey(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = parseChatDate(value);
+  if (!date) return "";
 
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: CHAT_TIME_ZONE,
@@ -84,9 +94,9 @@ function capitalize(value: string) {
 }
 
 function formatMessageDayLabel(value: string) {
-  const date = new Date(value);
+  const date = parseChatDate(value);
   const dateKey = chatDateKey(value);
-  if (!dateKey || Number.isNaN(date.getTime())) return "";
+  if (!dateKey || !date) return "";
 
   const now = new Date();
   const todayKey = chatDateKey(now.toISOString());
@@ -105,18 +115,16 @@ function formatMessageDayLabel(value: string) {
 }
 
 function formatTime(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = parseChatDate(value);
+  if (!date) return "";
   return date.toLocaleTimeString("ru-RU", { timeZone: CHAT_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 }
 
 function formatListTime(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  if (date.toDateString() === new Date().toDateString()) return formatTime(value);
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+  const date = parseChatDate(value);
+  if (!date) return "";
+  if (chatDateKey(value) === chatDateKey(new Date().toISOString())) return formatTime(value);
+  return date.toLocaleDateString("ru-RU", { timeZone: CHAT_TIME_ZONE, day: "2-digit", month: "2-digit" });
 }
 
 export default function ChatScreen() {
@@ -145,6 +153,7 @@ export default function ChatScreen() {
   const [editing, setEditing] = useState<ChatV2Message | null>(null);
   const [messageMenu, setMessageMenu] = useState<ChatV2Message | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const listRef = useRef<FlatList<ChatV2Message>>(null);
@@ -235,6 +244,18 @@ export default function ChatScreen() {
     }
     void loadDirectory(true);
   }, [loadDirectory, token]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const raw = Array.isArray(params.conversationId) ? params.conversationId[0] : params.conversationId;
@@ -383,7 +404,9 @@ export default function ChatScreen() {
   };
 
   const border = "rgba(148,163,184,0.22)";
-  const inputBottomGap = Platform.OS === "web" ? 0 : Math.max(tabBarHeight - insets.bottom, 0);
+  const keyboardHidesTabBar = Platform.OS === "ios" && isKeyboardVisible;
+  const inputBottomGap = Platform.OS === "web" || keyboardHidesTabBar ? 0 : Math.max(tabBarHeight - insets.bottom, 0);
+  const inputBottomPadding = keyboardHidesTabBar ? 8 : Math.max(insets.bottom, 8);
 
   if (!token) {
     return (
@@ -510,7 +533,7 @@ export default function ChatScreen() {
         {error ? <Pressable onPress={() => setError(null)} style={{ paddingHorizontal: 12, paddingVertical: 5 }}><Text style={{ color: "#DC2626", fontSize: 11, textAlign: "center" }}>{error}</Text></Pressable> : null}
         {editing || replyTo ? <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 11, paddingVertical: 7, borderTopWidth: 1, borderTopColor: border, backgroundColor: colors.surface }}><View style={{ flex: 1 }}><Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800" }}>{editing ? "Редактирование сообщения" : `Ответ: ${replyTo?.senderName || ""}`}</Text><Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10.5, marginTop: 2 }}>{(editing || replyTo)?.text}</Text></View><Pressable onPress={() => { setEditing(null); setReplyTo(null); setDraft(""); }} style={{ padding: 8 }}><X size={18} color={colors.muted} /></Pressable></View> : null}
 
-        <View style={{ minHeight: 58, flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 8, paddingTop: 7, paddingBottom: Math.max(insets.bottom, 8), marginBottom: inputBottomGap, borderTopWidth: 1, borderTopColor: border, backgroundColor: colors.background }}>
+        <View style={{ minHeight: 58, flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 8, paddingTop: 7, paddingBottom: inputBottomPadding, marginBottom: inputBottomGap, borderTopWidth: 1, borderTopColor: border, backgroundColor: colors.background }}>
           <View style={{ flex: 1, minHeight: 42, maxHeight: 100, borderRadius: 14, borderWidth: 1, borderColor: border, backgroundColor: colors.surface }}><TextInput value={draft} onChangeText={setDraft} placeholder={editing ? "Изменить сообщение" : "Сообщение"} placeholderTextColor={colors.muted} multiline maxLength={4000} style={{ minHeight: 40, maxHeight: 94, paddingHorizontal: 12, paddingVertical: 10, color: colors.foreground, fontSize: 13, lineHeight: 18 }} /></View>
           <Pressable onPress={() => void sendMessage()} disabled={!draft.trim() || isSending} style={({ pressed }) => ({ width: 42, height: 42, marginLeft: 7, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, opacity: pressed || !draft.trim() || isSending ? 0.45 : 1 })}>{isSending ? <ActivityIndicator color="#fff" size="small" /> : <Send size={18} color="#fff" />}</Pressable>
         </View>
