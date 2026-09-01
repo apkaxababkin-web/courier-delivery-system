@@ -952,7 +952,7 @@ export interface ChatV2Message {
   id: number;
   conversationId: number;
   senderType: ChatV2ActorType;
-  senderId: number;
+  senderId: number | null;
   senderName: string;
   clientMessageId?: string | null;
   text: string;
@@ -963,6 +963,13 @@ export interface ChatV2Message {
   updatedAt: string;
   deliveredCount: number;
   readCount: number;
+  reactions: ChatV2Reaction[];
+}
+
+export interface ChatV2Reaction {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
 }
 
 export interface ChatV2MessagePage {
@@ -1017,6 +1024,13 @@ export async function updateChatV2Message(messageId: number, text: string): Prom
 
 export async function deleteChatV2Message(messageId: number): Promise<void> {
   await restJson(`/api/chat/v2/messages/${messageId}`, { method: 'DELETE' });
+}
+
+export async function toggleChatV2MessageReaction(messageId: number, emoji: string): Promise<ChatV2Message> {
+  return await restJson<ChatV2Message>(`/api/chat/v2/messages/${messageId}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
+  });
 }
 
 // Legacy exports stay temporarily while the released manager bundle is being

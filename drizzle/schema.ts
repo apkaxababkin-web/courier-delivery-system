@@ -804,6 +804,31 @@ export const chatV2MessageReceipts = pgTable(
 export type ChatV2MessageReceipt = typeof chatV2MessageReceipts.$inferSelect;
 export type InsertChatV2MessageReceipt = typeof chatV2MessageReceipts.$inferInsert;
 
+export const chatV2MessageReactions = pgTable(
+  "chatV2MessageReactions",
+  {
+    id: serial("id").primaryKey(),
+    messageId: integer("messageId").notNull(),
+    conversationId: integer("conversationId").notNull(),
+    participantType: varchar("participantType", { length: 20 }).notNull(),
+    participantId: integer("participantId").notNull(),
+    emoji: varchar("emoji", { length: 16 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("chatV2MessageReactions_actor_key").on(
+      table.messageId,
+      table.participantType,
+      table.participantId,
+    ),
+    index("chatV2MessageReactions_message_idx").on(table.messageId),
+    index("chatV2MessageReactions_conversation_idx").on(table.conversationId),
+  ],
+);
+
+export type ChatV2MessageReaction = typeof chatV2MessageReactions.$inferSelect;
+export type InsertChatV2MessageReaction = typeof chatV2MessageReactions.$inferInsert;
+
 export const chatV2Attachments = pgTable(
   "chatV2Attachments",
   {

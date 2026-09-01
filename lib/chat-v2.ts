@@ -31,7 +31,7 @@ export type ChatV2Message = {
   id: number;
   conversationId: number;
   senderType: ChatV2ActorType;
-  senderId: number;
+  senderId: number | null;
   senderName: string;
   text: string;
   replyToMessageId?: number | null;
@@ -41,6 +41,13 @@ export type ChatV2Message = {
   updatedAt: string;
   deliveredCount: number;
   readCount: number;
+  reactions: ChatV2Reaction[];
+};
+
+export type ChatV2Reaction = {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
 };
 
 type ChatV2MessagePage = { messages: ChatV2Message[]; nextCursor: number | null };
@@ -94,4 +101,8 @@ export const chatV2 = {
     body: JSON.stringify({ text }),
   }),
   remove: (token: string, messageId: number) => request(token, `/api/chat/v2/messages/${messageId}`, { method: "DELETE" }),
+  react: (token: string, messageId: number, emoji: string) => request<ChatV2Message>(token, `/api/chat/v2/messages/${messageId}/reactions`, {
+    method: "POST",
+    body: JSON.stringify({ emoji }),
+  }),
 };

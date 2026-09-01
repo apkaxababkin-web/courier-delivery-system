@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   CheckCheck,
+  ChevronDown,
   ChevronLeft,
   Loader2,
   MessageCircle,
@@ -10,6 +11,7 @@ import {
   Plus,
   Search,
   Send,
+  SmilePlus,
   Trash2,
   UserRound,
   Users,
@@ -23,6 +25,7 @@ import {
   getChatV2Messages,
   markChatV2ConversationRead,
   sendChatV2Message,
+  toggleChatV2MessageReaction,
   updateChatV2Message,
   type ChatV2Actor,
   type ChatV2Contacts,
@@ -30,6 +33,8 @@ import {
   type ChatV2Message,
 } from '../lib/api';
 import { formatLocalDateWithOptions, formatLocalTime, toLocalDateKey } from '../lib/local-time';
+
+const CHAT_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'] as const;
 
 function messageClientId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -105,15 +110,19 @@ export default function ManagerChatPanel() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editingText, setEditingText] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
   const [busyMessageId, setBusyMessageId] = useState<number | null>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
   const [error, setError] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const unreadRef = useRef<Map<number, number>>(new Map());
   const conversationsInitializedRef = useRef(false);
   const messageRequestRef = useRef(0);
   const shouldScrollToEndRef = useRef(false);
+  const nearBottomRef = useRef(true);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) || null,
@@ -220,7 +229,11 @@ export default function ManagerChatPanel() {
       if (requestId !== messageRequestRef.current) return;
       setMessages(page.messages);
       setNextCursor(page.nextCursor);
-      shouldScrollToEndRef.current = true;
+      shouldScrollToEndRef.current = showLoader || nearBottomRef.current;
+      if (showLoader) {
+        nearBottomRef.current = true;
+        setIsNearBottom(true);
+      }
 
       void markChatV2ConversationRead(conversationId).then(() => {
         unreadRef.current.set(conversationId, 0);
@@ -307,10 +320,28 @@ export default function ManagerChatPanel() {
   }, [isActiveConversationVisible, loadConversations, loadMessages, selectedConversationId]);
 
   useEffect(() => {
-    if (!shouldScrollToEndRef.current) return;
+    if (isMessagesLoading || !shouldScrollToEndRef.current) return;
     shouldScrollToEndRef.current = false;
-    window.requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }));
-  }, [messages]);
+    const scroll = () => messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    window.requestAnimationFrame(scroll);
+    const retryTimer = window.setTimeout(scroll, 120);
+    return () => window.clearTimeout(retryTimer);
+  }, [isMessagesLoading, messages]);
+
+  const scrollToLatest = (behavior: ScrollBehavior = 'smooth') => {
+    nearBottomRef.current = true;
+    setIsNearBottom(true);
+    messagesEndRef.current?.scrollIntoView({ block: 'end', behavior });
+  };
+
+  const handleMessagesScroll = () => {
+    const container = messagesScrollRef.current;
+    if (!container) return;
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+    if (nearBottom === nearBottomRef.current) return;
+    nearBottomRef.current = nearBottom;
+    setIsNearBottom(nearBottom);
+  };
 
   const openConversation = (conversationId: number) => {
     setSelectedConversationId(conversationId);
@@ -362,6 +393,8 @@ export default function ManagerChatPanel() {
         clientMessageId: messageClientId(),
       });
       shouldScrollToEndRef.current = true;
+      nearBottomRef.current = true;
+      setIsNearBottom(true);
       setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
       setDraft('');
       void loadConversations(false).catch(() => undefined);
@@ -399,6 +432,20 @@ export default function ManagerChatPanel() {
       setDeletingMessageId(null);
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Не удалось удалить сообщение');
+    } finally {
+      setBusyMessageId(null);
+    }
+  };
+
+  const handleToggleReaction = async (messageId: number, emoji: string) => {
+    if (busyMessageId) return;
+    try {
+      setBusyMessageId(messageId);
+      const updated = await toggleChatV2MessageReaction(messageId, emoji);
+      setMessages((current) => current.map((message) => message.id === messageId ? updated : message));
+      setReactionPickerMessageId(null);
+    } catch (reactionError) {
+      setError(reactionError instanceof Error ? reactionError.message : 'Не удалось поставить реакцию');
     } finally {
       setBusyMessageId(null);
     }
@@ -502,7 +549,8 @@ export default function ManagerChatPanel() {
 
           {error ? <div className="mx-4 mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"><span className="min-w-0 flex-1">{error}</span><button type="button" onClick={() => setError('')}><X className="h-4 w-4" /></button></div> : null}
 
-          <div className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-4">
+          <div className="relative min-h-0 flex-1">
+          <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="h-full overflow-y-auto bg-slate-50/60 px-4 py-4">
             {nextCursor ? (
               <div className="mb-4 text-center"><button type="button" onClick={() => void handleLoadOlder()} disabled={isLoadingOlder} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60">{isLoadingOlder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}Показать предыдущие</button></div>
             ) : null}
@@ -546,13 +594,16 @@ export default function ManagerChatPanel() {
                             <div><p>Удалить сообщение?</p><div className="mt-2 flex justify-end gap-1"><button type="button" onClick={() => setDeletingMessageId(null)} className="rounded-lg px-2 py-1 text-xs text-slate-300 hover:bg-white/10">Нет</button><button type="button" onClick={() => void handleDelete(message.id)} disabled={isBusy} className="rounded-lg bg-red-500 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">Удалить</button></div></div>
                           ) : <p className="whitespace-pre-wrap break-words leading-5">{message.text}</p>}
 
-                          {!message.deletedAt && isMine && !isEditing && !isDeleting ? (
-                            <div className="absolute -left-16 top-1/2 hidden -translate-y-1/2 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm group-hover:flex">
-                              <button type="button" onClick={() => { setEditingMessageId(message.id); setEditingText(message.text); setDeletingMessageId(null); }} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Редактировать"><Pencil className="h-3.5 w-3.5" /></button>
-                              <button type="button" onClick={() => { setDeletingMessageId(message.id); setEditingMessageId(null); }} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Удалить"><Trash2 className="h-3.5 w-3.5" /></button>
+                          {!message.deletedAt && !isEditing && !isDeleting ? (
+                            <div className={`absolute top-1/2 z-10 hidden -translate-y-1/2 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm group-hover:flex ${isMine ? '-left-[5.5rem]' : '-right-10'}`}>
+                              <button type="button" onClick={() => setReactionPickerMessageId((current) => current === message.id ? null : message.id)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Поставить реакцию"><SmilePlus className="h-3.5 w-3.5" /></button>
+                              {isMine && message.senderId !== null ? <button type="button" onClick={() => { setEditingMessageId(message.id); setEditingText(message.text); setDeletingMessageId(null); setReactionPickerMessageId(null); }} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Редактировать"><Pencil className="h-3.5 w-3.5" /></button> : null}
+                              {isMine && message.senderId !== null ? <button type="button" onClick={() => { setDeletingMessageId(message.id); setEditingMessageId(null); setReactionPickerMessageId(null); }} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Удалить"><Trash2 className="h-3.5 w-3.5" /></button> : null}
                             </div>
                           ) : null}
+                          {reactionPickerMessageId === message.id ? <div className={`absolute top-full z-20 mt-1 flex gap-0.5 rounded-xl border border-slate-200 bg-white p-1 shadow-lg ${isMine ? 'right-0' : 'left-0'}`}>{CHAT_REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => void handleToggleReaction(message.id, emoji)} className="rounded-lg px-1.5 py-1 text-base hover:bg-slate-100">{emoji}</button>)}</div> : null}
                         </div>
+                        {!message.deletedAt && message.reactions?.length ? <div className={`mt-1 flex flex-wrap gap-1 ${isMine ? 'justify-end' : 'justify-start'}`}>{message.reactions.map((reaction) => <button key={reaction.emoji} type="button" onClick={() => void handleToggleReaction(message.id, reaction.emoji)} className={`rounded-full border px-2 py-0.5 text-xs shadow-sm ${reaction.reactedByMe ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}>{reaction.emoji} {Number(reaction.count)}</button>)}</div> : null}
                         <span className="mt-1 flex items-center gap-1 px-1 text-[10px] text-slate-400">{formatLocalTime(message.createdAt, '')}{message.editedAt ? ' · изменено' : ''}{isMine && !message.deletedAt ? (Number(message.readCount) > 0 ? <CheckCheck className="h-3.5 w-3.5 text-blue-500" /> : Number(message.deliveredCount) > 0 ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />) : null}</span>
                       </div>
                     </div>
@@ -562,6 +613,8 @@ export default function ManagerChatPanel() {
                 <div ref={messagesEndRef} />
               </div>
             )}
+          </div>
+          {!isNearBottom && !isMessagesLoading ? <button type="button" onClick={() => scrollToLatest()} className="absolute bottom-4 right-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-lg hover:bg-slate-50" aria-label="К последнему сообщению"><ChevronDown className="h-5 w-5" /></button> : null}
           </div>
 
           <div className="border-t border-slate-200 bg-white p-4">

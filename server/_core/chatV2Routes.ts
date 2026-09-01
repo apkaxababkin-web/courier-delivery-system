@@ -13,6 +13,8 @@ type ChatActor = {
   name: string;
 };
 
+const CHAT_REACTION_EMOJIS = new Set(["👍", "❤️", "😂", "😮", "😢"]);
+
 class ChatV2HttpError extends Error {
   constructor(
     readonly status: 400 | 401 | 403 | 404 | 409,
@@ -43,6 +45,14 @@ function messageText(value: unknown): string {
   if (!text) throw new ChatV2HttpError(400, "Текст сообщения обязателен");
   if (text.length > 4000) throw new ChatV2HttpError(400, "Сообщение не может быть длиннее 4000 символов");
   return text;
+}
+
+function reactionEmoji(value: unknown): string {
+  const emoji = String(value ?? "").trim();
+  if (!CHAT_REACTION_EMOJIS.has(emoji)) {
+    throw new ChatV2HttpError(400, "Недоступная реакция");
+  }
+  return emoji;
 }
 
 function directKey(left: Pick<ChatActor, "type" | "id">, right: Pick<ChatActor, "type" | "id">): string {
@@ -112,7 +122,32 @@ async function getTargetActor(type: ChatActorType, id: number): Promise<ChatActo
   return { type, id: courier.id, name: courier.name };
 }
 
-async function loadMessage(conn: any, messageId: number) {
+function reactionSummary(actor: ChatActor) {
+  return sql`COALESCE((
+    SELECT json_agg(
+      json_build_object(
+        'emoji', reaction_group."emoji",
+        'count', reaction_group."count",
+        'reactedByMe', reaction_group."reactedByMe"
+      )
+      ORDER BY reaction_group."emoji"
+    )
+    FROM (
+      SELECT
+        reaction."emoji",
+        count(*)::int AS "count",
+        bool_or(
+          reaction."participantType" = ${actor.type}
+          AND reaction."participantId" = ${actor.id}
+        ) AS "reactedByMe"
+      FROM "chatV2MessageReactions" reaction
+      WHERE reaction."messageId" = message."id"
+      GROUP BY reaction."emoji"
+    ) reaction_group
+  ), '[]'::json)`;
+}
+
+async function loadMessage(conn: any, messageId: number, actor: ChatActor) {
   const rows = resultRows(await conn.execute(sql`
     SELECT
       message."id",
@@ -130,7 +165,8 @@ async function loadMessage(conn: any, messageId: number) {
       (SELECT count(*)::int FROM "chatV2MessageReceipts" receipt
         WHERE receipt."messageId" = message."id" AND receipt."deliveredAt" IS NOT NULL) AS "deliveredCount",
       (SELECT count(*)::int FROM "chatV2MessageReceipts" receipt
-        WHERE receipt."messageId" = message."id" AND receipt."readAt" IS NOT NULL) AS "readCount"
+        WHERE receipt."messageId" = message."id" AND receipt."readAt" IS NOT NULL) AS "readCount",
+      ${reactionSummary(actor)} AS "reactions"
     FROM "chatV2Messages" message
     WHERE message."id" = ${messageId}
     LIMIT 1
@@ -415,7 +451,8 @@ export function registerChatV2Routes(app: Express) {
             (SELECT count(*)::int FROM "chatV2MessageReceipts" receipt
               WHERE receipt."messageId" = message."id" AND receipt."deliveredAt" IS NOT NULL) AS "deliveredCount",
             (SELECT count(*)::int FROM "chatV2MessageReceipts" receipt
-              WHERE receipt."messageId" = message."id" AND receipt."readAt" IS NOT NULL) AS "readCount"
+              WHERE receipt."messageId" = message."id" AND receipt."readAt" IS NOT NULL) AS "readCount",
+            ${reactionSummary(actor)} AS "reactions"
           FROM "chatV2Messages" message
           WHERE message."conversationId" = ${conversationId}
             AND (${before}::integer IS NULL OR message."id" < ${before})
@@ -523,7 +560,7 @@ export function registerChatV2Routes(app: Express) {
         return { messageId, isNew };
       });
 
-      const message = await loadMessage(conn, result.messageId);
+      const message = await loadMessage(conn, result.messageId, actor);
       if (result.isNew) {
         broadcastLive("chat_v2_changed");
         void sendPushForMessage(conn, actor, conversationId, result.messageId, text);
@@ -574,6 +611,54 @@ export function registerChatV2Routes(app: Express) {
     }
   });
 
+  app.post("/api/chat/v2/messages/:messageId/reactions", async (req, res) => {
+    try {
+      const actor = await actorFromResponse(res);
+      const messageId = positiveInteger(req.params.messageId, "messageId");
+      const emoji = reactionEmoji(req.body?.emoji);
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const rows = resultRows<{ conversationId: number; deletedAt: Date | null }>(await conn.execute(sql`
+        SELECT "conversationId", "deletedAt"
+        FROM "chatV2Messages"
+        WHERE "id" = ${messageId}
+        LIMIT 1
+      `));
+      const conversationId = Number(rows[0]?.conversationId || 0);
+      if (!conversationId || rows[0]?.deletedAt) {
+        throw new ChatV2HttpError(404, "Сообщение не найдено");
+      }
+      await assertParticipant(conn, conversationId, actor);
+
+      await conn.transaction(async (tx: any) => {
+        const removed = resultRows(await tx.execute(sql`
+          DELETE FROM "chatV2MessageReactions"
+          WHERE "messageId" = ${messageId}
+            AND "participantType" = ${actor.type}
+            AND "participantId" = ${actor.id}
+            AND "emoji" = ${emoji}
+          RETURNING "id"
+        `));
+        if (removed[0]) return;
+
+        await tx.execute(sql`
+          INSERT INTO "chatV2MessageReactions" (
+            "messageId", "conversationId", "participantType", "participantId", "emoji", "createdAt"
+          )
+          VALUES (${messageId}, ${conversationId}, ${actor.type}, ${actor.id}, ${emoji}, now())
+          ON CONFLICT ("messageId", "participantType", "participantId")
+          DO UPDATE SET "emoji" = EXCLUDED."emoji", "createdAt" = now()
+        `);
+      });
+
+      broadcastLive("chat_v2_changed");
+      res.json(await loadMessage(conn, messageId, actor));
+    } catch (error) {
+      sendRouteError(res, error);
+    }
+  });
+
   app.patch("/api/chat/v2/messages/:messageId", async (req, res) => {
     try {
       const actor = await actorFromResponse(res);
@@ -594,7 +679,7 @@ export function registerChatV2Routes(app: Express) {
       if (!updated[0]) throw new ChatV2HttpError(404, "Сообщение не найдено");
 
       broadcastLive("chat_v2_changed");
-      res.json(await loadMessage(conn, messageId));
+      res.json(await loadMessage(conn, messageId, actor));
     } catch (error) {
       sendRouteError(res, error);
     }

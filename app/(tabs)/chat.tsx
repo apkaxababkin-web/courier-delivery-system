@@ -23,12 +23,14 @@ import {
   ArrowLeft,
   Check,
   CheckCheck,
+  ChevronDown,
   Edit3,
   MessageCircle,
   Plus,
   Reply,
   Search,
   Send,
+  SmilePlus,
   Trash2,
   UserRound,
   Users,
@@ -49,6 +51,8 @@ import {
 function clientMessageId() {
   return `courier:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`;
 }
+
+const CHAT_REACTIONS = ["👍", "❤️", "😂", "😮", "😢"] as const;
 
 function actorKey(actor: Pick<ChatV2Actor, "type" | "id">) {
   return `${actor.type}:${actor.id}`;
@@ -154,6 +158,7 @@ export default function ChatScreen() {
   const [messageMenu, setMessageMenu] = useState<ChatV2Message | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [isNearBottom, setIsNearBottom] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const listRef = useRef<FlatList<ChatV2Message>>(null);
@@ -221,6 +226,11 @@ export default function ChatScreen() {
       shouldScrollRef.current = showLoader
         || nearBottomRef.current
         || Date.now() < stickToBottomUntilRef.current;
+      if (showLoader) {
+        nearBottomRef.current = true;
+        stickToBottomUntilRef.current = Date.now() + 2_000;
+        setIsNearBottom(true);
+      }
       setMessages(page.messages);
       setNextCursor(page.nextCursor);
       setError(null);
@@ -269,10 +279,25 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!isKeyboardVisible || !selectedConversationId) return;
     nearBottomRef.current = true;
+    setIsNearBottom(true);
     shouldScrollRef.current = true;
     stickToBottomUntilRef.current = Date.now() + 1_500;
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, [isKeyboardVisible, selectedConversationId]);
+
+  useEffect(() => {
+    if (isLoadingMessages || !selectedConversationId || messages.length === 0) return;
+    if (!shouldScrollRef.current && Date.now() >= stickToBottomUntilRef.current) return;
+
+    const scroll = () => listRef.current?.scrollToEnd({ animated: false });
+    requestAnimationFrame(scroll);
+    const firstRetry = setTimeout(scroll, 100);
+    const secondRetry = setTimeout(scroll, 300);
+    return () => {
+      clearTimeout(firstRetry);
+      clearTimeout(secondRetry);
+    };
+  }, [isLoadingMessages, messages, selectedConversationId]);
 
   useEffect(() => {
     if (!selectedConversationId || !isFocused) return;
@@ -294,6 +319,9 @@ export default function ChatScreen() {
 
   const openConversation = (conversationId: number) => {
     nearBottomRef.current = true;
+    shouldScrollRef.current = true;
+    stickToBottomUntilRef.current = Date.now() + 2_000;
+    setIsNearBottom(true);
     setSelectedConversationId(conversationId);
     setSearch("");
     setIsContactsOpen(false);
@@ -367,6 +395,7 @@ export default function ChatScreen() {
           replyToMessageId: replyTo?.id || null,
         });
         nearBottomRef.current = true;
+        setIsNearBottom(true);
         shouldScrollRef.current = true;
         stickToBottomUntilRef.current = Date.now() + 2_000;
         setMessages((current) => current.some((message) => message.id === sent.id) ? current : [...current, sent]);
@@ -412,9 +441,31 @@ export default function ChatScreen() {
     setMessageMenu(null);
   };
 
+  const toggleReaction = async (message: ChatV2Message, emoji: string) => {
+    if (!token) return;
+    try {
+      const updated = await chatV2.react(token, message.id, emoji);
+      setMessages((current) => current.map((item) => item.id === message.id ? updated : item));
+      setMessageMenu(null);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось поставить реакцию");
+    }
+  };
+
+  const scrollToLatest = () => {
+    nearBottomRef.current = true;
+    shouldScrollRef.current = true;
+    stickToBottomUntilRef.current = Date.now() + 800;
+    setIsNearBottom(true);
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  };
+
   const onMessageListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    nearBottomRef.current = contentSize.height - layoutMeasurement.height - contentOffset.y < 100;
+    const nearBottom = contentSize.height - layoutMeasurement.height - contentOffset.y < 100;
+    nearBottomRef.current = nearBottom;
+    setIsNearBottom((current) => current === nearBottom ? current : nearBottom);
   };
 
   const border = "rgba(148,163,184,0.22)";
@@ -500,6 +551,7 @@ export default function ChatScreen() {
         {isLoadingMessages ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={colors.primary} /><Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>Загружаем сообщения…</Text></View>
         ) : (
+          <View style={{ flex: 1 }}>
           <FlatList
             ref={listRef}
             data={messages}
@@ -511,7 +563,11 @@ export default function ChatScreen() {
             onContentSizeChange={() => {
               if (!shouldScrollRef.current && Date.now() >= stickToBottomUntilRef.current) return;
               shouldScrollRef.current = false;
-              requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+              requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+            }}
+            onLayout={() => {
+              if (!shouldScrollRef.current && Date.now() >= stickToBottomUntilRef.current) return;
+              requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
             }}
             refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
             contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", paddingHorizontal: 10, paddingTop: 10, paddingBottom: 12 }}
@@ -541,11 +597,14 @@ export default function ChatScreen() {
                     <Text style={{ color: item.deletedAt ? (own ? "rgba(255,255,255,0.55)" : colors.muted) : (own ? "#F5F9FF" : colors.foreground), fontSize: 13, lineHeight: 18, fontStyle: item.deletedAt ? "italic" : "normal" }}>{item.deletedAt ? "Сообщение удалено" : item.text}</Text>
                     <View style={{ alignSelf: "flex-end", flexDirection: "row", alignItems: "center", marginTop: 2 }}><Text style={{ color: own ? "rgba(235,245,255,0.68)" : colors.muted, fontSize: 9.5 }}>{formatTime(item.createdAt)}{item.editedAt ? " · изменено" : ""}</Text>{own && !item.deletedAt ? (Number(item.readCount) > 0 ? <CheckCheck size={13} color="#72B5FF" style={{ marginLeft: 3 }} /> : Number(item.deliveredCount) > 0 ? <CheckCheck size={13} color="rgba(235,245,255,0.68)" style={{ marginLeft: 3 }} /> : <Check size={13} color="rgba(235,245,255,0.68)" style={{ marginLeft: 3 }} />) : null}</View>
                   </Pressable>
+                  {!item.deletedAt && item.reactions?.length ? <View style={{ maxWidth: "84%", flexDirection: "row", flexWrap: "wrap", justifyContent: own ? "flex-end" : "flex-start", gap: 4, marginTop: 4 }}>{item.reactions.map((reaction) => <Pressable key={reaction.emoji} onPress={() => void toggleReaction(item, reaction.emoji)} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 13, borderWidth: 1, borderColor: reaction.reactedByMe ? "rgba(29,111,242,0.45)" : border, backgroundColor: reaction.reactedByMe ? "rgba(29,111,242,0.10)" : colors.surface, opacity: pressed ? 0.6 : 1 })}><Text style={{ fontSize: 12 }}>{reaction.emoji}</Text><Text style={{ marginLeft: 3, color: reaction.reactedByMe ? colors.primary : colors.muted, fontSize: 10.5, fontWeight: "700" }}>{Number(reaction.count)}</Text></Pressable>)}</View> : null}
                 </View>
                 </View>
               );
             }}
           />
+          {!isNearBottom ? <Pressable onPress={scrollToLatest} accessibilityRole="button" accessibilityLabel="К последнему сообщению" style={({ pressed }) => ({ position: "absolute", right: 14, bottom: 14, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: border, backgroundColor: colors.surface, shadowColor: "#0F172A", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 7, elevation: 5, opacity: pressed ? 0.65 : 1 })}><ChevronDown size={22} color={colors.foreground} /></Pressable> : null}
+          </View>
         )}
 
         {error ? <Pressable onPress={() => setError(null)} style={{ paddingHorizontal: 12, paddingVertical: 5 }}><Text style={{ color: "#DC2626", fontSize: 11, textAlign: "center" }}>{error}</Text></Pressable> : null}
@@ -561,9 +620,10 @@ export default function ChatScreen() {
         <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: "rgba(15,23,42,0.32)" }}><Pressable onPress={() => { setMessageMenu(null); setDeleteConfirmation(false); }} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }} />
           {messageMenu ? <View style={{ borderRadius: 18, overflow: "hidden", backgroundColor: colors.surface, borderWidth: 1, borderColor: border }}>
             {deleteConfirmation ? <View style={{ padding: 18 }}><Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "800" }}>Удалить сообщение?</Text><Text style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>Участники увидят отметку «Сообщение удалено».</Text><View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 16, gap: 8 }}><Pressable onPress={() => setDeleteConfirmation(false)} style={{ paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: colors.muted, fontWeight: "700" }}>Отмена</Text></Pressable><Pressable onPress={() => void deleteMessage()} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: "#DC2626" }}><Text style={{ color: "#fff", fontWeight: "800" }}>Удалить</Text></Pressable></View></View> : <>
+              {!messageMenu.deletedAt ? <View style={{ paddingHorizontal: 14, paddingTop: 13, paddingBottom: 9, borderBottomWidth: 1, borderBottomColor: border }}><View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}><SmilePlus size={16} color={colors.muted} /><Text style={{ marginLeft: 7, color: colors.muted, fontSize: 11, fontWeight: "700" }}>Реакция</Text></View><View style={{ flexDirection: "row", justifyContent: "space-between" }}>{CHAT_REACTIONS.map((emoji) => <Pressable key={emoji} onPress={() => void toggleReaction(messageMenu, emoji)} style={({ pressed }) => ({ paddingHorizontal: 7, paddingVertical: 5, borderRadius: 10, backgroundColor: pressed ? "rgba(148,163,184,0.16)" : "transparent" })}><Text style={{ fontSize: 24 }}>{emoji}</Text></Pressable>)}</View></View> : null}
               {!messageMenu.deletedAt ? <MenuRow icon={<Reply size={18} color={colors.foreground} />} label="Ответить" colors={colors} onPress={() => beginReply(messageMenu)} /> : null}
-              {contacts?.me.type === messageMenu.senderType && Number(contacts.me.id) === Number(messageMenu.senderId) && !messageMenu.deletedAt ? <MenuRow icon={<Edit3 size={18} color={colors.foreground} />} label="Изменить" colors={colors} onPress={() => beginEdit(messageMenu)} /> : null}
-              {contacts?.me.type === messageMenu.senderType && Number(contacts.me.id) === Number(messageMenu.senderId) && !messageMenu.deletedAt ? <MenuRow icon={<Trash2 size={18} color="#DC2626" />} label="Удалить" danger colors={colors} onPress={() => setDeleteConfirmation(true)} /> : null}
+              {messageMenu.senderId !== null && contacts?.me.type === messageMenu.senderType && Number(contacts.me.id) === Number(messageMenu.senderId) && !messageMenu.deletedAt ? <MenuRow icon={<Edit3 size={18} color={colors.foreground} />} label="Изменить" colors={colors} onPress={() => beginEdit(messageMenu)} /> : null}
+              {messageMenu.senderId !== null && contacts?.me.type === messageMenu.senderType && Number(contacts.me.id) === Number(messageMenu.senderId) && !messageMenu.deletedAt ? <MenuRow icon={<Trash2 size={18} color="#DC2626" />} label="Удалить" danger colors={colors} onPress={() => setDeleteConfirmation(true)} /> : null}
             </>}
           </View> : null}
         </View>
