@@ -34,7 +34,7 @@ import {
 } from '../lib/api';
 import { formatLocalDateWithOptions, formatLocalTime, toLocalDateKey } from '../lib/local-time';
 
-const CHAT_REACTIONS = ['🔥', '❤️', '😂', '👀', '🎉', '💯', '👏', '🤝', '🤯', '🫡'] as const;
+const CHAT_REACTIONS = ['✅', '❌', '⚠️', '🚀', '🎯', '💡', '📌', '📦', '⏳', '🛠️'] as const;
 
 function messageClientId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

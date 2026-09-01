@@ -52,7 +52,7 @@ function clientMessageId() {
   return `courier:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`;
 }
 
-const CHAT_REACTIONS = ["🔥", "❤️", "😂", "👀", "🎉", "💯", "👏", "🤝", "🤯", "🫡"] as const;
+const CHAT_REACTIONS = ["✅", "❌", "⚠️", "🚀", "🎯", "💡", "📌", "📦", "⏳", "🛠️"] as const;
 
 function actorKey(actor: Pick<ChatV2Actor, "type" | "id">) {
   return `${actor.type}:${actor.id}`;
