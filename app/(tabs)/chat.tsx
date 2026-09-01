@@ -159,6 +159,7 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList<ChatV2Message>>(null);
   const nearBottomRef = useRef(true);
   const shouldScrollRef = useRef(false);
+  const stickToBottomUntilRef = useRef(0);
   const messageRequestRef = useRef(0);
 
   const selectedConversation = useMemo(
@@ -217,7 +218,9 @@ export default function ChatScreen() {
       if (showLoader) setIsLoadingMessages(true);
       const page = await chatV2.messages(token, conversationId);
       if (requestId !== messageRequestRef.current) return;
-      shouldScrollRef.current = showLoader || nearBottomRef.current;
+      shouldScrollRef.current = showLoader
+        || nearBottomRef.current
+        || Date.now() < stickToBottomUntilRef.current;
       setMessages(page.messages);
       setNextCursor(page.nextCursor);
       setError(null);
@@ -262,6 +265,14 @@ export default function ChatScreen() {
     const conversationId = Number(raw || 0);
     if (conversationId > 0) setSelectedConversationId(conversationId);
   }, [params.conversationId]);
+
+  useEffect(() => {
+    if (!isKeyboardVisible || !selectedConversationId) return;
+    nearBottomRef.current = true;
+    shouldScrollRef.current = true;
+    stickToBottomUntilRef.current = Date.now() + 1_500;
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  }, [isKeyboardVisible, selectedConversationId]);
 
   useEffect(() => {
     if (!selectedConversationId || !isFocused) return;
@@ -355,8 +366,11 @@ export default function ChatScreen() {
           clientMessageId: clientMessageId(),
           replyToMessageId: replyTo?.id || null,
         });
+        nearBottomRef.current = true;
         shouldScrollRef.current = true;
+        stickToBottomUntilRef.current = Date.now() + 2_000;
         setMessages((current) => current.some((message) => message.id === sent.id) ? current : [...current, sent]);
+        requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
       }
       setDraft("");
       setEditing(null);
@@ -494,7 +508,11 @@ export default function ChatScreen() {
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             onScroll={onMessageListScroll}
             scrollEventThrottle={16}
-            onContentSizeChange={() => { if (shouldScrollRef.current) { shouldScrollRef.current = false; requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true })); } }}
+            onContentSizeChange={() => {
+              if (!shouldScrollRef.current && Date.now() >= stickToBottomUntilRef.current) return;
+              shouldScrollRef.current = false;
+              requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+            }}
             refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
             contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", paddingHorizontal: 10, paddingTop: 10, paddingBottom: 12 }}
             ListHeaderComponent={nextCursor ? <Pressable onPress={() => void loadOlder()} disabled={isLoadingOlder} style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: border, backgroundColor: colors.surface }}>{isLoadingOlder ? <ActivityIndicator size="small" color={colors.primary} /> : null}<Text style={{ marginLeft: isLoadingOlder ? 6 : 0, color: colors.muted, fontSize: 11, fontWeight: "700" }}>Предыдущие сообщения</Text></Pressable> : null}
