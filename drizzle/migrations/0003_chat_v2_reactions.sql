@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS "chatV2MessageReactions" (
   "conversationId" integer NOT NULL REFERENCES "chatV2Conversations"("id") ON DELETE CASCADE,
   "participantType" varchar(20) NOT NULL CHECK ("participantType" IN ('manager', 'courier')),
   "participantId" integer NOT NULL,
-  "emoji" varchar(16) NOT NULL CHECK ("emoji" IN ('👍', '❤️', '😂', '😮', '😢')),
+  "emoji" varchar(16) NOT NULL CHECK ("emoji" IN ('🔥', '❤️', '😂', '👀', '🎉', '💯', '👏', '🤝', '🤯', '🫡')),
   "createdAt" timestamp DEFAULT now() NOT NULL,
   CONSTRAINT "chatV2MessageReactions_actor_key"
     UNIQUE ("messageId", "participantType", "participantId")

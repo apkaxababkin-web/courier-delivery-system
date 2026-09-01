@@ -13,7 +13,7 @@ type ChatActor = {
   name: string;
 };
 
-const CHAT_REACTION_EMOJIS = new Set(["👍", "❤️", "😂", "😮", "😢"]);
+const CHAT_REACTION_EMOJIS = new Set(["🔥", "❤️", "😂", "👀", "🎉", "💯", "👏", "🤝", "🤯", "🫡"]);
 
 class ChatV2HttpError extends Error {
   constructor(

@@ -34,7 +34,7 @@ import {
 } from '../lib/api';
 import { formatLocalDateWithOptions, formatLocalTime, toLocalDateKey } from '../lib/local-time';
 
-const CHAT_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'] as const;
+const CHAT_REACTIONS = ['🔥', '❤️', '😂', '👀', '🎉', '💯', '👏', '🤝', '🤯', '🫡'] as const;
 
 function messageClientId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -601,7 +601,7 @@ export default function ManagerChatPanel() {
                               {isMine && message.senderId !== null ? <button type="button" onClick={() => { setDeletingMessageId(message.id); setEditingMessageId(null); setReactionPickerMessageId(null); }} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Удалить"><Trash2 className="h-3.5 w-3.5" /></button> : null}
                             </div>
                           ) : null}
-                          {reactionPickerMessageId === message.id ? <div className={`absolute top-full z-20 mt-1 flex gap-0.5 rounded-xl border border-slate-200 bg-white p-1 shadow-lg ${isMine ? 'right-0' : 'left-0'}`}>{CHAT_REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => void handleToggleReaction(message.id, emoji)} className="rounded-lg px-1.5 py-1 text-base hover:bg-slate-100">{emoji}</button>)}</div> : null}
+                          {reactionPickerMessageId === message.id ? <div className={`absolute top-full z-20 mt-1 grid w-52 grid-cols-5 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg ${isMine ? 'right-0' : 'left-0'}`}>{CHAT_REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => void handleToggleReaction(message.id, emoji)} className="rounded-lg py-1.5 text-lg hover:bg-slate-100">{emoji}</button>)}</div> : null}
                         </div>
                         {!message.deletedAt && message.reactions?.length ? <div className={`mt-1 flex flex-wrap gap-1 ${isMine ? 'justify-end' : 'justify-start'}`}>{message.reactions.map((reaction) => <button key={reaction.emoji} type="button" onClick={() => void handleToggleReaction(message.id, reaction.emoji)} className={`rounded-full border px-2 py-0.5 text-xs shadow-sm ${reaction.reactedByMe ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}>{reaction.emoji} {Number(reaction.count)}</button>)}</div> : null}
                         <span className="mt-1 flex items-center gap-1 px-1 text-[10px] text-slate-400">{formatLocalTime(message.createdAt, '')}{message.editedAt ? ' · изменено' : ''}{isMine && !message.deletedAt ? (Number(message.readCount) > 0 ? <CheckCheck className="h-3.5 w-3.5 text-blue-500" /> : Number(message.deliveredCount) > 0 ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />) : null}</span>
