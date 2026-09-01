@@ -53,6 +53,15 @@ function actorKey(actor: Pick<ChatV2Actor, "type" | "id">) {
   return `${actor.type}:${actor.id}`;
 }
 
+function isMessageFromActor(message: ChatV2Message, actor?: ChatV2Actor | null) {
+  if (!actor || message.senderType !== actor.type) return false;
+  if (message.senderId !== null && message.senderId !== undefined) {
+    return Number(message.senderId) === Number(actor.id);
+  }
+
+  return message.senderName.trim().toLocaleLowerCase("ru-RU") === actor.name.trim().toLocaleLowerCase("ru-RU");
+}
+
 const CHAT_TIME_ZONE = "Asia/Irkutsk";
 
 function chatDateKey(value?: string | null) {
@@ -468,7 +477,7 @@ export default function ChatScreen() {
             ListHeaderComponent={nextCursor ? <Pressable onPress={() => void loadOlder()} disabled={isLoadingOlder} style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: border, backgroundColor: colors.surface }}>{isLoadingOlder ? <ActivityIndicator size="small" color={colors.primary} /> : null}<Text style={{ marginLeft: isLoadingOlder ? 6 : 0, color: colors.muted, fontSize: 11, fontWeight: "700" }}>Предыдущие сообщения</Text></Pressable> : null}
             ListEmptyComponent={<View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 30 }}><MessageCircle size={31} color={colors.muted} /><Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700", marginTop: 10 }}>Сообщений пока нет</Text><Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Начните разговор первым.</Text></View>}
             renderItem={({ item, index }) => {
-              const own = contacts?.me.type === item.senderType && Number(contacts.me.id) === Number(item.senderId);
+              const own = isMessageFromActor(item, contacts?.me);
               const replied = item.replyToMessageId ? messagesById.get(Number(item.replyToMessageId)) : null;
               const messageDateKey = chatDateKey(item.createdAt);
               const previousDateKey = index > 0 ? chatDateKey(messages[index - 1]?.createdAt) : "";

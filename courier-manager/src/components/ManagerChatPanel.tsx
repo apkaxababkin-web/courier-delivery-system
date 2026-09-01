@@ -76,6 +76,15 @@ function actorKey(actor: Pick<ChatV2Actor, 'type' | 'id'>) {
   return `${actor.type}:${actor.id}`;
 }
 
+function isMessageFromActor(message: ChatV2Message, actor: ChatV2Actor | null) {
+  if (!actor || message.senderType !== actor.type) return false;
+  if (message.senderId !== null && message.senderId !== undefined) {
+    return Number(message.senderId) === Number(actor.id);
+  }
+
+  return message.senderName.trim().toLocaleLowerCase('ru') === actor.name.trim().toLocaleLowerCase('ru');
+}
+
 export default function ManagerChatPanel() {
   const [contacts, setContacts] = useState<ChatV2Contacts | null>(null);
   const [conversations, setConversations] = useState<ChatV2Conversation[]>([]);
@@ -505,7 +514,7 @@ export default function ManagerChatPanel() {
             ) : (
               <div className="space-y-3">
                 {messages.map((message, index) => {
-                  const isMine = Boolean(me && message.senderType === me.type && Number(message.senderId) === Number(me.id));
+                  const isMine = isMessageFromActor(message, me);
                   const isEditing = editingMessageId === message.id;
                   const isDeleting = deletingMessageId === message.id;
                   const isBusy = busyMessageId === message.id;
