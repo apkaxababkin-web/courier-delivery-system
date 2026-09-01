@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -29,7 +29,7 @@ import {
   type ChatV2Conversation,
   type ChatV2Message,
 } from '../lib/api';
-import { formatLocalDateWithOptions, formatLocalTime } from '../lib/local-time';
+import { formatLocalDateWithOptions, formatLocalTime, toLocalDateKey } from '../lib/local-time';
 
 function messageClientId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -47,6 +47,29 @@ function formatConversationTime(value?: string | null) {
 
   if (date.toDateString() === today.toDateString()) return formatLocalTime(value, '');
   return formatLocalDateWithOptions(value, { day: '2-digit', month: '2-digit' }, '');
+}
+
+function capitalize(value: string) {
+  return value ? `${value.charAt(0).toLocaleUpperCase('ru')}${value.slice(1)}` : value;
+}
+
+function formatMessageDayLabel(value: string) {
+  const dateKey = toLocalDateKey(value);
+  if (!dateKey) return '';
+
+  const now = new Date();
+  const todayKey = toLocalDateKey(now);
+  const yesterdayKey = toLocalDateKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  const formattedDate = formatLocalDateWithOptions(value, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    ...(dateKey.slice(0, 4) === todayKey.slice(0, 4) ? {} : { year: 'numeric' as const }),
+  }, '');
+
+  if (dateKey === todayKey) return `Сегодня, ${formattedDate}`;
+  if (dateKey === yesterdayKey) return `Вчера, ${formattedDate}`;
+  return capitalize(formattedDate);
 }
 
 function actorKey(actor: Pick<ChatV2Actor, 'type' | 'id'>) {
@@ -481,13 +504,26 @@ export default function ManagerChatPanel() {
               <div className="flex h-full items-center justify-center text-center"><div><MessageCircle className="mx-auto h-9 w-9 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-900">Сообщений пока нет</p><p className="mt-1 text-xs text-slate-500">Начните разговор первым.</p></div></div>
             ) : (
               <div className="space-y-3">
-                {messages.map((message) => {
+                {messages.map((message, index) => {
                   const isMine = Boolean(me && message.senderType === me.type && Number(message.senderId) === Number(me.id));
                   const isEditing = editingMessageId === message.id;
                   const isDeleting = deletingMessageId === message.id;
                   const isBusy = busyMessageId === message.id;
+                  const messageDateKey = toLocalDateKey(message.createdAt);
+                  const previousDateKey = index > 0 ? toLocalDateKey(messages[index - 1]?.createdAt) : '';
+                  const showDateSeparator = index === 0 || messageDateKey !== previousDateKey;
                   return (
-                    <div key={message.id} className={`group flex gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                    <Fragment key={message.id}>
+                    {showDateSeparator ? (
+                      <div className="flex items-center gap-3 py-1" role="separator" aria-label={formatMessageDayLabel(message.createdAt)}>
+                        <span className="h-px flex-1 bg-slate-200" />
+                        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">
+                          {formatMessageDayLabel(message.createdAt)}
+                        </span>
+                        <span className="h-px flex-1 bg-slate-200" />
+                      </div>
+                    ) : null}
+                    <div className={`group flex gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
                       {!isMine ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-bold text-white">{message.senderName.charAt(0).toUpperCase()}</span> : null}
                       <div className={`min-w-0 max-w-[82%] ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
                         {!isMine ? <span className="mb-1 px-1 text-[11px] font-semibold text-slate-500">{message.senderName} · {message.senderType === 'manager' ? 'Менеджер' : 'Курьер'}</span> : null}
@@ -511,6 +547,7 @@ export default function ManagerChatPanel() {
                         <span className="mt-1 flex items-center gap-1 px-1 text-[10px] text-slate-400">{formatLocalTime(message.createdAt, '')}{message.editedAt ? ' · изменено' : ''}{isMine && !message.deletedAt ? (Number(message.readCount) > 0 ? <CheckCheck className="h-3.5 w-3.5 text-blue-500" /> : Number(message.deliveredCount) > 0 ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />) : null}</span>
                       </div>
                     </div>
+                    </Fragment>
                   );
                 })}
                 <div ref={messagesEndRef} />

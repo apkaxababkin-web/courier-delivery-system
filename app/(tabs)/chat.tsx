@@ -53,11 +53,53 @@ function actorKey(actor: Pick<ChatV2Actor, "type" | "id">) {
   return `${actor.type}:${actor.id}`;
 }
 
+const CHAT_TIME_ZONE = "Asia/Irkutsk";
+
+function chatDateKey(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CHAT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function capitalize(value: string) {
+  return value ? `${value.charAt(0).toLocaleUpperCase("ru-RU")}${value.slice(1)}` : value;
+}
+
+function formatMessageDayLabel(value: string) {
+  const date = new Date(value);
+  const dateKey = chatDateKey(value);
+  if (!dateKey || Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const todayKey = chatDateKey(now.toISOString());
+  const yesterdayKey = chatDateKey(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString());
+  const formattedDate = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: CHAT_TIME_ZONE,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...(dateKey.slice(0, 4) === todayKey.slice(0, 4) ? {} : { year: "numeric" as const }),
+  }).format(date);
+
+  if (dateKey === todayKey) return `Сегодня, ${formattedDate}`;
+  if (dateKey === yesterdayKey) return `Вчера, ${formattedDate}`;
+  return capitalize(formattedDate);
+}
+
 function formatTime(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("ru-RU", { timeZone: CHAT_TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 }
 
 function formatListTime(value?: string | null) {
@@ -425,10 +467,23 @@ export default function ChatScreen() {
             contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", paddingHorizontal: 10, paddingTop: 10, paddingBottom: 12 }}
             ListHeaderComponent={nextCursor ? <Pressable onPress={() => void loadOlder()} disabled={isLoadingOlder} style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: border, backgroundColor: colors.surface }}>{isLoadingOlder ? <ActivityIndicator size="small" color={colors.primary} /> : null}<Text style={{ marginLeft: isLoadingOlder ? 6 : 0, color: colors.muted, fontSize: 11, fontWeight: "700" }}>Предыдущие сообщения</Text></Pressable> : null}
             ListEmptyComponent={<View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 30 }}><MessageCircle size={31} color={colors.muted} /><Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700", marginTop: 10 }}>Сообщений пока нет</Text><Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Начните разговор первым.</Text></View>}
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
               const own = contacts?.me.type === item.senderType && Number(contacts.me.id) === Number(item.senderId);
               const replied = item.replyToMessageId ? messagesById.get(Number(item.replyToMessageId)) : null;
+              const messageDateKey = chatDateKey(item.createdAt);
+              const previousDateKey = index > 0 ? chatDateKey(messages[index - 1]?.createdAt) : "";
+              const showDateSeparator = index === 0 || messageDateKey !== previousDateKey;
               return (
+                <View style={{ width: "100%" }}>
+                  {showDateSeparator ? (
+                    <View accessibilityRole="text" accessibilityLabel={formatMessageDayLabel(item.createdAt)} style={{ flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 2 : 8, marginBottom: 10 }}>
+                      <View style={{ height: 1, flex: 1, backgroundColor: border }} />
+                      <View style={{ marginHorizontal: 9, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: border, backgroundColor: colors.surface }}>
+                        <Text style={{ color: colors.muted, fontSize: 10.5, fontWeight: "700" }}>{formatMessageDayLabel(item.createdAt)}</Text>
+                      </View>
+                      <View style={{ height: 1, flex: 1, backgroundColor: border }} />
+                    </View>
+                  ) : null}
                 <View style={{ width: "100%", alignItems: own ? "flex-end" : "flex-start", marginBottom: 7 }}>
                   <Pressable onLongPress={() => { if (!item.deletedAt) setMessageMenu(item); }} delayLongPress={330} style={{ maxWidth: "84%", minWidth: 88, paddingHorizontal: 11, paddingTop: 7, paddingBottom: 5, borderRadius: 13, borderBottomRightRadius: own ? 4 : 13, borderBottomLeftRadius: own ? 13 : 4, borderWidth: own ? 0 : 1, borderColor: border, backgroundColor: own ? "#174B78" : colors.surface }}>
                     {!own ? <Text numberOfLines={1} style={{ color: colors.primary, fontSize: 10.5, fontWeight: "700", marginBottom: 3 }}>{item.senderName} · {item.senderType === "manager" ? "Менеджер" : "Курьер"}</Text> : null}
@@ -436,6 +491,7 @@ export default function ChatScreen() {
                     <Text style={{ color: item.deletedAt ? (own ? "rgba(255,255,255,0.55)" : colors.muted) : (own ? "#F5F9FF" : colors.foreground), fontSize: 13, lineHeight: 18, fontStyle: item.deletedAt ? "italic" : "normal" }}>{item.deletedAt ? "Сообщение удалено" : item.text}</Text>
                     <View style={{ alignSelf: "flex-end", flexDirection: "row", alignItems: "center", marginTop: 2 }}><Text style={{ color: own ? "rgba(235,245,255,0.68)" : colors.muted, fontSize: 9.5 }}>{formatTime(item.createdAt)}{item.editedAt ? " · изменено" : ""}</Text>{own && !item.deletedAt ? (Number(item.readCount) > 0 ? <CheckCheck size={13} color="#72B5FF" style={{ marginLeft: 3 }} /> : Number(item.deliveredCount) > 0 ? <CheckCheck size={13} color="rgba(235,245,255,0.68)" style={{ marginLeft: 3 }} /> : <Check size={13} color="rgba(235,245,255,0.68)" style={{ marginLeft: 3 }} />) : null}</View>
                   </Pressable>
+                </View>
                 </View>
               );
             }}
