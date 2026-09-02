@@ -19,6 +19,10 @@ export interface Client {
   id: number;
   name: string;
   address: string;
+  legalName?: string;
+  inn?: string;
+  kpp?: string;
+  legalAddress?: string;
   contactPerson?: string;
   phone?: string;
   email?: string;
@@ -812,6 +816,8 @@ export interface Request {
   paymentMethod?: 'paid' | 'transfer' | 'cash' | 'terminal' | 'qr';
   paymentAmount?: number;
   deliveryFee?: string | number | null;
+  billingCheckedAt?: string | null;
+  billingCheckedByManagerId?: number | null;
   deliveryTimeFrom?: string;
   deliveryTimeTo?: string;
   estimatedMinutes?: number;
@@ -852,6 +858,45 @@ export async function updateRequestStatus(id: number, status: Request['status'])
 
 export async function updateRequestClient(id: number, clientId: number | null): Promise<void> {
   await trpcPost('requests.updateClient', { id, clientId }, { success: true });
+}
+
+// ─── Billing API ─────────────────────────────────────────────────────────────
+
+export async function getBillingReviewRequests(
+  clientId: number,
+  dateFrom: string,
+  dateTo: string,
+): Promise<Request[]> {
+  return await trpcGet<Request[]>(
+    'billing.reviewList',
+    { clientId, dateFrom, dateTo },
+    [],
+  );
+}
+
+export async function setBillingChecked(
+  requestId: number,
+  checked: boolean,
+): Promise<void> {
+  await trpcPost(
+    'billing.setChecked',
+    { requestId, checked },
+    { success: true },
+  );
+}
+
+export async function updateBillingReviewFields(
+  requestId: number,
+  fields: {
+    deliveryFee?: number;
+    comments?: string;
+  },
+): Promise<void> {
+  await trpcPost(
+    'billing.updateReviewFields',
+    { requestId, ...fields },
+    { success: true },
+  );
 }
 
 export interface RequestAttachment {

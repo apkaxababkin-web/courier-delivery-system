@@ -3,12 +3,12 @@ import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { syncTaskForRequestId } from "./_core/requestTaskSync";
+import { syncTaskForRequestId, updateRequestStatusFromTask } from "./_core/requestTaskSync";
 import { isExpoPushToken, sendExpoPush } from "./_core/expoPush";
 import { broadcastLive } from "./_core/liveEvents";
 import { toSafeCourier } from "./_core/courierPublic";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { managerProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
 const BUSINESS_TIME_ZONE = "Asia/Irkutsk";
@@ -515,6 +515,9 @@ export const appRouter = router({
         if (!task) throw new Error("Задание не найдено");
 
         await db.updateTaskStatus(input.taskId, task.status, { placesCount: input.placesCount });
+        await updateRequestStatusFromTask(input.taskId, task.status, task.courierId, input.placesCount);
+        broadcastLive("tasks_changed", { taskId: input.taskId });
+        broadcastLive("requests_changed", { taskId: input.taskId });
         return { success: true };
       }),
 
@@ -1174,6 +1177,10 @@ export const appRouter = router({
       .input(z.object({
         name: z.string().min(1),
         address: z.string().min(1),
+        legalName: z.string().optional(),
+        inn: z.string().optional(),
+        kpp: z.string().optional(),
+        legalAddress: z.string().optional(),
         contactPerson: z.string().optional(),
         phone: z.string().optional(),
         email: z.string().optional(),
@@ -1189,6 +1196,10 @@ export const appRouter = router({
         id: z.number(),
         name: z.string().min(1).optional(),
         address: z.string().min(1).optional(),
+        legalName: z.string().optional(),
+        inn: z.string().optional(),
+        kpp: z.string().optional(),
+        legalAddress: z.string().optional(),
         contactPerson: z.string().optional(),
         phone: z.string().optional(),
         email: z.string().optional(),
@@ -1205,6 +1216,80 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         // @ts-ignore - function exists but TypeScript cache issue
         await db.deleteClient(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ─── Billing ────────────────────────────────────────────────────────────────
+  billing: router({
+    reviewList: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }))
+      .query(async ({ input }) => {
+        if (input.dateFrom > input.dateTo) {
+          throw new Error("dateFrom must not be after dateTo");
+        }
+
+        return await db.getBillingReviewRequests(
+          input.clientId,
+          input.dateFrom,
+          input.dateTo,
+        );
+      }),
+
+    setChecked: managerProcedure
+      .input(z.object({
+        requestId: z.number().int().positive(),
+        checked: z.boolean(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.setBillingChecked(
+          input.requestId,
+          ctx.managerId,
+          input.checked,
+        );
+
+        broadcastLive("requests_changed", { requestId: input.requestId });
+
+        return { success: true };
+      }),
+
+    updateReviewFields: managerProcedure
+      .input(
+        z.object({
+          requestId: z.number().int().positive(),
+          deliveryFee: z.number().finite().nonnegative().optional(),
+          comments: z.string().optional(),
+        }).refine(
+          (data) => data.deliveryFee !== undefined || data.comments !== undefined,
+          { message: "Необходимо изменить стоимость или комментарий" },
+        ),
+      )
+      .mutation(async ({ input }) => {
+        const request = await db.getRequestById(input.requestId);
+
+        if (!request) {
+          throw new Error("Заявка не найдена");
+        }
+
+        if (request.status !== "completed") {
+          throw new Error("Редактировать расчёт можно только у завершённой заявки");
+        }
+
+        await db.updateRequest(input.requestId, {
+          ...(input.deliveryFee !== undefined
+            ? { deliveryFee: input.deliveryFee.toFixed(2) }
+            : {}),
+          ...(input.comments !== undefined
+            ? { comments: input.comments }
+            : {}),
+        });
+
+        broadcastLive("requests_changed", { requestId: input.requestId });
+
         return { success: true };
       }),
   }),
@@ -1292,6 +1377,65 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         return await db.getRequestById(input.id);
+      }),
+
+    update: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        requestType: z.enum([
+          "delivery",
+          "movement",
+          "nuts",
+          "courier_call",
+          "pickup_from_tc",
+          "simple",
+        ]).optional(),
+        clientId: z.number().nullable().optional(),
+        courierId: z.number().nullable().optional(),
+        recipientName: z.string().optional(),
+        recipientPhone: z.string().optional(),
+        recipientAddress: z.string().optional(),
+        recipientCompany: z.string().optional(),
+        recipientCity: z.string().optional(),
+        deliveryAddress: z.string().optional(),
+        deliveryCity: z.string().optional(),
+        packageDescription: z.string().optional(),
+        packageType: z.enum(["document", "small", "medium", "large", "fragile"]).nullable().optional(),
+        placesCount: z.number().nullable().optional(),
+        senderName: z.string().optional(),
+        senderCompany: z.string().optional(),
+        senderCity: z.string().optional(),
+        senderAddress: z.string().optional(),
+        senderPhone: z.string().optional(),
+        items: z.string().optional(),
+        callReason: z.string().optional(),
+        tcName: z.string().optional(),
+        tcAddress: z.string().optional(),
+        trackingNumber: z.string().optional(),
+        description: z.string().optional(),
+        specialInstructions: z.string().optional(),
+        comments: z.string().optional(),
+        paymentMethod: z.enum(["paid", "transfer", "cash", "terminal", "qr"]).nullable().optional(),
+        paymentAmount: z.union([z.string(), z.number()]).nullable().optional(),
+        deliveryTimeFrom: z.string().optional(),
+        deliveryTimeTo: z.string().optional(),
+        estimatedMinutes: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, paymentAmount, ...data } = input;
+
+        await db.updateRequest(id, {
+          ...data,
+          ...(paymentAmount !== undefined
+            ? { paymentAmount: paymentAmount === null ? null : String(paymentAmount) }
+            : {}),
+        });
+
+        await syncTaskForRequestId(id);
+        broadcastLive("requests_changed", { requestId: id });
+        broadcastLive("tasks_changed", { requestId: id });
+
+        return { success: true };
       }),
 
     updateStatus: publicProcedure

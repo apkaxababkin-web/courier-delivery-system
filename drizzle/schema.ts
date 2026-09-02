@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   decimal,
   integer,
   index,
@@ -66,6 +67,12 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "cash",
   "terminal",
   "qr",
+]);
+
+export const billingDocumentStatusEnum = pgEnum("billing_document_status", [
+  "issued",
+  "paid",
+  "cancelled",
 ]);
 
 // ─── Users Table ─────────────────────────────────────────────────────────────
@@ -423,6 +430,17 @@ export const clients = pgTable("clients", {
   phone: varchar("phone", { length: 50 }),
   /** Email (optional) */
   email: varchar("email", { length: 320 }),
+
+  // Billing / legal requisites
+  /** Full legal name used in invoices and acts */
+  legalName: varchar("legalName", { length: 500 }),
+  /** Taxpayer identification number */
+  inn: varchar("inn", { length: 20 }),
+  /** Tax registration reason code (optional, mainly for legal entities) */
+  kpp: varchar("kpp", { length: 20 }),
+  /** Legal address used in billing documents */
+  legalAddress: text("legalAddress"),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -597,6 +615,12 @@ export const requests = pgTable("requests", {
   paymentAmount: decimal("paymentAmount", { precision: 10, scale: 2 }),
   /** Final delivery fee approved by manager */
   deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 }),
+
+  // Billing review
+  /** When this completed work was financially checked by a manager */
+  billingCheckedAt: timestamp("billingCheckedAt"),
+  /** Manager who performed the latest financial check */
+  billingCheckedByManagerId: integer("billingCheckedByManagerId"),
   /** Delivery time from (HH:MM) */
   deliveryTimeFrom: varchar("deliveryTimeFrom", { length: 5 }),
   /** Delivery time to (HH:MM) */
@@ -664,6 +688,128 @@ export type InsertSettings = typeof settings.$inferInsert;
 /**
  * Managers table — stores manager accounts for the web portal.
  */
+// ─── Billing Settings Table ──────────────────────────────────────────────────
+
+/**
+ * Requisites and numbering settings used to generate billing documents.
+ * The application treats this table as singleton settings.
+ */
+export const billingSettings = pgTable("billingSettings", {
+  id: serial("id").primaryKey(),
+
+  executorName: varchar("executorName", { length: 500 }),
+  executorInn: varchar("executorInn", { length: 20 }),
+  executorKpp: varchar("executorKpp", { length: 20 }),
+  executorAddress: text("executorAddress"),
+  executorPhone: varchar("executorPhone", { length: 50 }),
+
+  bankName: varchar("bankName", { length: 500 }),
+  bankBik: varchar("bankBik", { length: 20 }),
+  bankAccount: varchar("bankAccount", { length: 50 }),
+  bankCorrespondentAccount: varchar("bankCorrespondentAccount", { length: 50 }),
+
+  vatText: varchar("vatText", { length: 100 }).default("Без НДС").notNull(),
+  documentNumberPrefix: varchar("documentNumberPrefix", { length: 50 }),
+  nextDocumentNumber: integer("nextDocumentNumber").default(1).notNull(),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type BillingSettings = typeof billingSettings.$inferSelect;
+export type InsertBillingSettings = typeof billingSettings.$inferInsert;
+
+
+// ─── Billing Documents Table ─────────────────────────────────────────────────
+
+/**
+ * One row represents one immutable billing set:
+ * invoice + act + completed works registry.
+ */
+export const billingDocuments = pgTable("billingDocuments", {
+  id: serial("id").primaryKey(),
+
+  number: varchar("number", { length: 100 }).notNull(),
+  clientId: integer("clientId").notNull(),
+
+  documentDate: date("documentDate").notNull(),
+  periodFrom: date("periodFrom").notNull(),
+  periodTo: date("periodTo").notNull(),
+
+  requestsCount: integer("requestsCount").notNull(),
+  totalAmount: decimal("totalAmount", { precision: 12, scale: 2 }).notNull(),
+
+  status: billingDocumentStatusEnum("status").default("issued").notNull(),
+
+  /** Exact service description printed in invoice and act */
+  serviceDescription: text("serviceDescription").notNull(),
+
+  // Customer requisites snapshot
+  clientNameSnapshot: varchar("clientNameSnapshot", { length: 500 }).notNull(),
+  clientInnSnapshot: varchar("clientInnSnapshot", { length: 20 }).notNull(),
+  clientKppSnapshot: varchar("clientKppSnapshot", { length: 20 }),
+  clientAddressSnapshot: text("clientAddressSnapshot").notNull(),
+
+  // Executor requisites snapshot
+  executorNameSnapshot: varchar("executorNameSnapshot", { length: 500 }).notNull(),
+  executorInnSnapshot: varchar("executorInnSnapshot", { length: 20 }).notNull(),
+  executorKppSnapshot: varchar("executorKppSnapshot", { length: 20 }),
+  executorAddressSnapshot: text("executorAddressSnapshot").notNull(),
+  executorPhoneSnapshot: varchar("executorPhoneSnapshot", { length: 50 }),
+
+  bankNameSnapshot: varchar("bankNameSnapshot", { length: 500 }).notNull(),
+  bankBikSnapshot: varchar("bankBikSnapshot", { length: 20 }).notNull(),
+  bankAccountSnapshot: varchar("bankAccountSnapshot", { length: 50 }).notNull(),
+  bankCorrespondentAccountSnapshot: varchar("bankCorrespondentAccountSnapshot", { length: 50 }).notNull(),
+
+  vatTextSnapshot: varchar("vatTextSnapshot", { length: 100 }).notNull(),
+
+  // Generated files, stored as relative paths
+  invoiceFile: text("invoiceFile"),
+  actFile: text("actFile"),
+  registryFile: text("registryFile"),
+
+  // Audit
+  createdByManagerId: integer("createdByManagerId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+
+  paidAt: timestamp("paidAt"),
+  paidByManagerId: integer("paidByManagerId"),
+
+  cancelledAt: timestamp("cancelledAt"),
+  cancelledByManagerId: integer("cancelledByManagerId"),
+
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type BillingDocument = typeof billingDocuments.$inferSelect;
+export type InsertBillingDocument = typeof billingDocuments.$inferInsert;
+
+
+// ─── Billing Document Requests Table ─────────────────────────────────────────
+
+/**
+ * Exact requests included in a billing set.
+ * releasedAt allows a cancelled set to explicitly return works for rebilling.
+ */
+export const billingDocumentRequests = pgTable("billingDocumentRequests", {
+  id: serial("id").primaryKey(),
+  billingDocumentId: integer("billingDocumentId").notNull(),
+  requestId: integer("requestId").notNull(),
+
+  /** Request price snapshot at the moment documents were issued */
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+
+  releasedAt: timestamp("releasedAt"),
+  releasedByManagerId: integer("releasedByManagerId"),
+});
+
+export type BillingDocumentRequest = typeof billingDocumentRequests.$inferSelect;
+export type InsertBillingDocumentRequest = typeof billingDocumentRequests.$inferInsert;
+
+
 export const managers = pgTable("managers", {
   id: serial("id").primaryKey(),
   /** Display name of the manager */

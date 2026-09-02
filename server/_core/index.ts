@@ -434,6 +434,11 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
         }
       }
 
+      if (Object.prototype.hasOwnProperty.call(input, "comments")) {
+        updateData.billingCheckedAt = null;
+        updateData.billingCheckedByManagerId = null;
+      }
+
       if (input.requestType) updateData.requestType = input.requestType;
       if (input.packageType) updateData.packageType = input.packageType;
       if (input.paymentMethod) updateData.paymentMethod = input.paymentMethod;

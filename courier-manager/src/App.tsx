@@ -396,7 +396,7 @@ function LegacyManagerChatPanel() {
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
   { id: 'clients', label: 'Контрагенты', icon: Users },
-  { id: 'reports', label: 'Отчёты', icon: BarChart3 },
+  { id: 'reports', label: 'Расчёты', icon: BarChart3 },
   { id: 'couriers', label: 'Курьеры', icon: Users },
 ];
 

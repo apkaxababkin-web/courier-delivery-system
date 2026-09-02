@@ -86,7 +86,8 @@ if [ "${RUN_DB_PATCHES:-false}" = "true" ]; then
   run_patch "scripts/db_compat_patch.sql" "compatibility patch"
   run_patch "scripts/mails_manifest_patch.sql" "mails manifest patch"
   # disabled: backend helper now handles request-task sync
-  # run_patch "scripts/realtime_bridge.sql" "request-task bridge patch"
+  # # temporarily disabled: request-task bridge patch
+# run_patch "scripts/realtime_bridge.sql" "request-task bridge patch"
 else
   echo "[Entrypoint] Skipping compatibility SQL patches (set RUN_DB_PATCHES=true to run them explicitly)"
 fi

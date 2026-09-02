@@ -8,6 +8,7 @@ const MANAGER_TPRC_PREFIXES = [
   "managerSberbank.",
   "requests.",
   "clients.",
+  "billing.",
   "ai.",
 ];
 

@@ -63,6 +63,8 @@ export default function ClientsViewV2() {
   const [clientTariffs, setClientTariffs] = useState<ClientTariffs>(emptyTariffs);
   const [hemotestReconciliation, setHemotestReconciliation] = useState<HemotestReconciliationItem[]>([]);
   const [selectedHemotestPeriodKey, setSelectedHemotestPeriodKey] = useState('');
+  const [reconciliationDateFrom, setReconciliationDateFrom] = useState('');
+  const [reconciliationDateTo, setReconciliationDateTo] = useState('');
 
   const [showClientModal, setShowClientModal] = useState(false);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
@@ -1116,6 +1118,21 @@ export default function ClientsViewV2() {
     const selectedClientRequests = requests
       .filter((request) => request.status === 'completed')
       .filter((request) => requestBelongsToClient(request, selected))
+      .filter((request) => {
+        const requestTime = new Date(request.createdAt).getTime();
+
+        if (reconciliationDateFrom) {
+          const fromTime = new Date(`${reconciliationDateFrom}T00:00:00`).getTime();
+          if (requestTime < fromTime) return false;
+        }
+
+        if (reconciliationDateTo) {
+          const toTime = new Date(`${reconciliationDateTo}T23:59:59.999`).getTime();
+          if (requestTime > toTime) return false;
+        }
+
+        return true;
+      })
       .sort((a, b) => {
         const aTime = new Date(a.createdAt).getTime();
         const bTime = new Date(b.createdAt).getTime();
@@ -1355,6 +1372,10 @@ export default function ClientsViewV2() {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Info label="Руководитель" value={selected.contactPerson || '—'} />
+            <Info label="Юридическое наименование" value={selected.legalName || '—'} />
+            <Info label="ИНН" value={selected.inn || '—'} />
+            <Info label="КПП" value={selected.kpp || '—'} />
+            <Info label="Юридический адрес" value={selected.legalAddress || '—'} />
             <Info label="Телефон" value={selected.phone || '—'} />
             <Info label="Email" value={selected.email || '—'} />
             <Info label="Роль" value="Ответственный за клиента" />
@@ -1656,7 +1677,40 @@ export default function ClientsViewV2() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-xs text-slate-500">
+                  <span className="mb-1 block">С</span>
+                  <input
+                    type="date"
+                    value={reconciliationDateFrom}
+                    onChange={(event) => setReconciliationDateFrom(event.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+                </label>
+
+                <label className="text-xs text-slate-500">
+                  <span className="mb-1 block">По</span>
+                  <input
+                    type="date"
+                    value={reconciliationDateTo}
+                    onChange={(event) => setReconciliationDateTo(event.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  />
+                </label>
+
+                {(reconciliationDateFrom || reconciliationDateTo) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReconciliationDateFrom('');
+                      setReconciliationDateTo('');
+                    }}
+                    className={buttonSecondary}
+                  >
+                    Сбросить
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={downloadSelectedClientReconciliation}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Activity, CheckCircle2, Landmark, Loader2, Mail, MapPin, RotateCcw } from 'lucide-react';
 import {
   getAllClients,
@@ -16,6 +16,7 @@ import { TasksToolbar } from './components/TasksToolbar';
 import { TasksTable } from './components/TasksTable';
 import { EmptyState } from './components/EmptyState';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
+import { TaskDetailsModal } from './components/modals/TaskDetailsModal';
 import { AiTaskModal } from './components/modals/AiTaskModal';
 import MailsView from '../../views/MailsView';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
@@ -222,6 +223,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [deletingRequestId, setDeletingRequestId] = useState<number | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [selectedRequestNumber, setSelectedRequestNumber] = useState<number | null>(null);
+  const [isEditingSelectedRequest, setIsEditingSelectedRequest] = useState(false);
   const { snapshot: realtimeSnapshot } = useManagerRealtime();
 
   useEffect(() => { loadData(); }, []);
@@ -459,9 +461,15 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     estimatedMinutes: request.estimatedMinutes,
   });
 
+  const editInitialData = useMemo(
+    () => selectedRequest ? requestToFormData(selectedRequest) : null,
+    [selectedRequest],
+  );
+
   const handleOpenRequest = (request: Request, displayNumber: number) => {
     setSelectedRequest(request);
     setSelectedRequestNumber(displayNumber);
+    setIsEditingSelectedRequest(false);
   };
 
   const handleUpdateRequest = async (requestId: number, data: Partial<Request>) => {
@@ -470,6 +478,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
       await post('/api/trpc/requests.update', { id: requestId, ...data });
       setSelectedRequest(null);
       setSelectedRequestNumber(null);
+      setIsEditingSelectedRequest(false);
       await loadData(false);
     } catch (error) {
       console.error('Failed to update request:', error);
@@ -489,6 +498,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
       if (selectedRequest?.id === request.id) {
         setSelectedRequest(null);
         setSelectedRequestNumber(null);
+        setIsEditingSelectedRequest(false);
       }
       await loadData(false);
     } catch (error) {
@@ -704,14 +714,26 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
         </div>
       )}
       <CreateTaskModal isOpen={showCreateModal} onClose={closeCreateRequest} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} initialData={createInitialData} />
+      <TaskDetailsModal
+        isOpen={Boolean(selectedRequest) && !isEditingSelectedRequest}
+        request={selectedRequest}
+        displayNumber={selectedRequestNumber}
+        onClose={() => {
+          setSelectedRequest(null);
+          setSelectedRequestNumber(null);
+          setIsEditingSelectedRequest(false);
+        }}
+        onEdit={() => setIsEditingSelectedRequest(true)}
+      />
+
       <CreateTaskModal
-        isOpen={Boolean(selectedRequest)}
-        onClose={() => { setSelectedRequest(null); setSelectedRequestNumber(null); }}
+        isOpen={Boolean(selectedRequest) && isEditingSelectedRequest}
+        onClose={() => setIsEditingSelectedRequest(false)}
         onSubmit={(data) => selectedRequest && handleUpdateRequest(selectedRequest.id, data as Partial<Request>)}
         clients={clients}
         isLoading={isUpdatingRequest}
         mode="edit"
-        initialData={selectedRequest ? requestToFormData(selectedRequest) : null}
+        initialData={editInitialData}
         title={selectedRequestNumber ? `Редактировать заявку #${selectedRequestNumber}` : 'Редактировать заявку'}
         submitLabel="Сохранить изменения"
       />

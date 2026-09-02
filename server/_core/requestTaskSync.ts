@@ -20,7 +20,7 @@ function taskTypeFromRequest(type: unknown): InsertTask["taskType"] {
 
 function requestStatusFromTask(status: Task["status"]): DeliveryRequest["status"] {
   if (status === "assigned") return "pending";
-  if (status === "in_progress") return "accepted" as DeliveryRequest["status"];
+  if (status === "in_progress") return "in_progress";
   if (status === "completed") return "completed";
   if (status === "cancelled") return "cancelled";
   return "pending";
@@ -107,7 +107,12 @@ export async function syncTaskForRequestId(requestId: number): Promise<number | 
   return syncTaskForRequest(request);
 }
 
-export async function updateRequestStatusFromTask(taskId: number, status: Task["status"], courierId?: number | null) {
+export async function updateRequestStatusFromTask(
+  taskId: number,
+  status: Task["status"],
+  courierId?: number | null,
+  placesCount?: number | null
+) {
   const conn = await db.getDb();
   if (!conn) return;
 
@@ -121,6 +126,7 @@ export async function updateRequestStatusFromTask(taskId: number, status: Task["
   const updateData: Partial<DeliveryRequest> = {
     status: requestStatusFromTask(status),
     courierId: courierId ?? task?.courierId ?? null,
+    ...(placesCount !== undefined ? { placesCount } : {}),
     updatedAt: new Date(),
   };
 

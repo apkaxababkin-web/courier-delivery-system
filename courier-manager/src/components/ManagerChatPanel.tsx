@@ -123,6 +123,26 @@ export default function ManagerChatPanel() {
   const messageRequestRef = useRef(0);
   const shouldScrollToEndRef = useRef(false);
   const nearBottomRef = useRef(true);
+  const chatPanelRef = useRef<HTMLElement | null>(null);
+  const chatTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!isCompactPanelOpen) return;
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (chatPanelRef.current?.contains(target)) return;
+      if (chatTriggerRef.current?.contains(target)) return;
+      setIsCompactPanelOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePointerDown);
+    };
+  }, [isCompactPanelOpen]);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) || null,
@@ -322,7 +342,10 @@ export default function ManagerChatPanel() {
   useEffect(() => {
     if (isMessagesLoading || !shouldScrollToEndRef.current) return;
     shouldScrollToEndRef.current = false;
-    const scroll = () => messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    const scroll = () => {
+      const container = messagesScrollRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    };
     window.requestAnimationFrame(scroll);
     const retryTimer = window.setTimeout(scroll, 120);
     return () => window.clearTimeout(retryTimer);
@@ -344,6 +367,9 @@ export default function ManagerChatPanel() {
   };
 
   const openConversation = (conversationId: number) => {
+    shouldScrollToEndRef.current = true;
+    nearBottomRef.current = true;
+    setIsNearBottom(true);
     setSelectedConversationId(conversationId);
     setIsConversationListOpen(false);
     setIsContactPickerOpen(false);
@@ -456,18 +482,31 @@ export default function ManagerChatPanel() {
   return (
     <>
       <button
+        ref={chatTriggerRef}
         type="button"
-        onClick={() => setIsCompactPanelOpen(true)}
-        className="fixed bottom-5 right-5 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-xl shadow-slate-950/20 transition hover:bg-slate-800 xl:hidden"
-        aria-label="Открыть чат"
+        onClick={() => {
+          setIsCompactPanelOpen((current) => {
+            const next = !current;
+            if (next) {
+              setIsConversationListOpen(true);
+              setIsContactPickerOpen(false);
+              setSearch('');
+            }
+            return next;
+          });
+        }}
+        className="fixed bottom-5 right-5 z-[95] inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-xl shadow-slate-950/20 transition hover:bg-slate-800"
+        aria-label={isCompactPanelOpen ? 'Закрыть чат' : 'Открыть чат'}
+        aria-expanded={isCompactPanelOpen}
       >
         <MessageCircle className="h-6 w-6" />
         {totalUnreadCount > 0 ? <span className="absolute -right-1 -top-1 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-blue-600 px-1 text-[11px] font-bold text-white">{totalUnreadCount > 99 ? '99+' : totalUnreadCount}</span> : null}
       </button>
 
-      {isCompactPanelOpen ? <button type="button" aria-label="Закрыть чат" onClick={() => setIsCompactPanelOpen(false)} className="fixed inset-0 z-[80] bg-slate-950/30 backdrop-blur-[1px] xl:hidden" /> : null}
-
-      <aside className={`${isCompactPanelOpen ? 'fixed inset-y-0 right-0 z-[90] flex w-full max-w-[430px]' : 'hidden'} h-screen flex-col border-l border-slate-200 bg-white xl:static xl:z-auto xl:flex xl:w-[390px] xl:max-w-none xl:shrink-0 2xl:w-[430px]`}>
+      <aside
+        ref={chatPanelRef}
+        className={`${isCompactPanelOpen ? 'fixed bottom-0 right-0 top-[104px] z-[90] flex' : 'hidden'} w-full max-w-[430px] flex-col border-l border-t border-slate-200 bg-white shadow-2xl sm:w-[390px] 2xl:w-[430px]`}
+      >
       {isConversationListOpen || !selectedConversation ? (
         <>
           <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5">
@@ -522,7 +561,13 @@ export default function ManagerChatPanel() {
                 )) : <p className="px-5 py-8 text-center text-sm text-slate-400">Курьеры не найдены</p>}
               </div>
             ) : filteredConversations.length ? filteredConversations.map((conversation) => (
-              <button key={conversation.id} type="button" onClick={() => openConversation(conversation.id)} className={`flex w-full gap-3 px-5 py-3 text-left transition hover:bg-slate-50 ${conversation.id === selectedConversationId ? 'bg-slate-50' : ''}`}>
+              <button key={conversation.id} type="button" onClick={() => openConversation(conversation.id)} className={`flex w-full gap-3 px-5 py-3 text-left transition ${
+                  conversation.unreadCount > 0
+                    ? 'bg-blue-50/80 hover:bg-blue-50'
+                    : conversation.id === selectedConversationId
+                      ? 'bg-slate-50'
+                      : 'hover:bg-slate-50'
+                }`}>
                 <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${conversation.kind === 'general' ? 'bg-slate-950 text-white' : 'bg-blue-100 text-blue-700'}`}>
                   {conversation.kind === 'general' ? <Users className="h-5 w-5" /> : <UserRound className="h-5 w-5" />}
                 </span>

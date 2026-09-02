@@ -570,6 +570,9 @@ async function managerSnapshot() {
 async function courierSnapshot(courierId: number, dateKey = localDateKeyInIrkutsk()) {
   const conn = await db.getDb();
   const { start, end } = localDayRangeInIrkutsk(dateKey);
+  const startIso = start.toISOString();
+  const endIso = end.toISOString();
+
   const [courier, dayTasks, mailList] = await Promise.all([
     db.getCourierById(courierId),
     db.getTasksByDateWithCourier(dateKey),
@@ -577,7 +580,7 @@ async function courierSnapshot(courierId: number, dateKey = localDateKeyInIrkuts
       ? conn
           .select()
           .from(mails)
-          .where(sql`(${mails.status} = 'not_delivered') OR (${mails.deliveredAt} >= ${start} AND ${mails.deliveredAt} <= ${end}) OR (${mails.createdAt} >= ${start} AND ${mails.createdAt} <= ${end})`)
+          .where(sql`(${mails.status} = 'not_delivered') OR (${mails.deliveredAt} >= ${startIso} AND ${mails.deliveredAt} <= ${endIso}) OR (${mails.createdAt} >= ${startIso} AND ${mails.createdAt} <= ${endIso})`)
           .orderBy(desc(mails.createdAt))
           .limit(300)
       : Promise.resolve([]),
@@ -2024,6 +2027,8 @@ export function registerCompatRoutes(app: Express) {
         .update(requests)
         .set({
           deliveryFee,
+          billingCheckedAt: null,
+          billingCheckedByManagerId: null,
           updatedAt: new Date(),
         })
         .where(eq(requests.id, requestId))
@@ -2439,6 +2444,8 @@ export function registerCompatRoutes(app: Express) {
         .update(requests)
         .set({
           clientId,
+          billingCheckedAt: null,
+          billingCheckedByManagerId: null,
           updatedAt: new Date(),
         })
         .where(eq(requests.id, id));

@@ -2059,6 +2059,36 @@ export async function getRequestById(id: number): Promise<Request | null> {
 }
 
 /**
+ * Update editable request fields
+ */
+export async function updateRequest(
+  id: number,
+  data: Partial<Omit<InsertRequest, "id" | "createdByUserId" | "status" | "requestStatus">>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const billingRelevantFieldsChanged =
+    Object.prototype.hasOwnProperty.call(data, "clientId") ||
+    Object.prototype.hasOwnProperty.call(data, "deliveryFee") ||
+    Object.prototype.hasOwnProperty.call(data, "comments");
+
+  await db
+    .update(requests)
+    .set({
+      ...data,
+      ...(billingRelevantFieldsChanged
+        ? {
+            billingCheckedAt: null,
+            billingCheckedByManagerId: null,
+          }
+        : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(requests.id, id));
+}
+
+/**
  * Update request status
  */
 export async function updateRequestStatus(id: number, status: string): Promise<void> {
@@ -2114,3 +2144,55 @@ export async function seedDemoManager(): Promise<number> {
 
 // ─── Client helpers ────────────────────────────────────────────────────────────
 
+
+// ─── Billing review helpers ──────────────────────────────────────────────────
+
+export async function getBillingReviewRequests(
+  clientId: number,
+  dateFrom: string,
+  dateTo: string,
+): Promise<Request[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select()
+    .from(requests)
+    .where(
+      and(
+        eq(requests.clientId, clientId),
+        eq(requests.status, "completed"),
+        sql`${requests.completedAt} >= ${dateFrom}::date`,
+        sql`${requests.completedAt} < (${dateTo}::date + interval '1 day')`,
+      ),
+    )
+    .orderBy(desc(requests.completedAt), desc(requests.id));
+}
+
+export async function setBillingChecked(
+  requestId: number,
+  managerId: number,
+  checked: boolean,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const request = await getRequestById(requestId);
+
+  if (!request) {
+    throw new Error("Заявка не найдена");
+  }
+
+  if (checked && request.status !== "completed") {
+    throw new Error("Проверить можно только завершённую заявку");
+  }
+
+  await db
+    .update(requests)
+    .set({
+      billingCheckedAt: checked ? new Date() : null,
+      billingCheckedByManagerId: checked ? managerId : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(requests.id, requestId));
+}

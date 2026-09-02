@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Search } from 'lucide-react';
+import { CalendarDays, Search, Download } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
+  getBillingReviewRequests,
+  setBillingChecked,
+  updateBillingReviewFields,
   updateRequestClient,
   type Client,
   type Request,
 } from '../lib/api';
+import * as XLSX from 'xlsx';
 
 type ClientTab = {
   id: number | null;
@@ -28,11 +32,7 @@ function toDateKey(value?: string | null) {
 }
 
 function getRequestDate(request: Request) {
-  return toDateKey(
-    request.completedAt
-    || request.scheduledAt
-    || request.createdAt,
-  );
+  return toDateKey(request.completedAt);
 }
 
 function getCurrentMonthRange() {
@@ -122,10 +122,119 @@ function statusClass(status: Request['status']) {
   return 'border-slate-200 bg-slate-50 text-slate-700';
 }
 
+
+function exportBillingXlsx(
+  client: Client,
+  requests: Request[],
+  dateFrom: string,
+  dateTo: string,
+) {
+  const checkedRequests = requests.filter((request) => Boolean(request.billingCheckedAt));
+
+  const total = checkedRequests.reduce(
+    (sum, request) => sum + Number(request.deliveryFee ?? 0),
+    0,
+  );
+
+  const rows: (string | number)[][] = [
+    ['РАСЧЁТ ЗА ВЫПОЛНЕННЫЕ РАБОТЫ'],
+    [],
+    ['Клиент', client.name],
+    ['Юридическое наименование', client.legalName || client.name],
+    ['ИНН', client.inn || ''],
+    ['КПП', client.kpp || ''],
+    ['Юридический адрес', client.legalAddress || client.address || ''],
+    ['Период', `${formatDate(dateFrom)} — ${formatDate(dateTo)}`],
+    [],
+    [
+      'Дата выполнения',
+      '№ заявки',
+      'Клиент',
+      'Отправитель',
+      'Получатель',
+      'Откуда',
+      'Куда',
+      'Курьер',
+      'Мест',
+      'Стоимость доставки',
+      'Комментарий',
+    ],
+    ...checkedRequests.map((request) => [
+      formatDate(getRequestDate(request)),
+      request.id,
+      client.name,
+      requestSender(request),
+      requestRecipient(request),
+      requestFromAddress(request),
+      requestToAddress(request),
+      request.courierName || '',
+      request.placesCount ?? '',
+      Number(request.deliveryFee ?? 0),
+      request.comments || '',
+    ]),
+    [],
+    ['', '', '', '', '', '', '', '', 'ИТОГО', total, ''],
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+
+  worksheet['!cols'] = [
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 28 },
+    { wch: 24 },
+    { wch: 24 },
+    { wch: 35 },
+    { wch: 35 },
+    { wch: 24 },
+    { wch: 8 },
+    { wch: 22 },
+    { wch: 45 },
+  ];
+
+  const titleCell = worksheet['A1'];
+  if (titleCell) {
+    titleCell.s = {
+      font: { bold: true, sz: 16 },
+      alignment: { horizontal: 'center' },
+    };
+  }
+
+  const headerRow = 10;
+  for (let column = 0; column < 11; column += 1) {
+    const cell = XLSX.utils.encode_cell({
+      r: headerRow - 1,
+      c: column,
+    });
+
+    if (worksheet[cell]) {
+      worksheet[cell].s = {
+        font: { bold: true },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      };
+    }
+  }
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Расчёт');
+
+  const safeClientName = client.name
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim() || 'client';
+
+  XLSX.writeFile(
+    workbook,
+    `Расчёт_${safeClientName}_${dateFrom}_${dateTo}.xlsx`,
+  );
+}
+
 export default function ReportsView() {
   const initialRange = useMemo(() => getCurrentMonthRange(), []);
+  const [activeTab, setActiveTab] = useState<'review' | 'documents'>('review');
 
   const [requests, setRequests] = useState<Request[]>([]);
+  const [billingRequests, setBillingRequests] = useState<Request[]>([]);
+  const [isBillingLoading, setIsBillingLoading] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [dateFrom, setDateFrom] = useState(initialRange.from);
   const [dateTo, setDateTo] = useState(initialRange.to);
@@ -133,6 +242,7 @@ export default function ReportsView() {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [savingRequestId, setSavingRequestId] = useState<number | null>(null);
+  const [billingRefreshVersion, setBillingRefreshVersion] = useState(0);
   const [error, setError] = useState('');
 
   async function loadData() {
@@ -173,6 +283,7 @@ export default function ReportsView() {
 
         eventSource.addEventListener('requests_changed', () => {
           void loadData();
+          setBillingRefreshVersion((version) => version + 1);
         });
 
         eventSource.onerror = () => {
@@ -202,8 +313,44 @@ export default function ReportsView() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof selectedClientId !== 'number') {
+      setBillingRequests([]);
+      setIsBillingLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    setBillingRequests([]);
+    setIsBillingLoading(true);
+
+    void getBillingReviewRequests(selectedClientId, dateFrom, dateTo)
+      .then((rows) => {
+        if (!cancelled) setBillingRequests(rows);
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Не удалось загрузить проверку работ',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsBillingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClientId, dateFrom, dateTo, billingRefreshVersion]);
+
   const periodRequests = useMemo(() => {
     return requests.filter((request) => {
+      if (request.status !== 'completed') return false;
+
       const date = getRequestDate(request);
 
       if (!date) return false;
@@ -253,8 +400,12 @@ export default function ReportsView() {
 
   const visibleRequests = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('ru');
+    const sourceRequests =
+      typeof selectedClientId === 'number'
+        ? billingRequests
+        : periodRequests;
 
-    return periodRequests
+    return sourceRequests
       .filter((request) => {
         if (selectedClientId !== 'all') {
           const requestClientId = request.clientId ?? null;
@@ -288,7 +439,25 @@ export default function ReportsView() {
 
         return b.id - a.id;
       });
-  }, [periodRequests, search, selectedClientId]);
+  }, [periodRequests, billingRequests, search, selectedClientId]);
+
+  const reviewSummary = useMemo(() => {
+    let checked = 0;
+    let totalAmount = 0;
+
+    for (const request of visibleRequests) {
+      if (request.billingCheckedAt) checked += 1;
+
+      const amount = Number(request.deliveryFee);
+      if (Number.isFinite(amount)) totalAmount += amount;
+    }
+
+    return {
+      checked,
+      unchecked: visibleRequests.length - checked,
+      totalAmount,
+    };
+  }, [visibleRequests]);
 
   async function changeRequestClient(
     requestId: number,
@@ -331,17 +500,303 @@ export default function ReportsView() {
     }
   }
 
-  return (
+  async function saveReviewDeliveryFee(
+    request: Request,
+    rawValue: string,
+  ) {
+    const normalized = rawValue.trim().replace(',', '.');
+    if (!normalized) return;
+
+    const nextValue = Number(normalized);
+    if (!Number.isFinite(nextValue) || nextValue < 0) {
+      setError('Стоимость должна быть числом не меньше нуля');
+      return;
+    }
+
+    const currentValue =
+      request.deliveryFee === null || request.deliveryFee === undefined
+        ? null
+        : Number(request.deliveryFee);
+
+    if (currentValue === nextValue) return;
+
+    try {
+      setSavingRequestId(request.id);
+      setError('');
+
+      await updateBillingReviewFields(request.id, {
+        deliveryFee: nextValue,
+      });
+
+      const updateRow = (row: Request): Request =>
+        row.id === request.id
+          ? {
+              ...row,
+              deliveryFee: nextValue,
+              billingCheckedAt: null,
+              billingCheckedByManagerId: null,
+            }
+          : row;
+
+      setRequests((rows) => rows.map(updateRow));
+      setBillingRequests((rows) => rows.map(updateRow));
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Не удалось сохранить стоимость',
+      );
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
+  async function saveReviewComments(
+    request: Request,
+    comments: string,
+  ) {
+    const currentComments = request.comments || '';
+    if (currentComments === comments) return;
+
+    try {
+      setSavingRequestId(request.id);
+      setError('');
+
+      await updateBillingReviewFields(request.id, { comments });
+
+      const updateRow = (row: Request): Request =>
+        row.id === request.id
+          ? {
+              ...row,
+              comments,
+              billingCheckedAt: null,
+              billingCheckedByManagerId: null,
+            }
+          : row;
+
+      setRequests((rows) => rows.map(updateRow));
+      setBillingRequests((rows) => rows.map(updateRow));
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Не удалось сохранить комментарий',
+      );
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
+  async function toggleBillingChecked(request: Request) {
+    const checked = !request.billingCheckedAt;
+
+    try {
+      setSavingRequestId(request.id);
+      setError('');
+
+      await setBillingChecked(request.id, checked);
+
+      const checkedAt = checked ? new Date().toISOString() : null;
+
+      const updateRow = (row: Request): Request =>
+        row.id === request.id
+          ? {
+              ...row,
+              billingCheckedAt: checkedAt,
+              billingCheckedByManagerId: checked
+                ? row.billingCheckedByManagerId
+                : null,
+            }
+          : row;
+
+      setRequests((rows) => rows.map(updateRow));
+      setBillingRequests((rows) => rows.map(updateRow));
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Не удалось изменить отметку проверки',
+      );
+    } finally {
+      setSavingRequestId(null);
+    }
+  }
+
+  const selectedClient =
+    typeof selectedClientId === 'number'
+      ? clients.find((client) => client.id === selectedClientId) ?? null
+      : null;
+
+  const checkedBillingRequests = useMemo(
+    () => billingRequests.filter((request) => Boolean(request.billingCheckedAt)),
+    [billingRequests],
+  );
+
+  const checkedBillingTotal = useMemo(
+    () =>
+      checkedBillingRequests.reduce(
+        (sum, request) => sum + Number(request.deliveryFee ?? 0),
+        0,
+      ),
+    [checkedBillingRequests],
+  );
+
+    return (
     <div className="w-full space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-          Отчёты
+          Расчёты
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Все заявки за выбранный период с распределением по клиентам.
+          Проверка выполненных работ и выставление документов клиентам.
         </p>
       </div>
 
+      <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setActiveTab('review')}
+          className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            activeTab === 'review'
+              ? 'bg-slate-950 text-white'
+              : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          Проверка работ
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('documents')}
+          className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            activeTab === 'documents'
+              ? 'bg-slate-950 text-white'
+              : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          Выставление документов
+        </button>
+      </div>
+
+      {activeTab === 'documents' ? (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Дата от
+                </span>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => setDateFrom(event.target.value)}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Дата до
+                </span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => setDateTo(event.target.value)}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
+              </label>
+
+              <label className="min-w-0 flex-1">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Клиент
+                </span>
+                <select
+                  value={typeof selectedClientId === 'number' ? selectedClientId : ''}
+                  onChange={(event) =>
+                    setSelectedClientId(
+                      event.target.value ? Number(event.target.value) : 'all',
+                    )
+                  }
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                >
+                  <option value="">Выберите клиента</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {!selectedClient ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+              Выберите клиента для формирования расчёта.
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-xs font-medium text-slate-500">
+                    Клиент
+                  </div>
+                  <div className="mt-2 text-lg font-semibold text-slate-950">
+                    {selectedClient.name}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-xs font-medium text-slate-500">
+                    Проверено заявок
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {checkedBillingRequests.length}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-xs font-medium text-slate-500">
+                    Сумма
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {checkedBillingTotal.toFixed(2)} ₽
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div>
+                  <div className="font-semibold text-slate-950">
+                    Готовый расчёт
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    В документ попадут только заявки со статусом «Проверено».
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={checkedBillingRequests.length === 0}
+                  onClick={() =>
+                    exportBillingXlsx(
+                      selectedClient,
+                      checkedBillingRequests,
+                      dateFrom,
+                      dateTo,
+                    )
+                  }
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Download className="h-4 w-4" />
+                  Скачать Excel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <>
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
           <label className="block">
@@ -395,6 +850,39 @@ export default function ReportsView() {
         </div>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-xs font-medium text-slate-500">Заявок</div>
+          <div className="mt-1 text-xl font-semibold text-slate-950">
+            {visibleRequests.length}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="text-xs font-medium text-emerald-700">Проверено</div>
+          <div className="mt-1 text-xl font-semibold text-emerald-800">
+            {reviewSummary.checked}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="text-xs font-medium text-amber-700">Не проверено</div>
+          <div className="mt-1 text-xl font-semibold text-amber-800">
+            {reviewSummary.unchecked}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-xs font-medium text-slate-500">Сумма</div>
+          <div className="mt-1 text-xl font-semibold text-slate-950">
+            {reviewSummary.totalAmount.toLocaleString('ru-RU', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })} ₽
+          </div>
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         <div className="flex min-w-max gap-2">
           <button
@@ -436,7 +924,7 @@ export default function ReportsView() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1450px] text-sm">
+          <table className="w-full min-w-[1900px] text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.06em] text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-semibold">Дата</th>
@@ -448,26 +936,36 @@ export default function ReportsView() {
                 <th className="min-w-[240px] px-4 py-3 font-semibold">Куда</th>
                 <th className="px-4 py-3 font-semibold">Курьер</th>
                 <th className="px-4 py-3 text-center font-semibold">Мест</th>
+                <th className="min-w-[140px] px-4 py-3 font-semibold">Стоимость</th>
+                <th className="min-w-[280px] px-4 py-3 font-semibold">Комментарий</th>
+                <th className="min-w-[150px] px-4 py-3 font-semibold">Проверено</th>
                 <th className="px-4 py-3 font-semibold">Статус</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
+              {isLoading || isBillingLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={13} className="px-4 py-12 text-center text-slate-500">
                     Загрузка заявок…
                   </td>
                 </tr>
               ) : visibleRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={13} className="px-4 py-12 text-center text-slate-500">
                     За выбранный период заявок нет
                   </td>
                 </tr>
               ) : (
                 visibleRequests.map((request) => (
-                  <tr key={request.id} className="align-top hover:bg-slate-50/70">
+                  <tr
+                    key={request.id}
+                    className={`align-top ${
+                      request.billingCheckedAt
+                        ? 'hover:bg-slate-50/70'
+                        : 'bg-amber-50/40 hover:bg-amber-50/70'
+                    }`}
+                  >
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                       {formatDate(getRequestDate(request))}
                     </td>
@@ -521,6 +1019,55 @@ export default function ReportsView() {
                       {request.placesCount ?? '—'}
                     </td>
 
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        defaultValue={request.deliveryFee ?? ''}
+                        disabled={savingRequestId === request.id}
+                        onBlur={(event) => {
+                          void saveReviewDeliveryFee(
+                            request,
+                            event.currentTarget.value,
+                          );
+                        }}
+                        className="h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-right text-sm text-slate-900 outline-none transition focus:border-slate-400 disabled:cursor-wait disabled:opacity-60"
+                      />
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <textarea
+                        defaultValue={request.comments || ''}
+                        disabled={savingRequestId === request.id}
+                        onBlur={(event) => {
+                          void saveReviewComments(
+                            request,
+                            event.currentTarget.value,
+                          );
+                        }}
+                        rows={2}
+                        className="min-h-10 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 disabled:cursor-wait disabled:opacity-60"
+                      />
+                    </td>
+
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <button
+                        type="button"
+                        disabled={savingRequestId === request.id}
+                        onClick={() => {
+                          void toggleBillingChecked(request);
+                        }}
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
+                          request.billingCheckedAt
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        }`}
+                      >
+                        {request.billingCheckedAt ? 'Проверено' : 'Не проверено'}
+                      </button>
+                    </td>
+
                     <td className="whitespace-nowrap px-4 py-3">
                       <span
                         className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass(request.status)}`}
@@ -535,6 +1082,8 @@ export default function ReportsView() {
           </table>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
