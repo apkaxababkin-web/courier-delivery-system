@@ -1150,14 +1150,33 @@ export const appRouter = router({
     
     create: publicProcedure
       .input(z.object({
+        partnerId: z.number().int().positive(),
         waybillNumber: z.string().min(1),
         recipientName: z.string().min(1),
         deliveryAddress: z.string().min(1),
         recipientPhone: z.string().default(""),
+        weight: z.string().regex(/^\d+(?:\.\d{1,3})?$/),
       }))
       .mutation(async ({ input }) => {
         const id = await db.createMail(input);
         return { id, success: true };
+      }),
+
+    setChecked: managerProcedure
+      .input(z.object({
+        mailId: z.number().int().positive(),
+        checked: z.boolean(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.setMailBillingChecked(
+          input.mailId,
+          ctx.managerId,
+          input.checked,
+        );
+
+        broadcastLive("mails_changed", { mailId: input.mailId });
+
+        return { success: true };
       }),
   }),
 

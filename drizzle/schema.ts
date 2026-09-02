@@ -386,6 +386,13 @@ export const mails = pgTable("mails", {
   deliveredAt: timestamp("deliveredAt"),
   /** Courier who delivered it */
   courierId: integer("courierId"),
+  /** Partner whose manifest/mail this belongs to */
+  partnerId: integer("partnerId"),
+  /** Shipment weight in kilograms */
+  weight: decimal("weight", { precision: 10, scale: 3 }),
+  /** Financial reconciliation review state */
+  billingCheckedAt: timestamp("billingCheckedAt"),
+  billingCheckedByManagerId: integer("billingCheckedByManagerId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

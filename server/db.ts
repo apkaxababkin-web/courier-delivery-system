@@ -231,6 +231,43 @@ export async function getMailsByFilter(
   return await db.select().from(mails).orderBy(desc(mails.createdAt));
 }
 
+export async function setMailBillingChecked(
+  mailId: number,
+  managerId: number,
+  checked: boolean,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db
+    .select({
+      id: mails.id,
+      status: mails.status,
+    })
+    .from(mails)
+    .where(eq(mails.id, mailId))
+    .limit(1);
+
+  const mail = existing[0];
+
+  if (!mail) {
+    throw new Error("Письмо не найдено");
+  }
+
+  if (mail.status !== "delivered") {
+    throw new Error("Проверять можно только доставленные письма");
+  }
+
+  await db
+    .update(mails)
+    .set({
+      billingCheckedAt: checked ? new Date() : null,
+      billingCheckedByManagerId: checked ? managerId : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(mails.id, mailId));
+}
+
 // ─── DB connection ─────────────────────────────────────────────────────────────
 
 let _pool: postgres.Sql | null = null;

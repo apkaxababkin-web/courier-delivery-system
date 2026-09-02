@@ -739,6 +739,9 @@ export interface Mail {
   courierId?: number | null;
   courierName?: string | null;
   partnerId?: number | null;
+  weight?: string | null;
+  billingCheckedAt?: string | null;
+  billingCheckedByManagerId?: number | null;
 }
 
 export async function getAllMails(filters?: {
@@ -759,6 +762,17 @@ export async function createMail(mail: Omit<Mail, 'id' | 'createdAt' | 'updatedA
 
 export async function bulkCreateMails(mails: Array<Omit<Mail, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'deliveredAt' | 'courierId' | 'courierName'>>): Promise<{ created: number; skipped: number; errors: string[] }> {
   return await trpcPost('managerMails.bulkCreate', { mails }, { created: 0, skipped: 0, errors: [] });
+}
+
+export async function setMailBillingChecked(
+  mailId: number,
+  checked: boolean,
+): Promise<void> {
+  await trpcPost(
+    'managerMails.setChecked',
+    { mailId, checked },
+    { success: true },
+  );
 }
 
 export async function markMailDeliveredByManager(

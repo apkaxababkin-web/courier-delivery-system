@@ -19,10 +19,11 @@ interface Mail {
   recipientSignature?: string;
   courierName?: string;
   courier?: { name?: string; fullName?: string };
+  weight?: string | null;
 }
 
 interface CellRange { column: string; startRow: number; endRow: number }
-interface FieldMapping { waybill: CellRange; recipient: CellRange; address: CellRange; phone?: CellRange }
+interface FieldMapping { waybill: CellRange; recipient: CellRange; address: CellRange; phone?: CellRange; weight?: CellRange }
 type MailStatus = 'all' | 'not_delivered' | 'delivered';
 type PreviewCell = string | number | boolean | Date | null | undefined;
 
@@ -39,6 +40,16 @@ const getMailReceivedBy = (mail: Mail) => mail.status === 'delivered' ? (mail.re
 const getMailReceivedAt = (mail: Mail) => mail.status === 'delivered' ? (mail.deliveredAt || mail.updatedAt || '') : '';
 const getCourierName = (mail: Mail) => mail.courierName || mail.courier?.name || mail.courier?.fullName || 'Не назначен';
 const cellToText = (value: PreviewCell) => value === null || value === undefined ? '' : String(value).trim();
+
+const normalizeWeight = (value: string): string | null => {
+  const cleaned = value.trim().replace(',', '.').replace(/\s+/g, '');
+  if (!/^\d+(?:\.\d{1,3})?$/.test(cleaned)) return null;
+
+  const numeric = Number(cleaned);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+
+  return numeric.toFixed(3);
+};
 
 function toDateKey(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);
@@ -102,6 +113,7 @@ function indexToColumn(index: number): string {
 
 export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const [mails, setMails] = useState<Mail[]>([]);
+  const [partners, setPartners] = useState<api.Partner[]>([]);
   const [loading, setLoading] = useState(false);
   const [updatingMailId, setUpdatingMailId] = useState<number | null>(null);
   const [completionMail, setCompletionMail] = useState<Mail | null>(null);
@@ -112,19 +124,25 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const [fileData, setFileData] = useState<PreviewCell[][]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [previewRows, setPreviewRows] = useState(50);
+  const [manifestPartnerId, setManifestPartnerId] = useState<number | null>(null);
   const [mapping, setMapping] = useState<FieldMapping>({ waybill: { column: 'A', startRow: 2, endRow: 100 }, recipient: { column: 'B', startRow: 2, endRow: 100 }, address: { column: 'C', startRow: 2, endRow: 100 } });
   const [searchQuery, setSearchQuery] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualForm, setManualForm] = useState({
+    partnerId: null as number | null,
     waybillNumber: '',
     recipientName: '',
     recipientPhone: '',
     deliveryAddress: '',
+    weight: '',
   });
   const selectedArchiveDate = archiveDate || getTodayDateKey();
   const manifestInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => { loadMails(); }, []);
+  useEffect(() => {
+    void loadMails();
+    void loadPartners();
+  }, []);
 
   const getCellValue = (rowIndex: number, colLetter: string): string => cellToText(fileData[rowIndex]?.[columnToIndex(colLetter)]);
 
@@ -155,17 +173,34 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
   const handleUploadManifest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile || fileData.length === 0) return alert('Выберите файл');
+    if (!manifestPartnerId) return alert('Выберите партнёра');
+    if (!mapping.weight) return alert('Выберите столбец с весом');
     try {
       setLoading(true);
-      const mailsToCreate: Array<{ waybillNumber: string; recipientName: string; deliveryAddress: string; recipientPhone: string }> = [];
+      const mailsToCreate: Array<{ partnerId: number; waybillNumber: string; recipientName: string; deliveryAddress: string; recipientPhone: string; weight: string }> = [];
       const startRow = Math.max(0, mapping.waybill.startRow - 1);
-      const endRow = Math.min(Math.max(mapping.waybill.endRow, mapping.recipient.endRow, mapping.address.endRow, mapping.phone?.endRow || 0), fileData.length);
+      const endRow = Math.min(Math.max(mapping.waybill.endRow, mapping.recipient.endRow, mapping.address.endRow, mapping.phone?.endRow || 0, mapping.weight.endRow), fileData.length);
       for (let i = startRow; i < endRow; i += 1) {
         const waybill = getCellValue(i, mapping.waybill.column);
         const recipient = getCellValue(i, mapping.recipient.column);
         const address = getCellValue(i, mapping.address.column);
         const phone = mapping.phone ? getCellValue(i, mapping.phone.column) : '';
-        if (waybill && recipient && address) mailsToCreate.push({ waybillNumber: waybill, recipientName: recipient, deliveryAddress: address, recipientPhone: phone || '' });
+        const rawWeight = getCellValue(i, mapping.weight.column);
+        const weight = normalizeWeight(rawWeight);
+
+        if (waybill && recipient && address) {
+          if (!weight) {
+            throw new Error(`Некорректный вес в строке ${i + 1}: "${rawWeight}"`);
+          }
+          mailsToCreate.push({
+            partnerId: manifestPartnerId,
+            waybillNumber: waybill,
+            recipientName: recipient,
+            deliveryAddress: address,
+            recipientPhone: phone || '',
+            weight,
+          });
+        }
       }
       if (mailsToCreate.length === 0) return alert('Не найдено строк для загрузки. Проверьте выбранные столбцы и номера строк.');
       let successCount = 0;
@@ -178,6 +213,7 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
       setShowMappingForm(false);
       setFileData([]);
       setColumns([]);
+      setManifestPartnerId(null);
       await loadMails();
     } catch (error) {
       console.error('Error uploading manifest:', error);
@@ -189,10 +225,12 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
 
   const resetManualForm = () => {
     setManualForm({
+      partnerId: null,
       waybillNumber: '',
       recipientName: '',
       recipientPhone: '',
       deliveryAddress: '',
+      weight: '',
     });
   };
 
@@ -202,9 +240,20 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
     const waybillNumber = manualForm.waybillNumber.trim();
     const recipientName = manualForm.recipientName.trim();
     const deliveryAddress = manualForm.deliveryAddress.trim();
+    const weight = normalizeWeight(manualForm.weight);
+
+    if (!manualForm.partnerId) {
+      alert('Выберите партнёра');
+      return;
+    }
 
     if (!waybillNumber || !recipientName || !deliveryAddress) {
       alert('Заполните накладную, получателя и адрес');
+      return;
+    }
+
+    if (!weight) {
+      alert('Укажите корректный вес в килограммах');
       return;
     }
 
@@ -212,10 +261,12 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
       setLoading(true);
 
       await api.createMail({
+        partnerId: manualForm.partnerId,
         waybillNumber,
         recipientName,
         deliveryAddress,
         recipientPhone: manualForm.recipientPhone.trim(),
+        weight,
       });
 
       setShowManualForm(false);
@@ -226,6 +277,16 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
       alert('Ошибка при добавлении письма');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPartners = async () => {
+    try {
+      const data = await api.getPartners();
+      setPartners(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error loading partners:', error);
+      setPartners([]);
     }
   };
 
@@ -474,6 +535,26 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
 
             <form onSubmit={handleCreateManualMail} className="space-y-4 p-5">
               <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-slate-500">Партнёр *</span>
+                <AppSelect
+                  className="mt-1"
+                  value={manualForm.partnerId}
+                  options={partners.map((partner) => ({
+                    value: partner.id,
+                    label: partner.name,
+                  }))}
+                  onChange={(value) =>
+                    setManualForm({
+                      ...manualForm,
+                      partnerId: typeof value === 'number' ? value : Number(value) || null,
+                    })
+                  }
+                  emptyText="Партнёры не найдены"
+                  searchable
+                />
+              </label>
+
+              <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-slate-500">Накладная *</span>
                 <input
                   value={manualForm.waybillNumber}
@@ -502,6 +583,19 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
                   onChange={(event) => setManualForm({ ...manualForm, recipientPhone: event.target.value })}
                   className={inputClass}
                   placeholder="Можно оставить пустым"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-slate-500">Вес, кг *</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={manualForm.weight}
+                  onChange={(event) => setManualForm({ ...manualForm, weight: event.target.value })}
+                  className={inputClass}
+                  placeholder="Например: 0,350"
+                  required
                 />
               </label>
 
@@ -540,13 +634,44 @@ export default function MailsView({ archiveDate }: { archiveDate?: string }) {
 
       {showMappingForm && fileData.length > 0 && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-          <div className="w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-xl">
+          <div className="w-full max-w-[1600px] overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-lg font-semibold text-slate-950">Настройка столбцов манифеста</h3><p className="mt-1 text-sm text-slate-500">Проверьте ячейки из Excel и укажите, откуда брать данные.</p></div>
             <form onSubmit={handleUploadManifest} className="space-y-5 p-5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Партнёр *
+                  </span>
+                  <AppSelect
+                    value={manifestPartnerId}
+                    options={partners.map((partner) => ({
+                      value: partner.id,
+                      label: partner.name,
+                    }))}
+                    onChange={(value) =>
+                      setManifestPartnerId(
+                        typeof value === 'number' ? value : Number(value) || null
+                      )
+                    }
+                    emptyText="Партнёры не найдены"
+                    searchable
+                  />
+                  <span className="mt-1.5 block text-xs text-slate-500">
+                    Выбранный партнёр будет назначен всем письмам этого манифеста.
+                  </span>
+                </label>
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500"><span>Лист: {fileData.length} строк, {columns.length} столбцов. Показано строк: {Math.min(previewRows, fileData.length)}</span><button type="button" className={secondaryButtonClass} onClick={() => setPreviewRows((prev) => Math.min(fileData.length, prev + 50))}>Показать ещё 50 строк</button></div>
               <div className="max-h-[360px] overflow-auto rounded-xl border border-slate-200 bg-white"><table className="w-full border-collapse text-xs"><thead className="sticky top-0 z-10 bg-slate-100"><tr><th className="sticky left-0 z-20 border-b border-r border-slate-200 bg-slate-100 px-2 py-2 text-left font-semibold text-slate-600">Строка</th>{columns.map(col => <th key={col} className="min-w-[120px] border-b border-r border-slate-200 px-2 py-2 text-left font-semibold text-slate-700">{col}</th>)}</tr></thead><tbody>{fileData.slice(0, previewRows).map((row, idx) => <tr key={idx} className="hover:bg-slate-50"><td className="sticky left-0 border-b border-r border-slate-200 bg-white px-2 py-1 font-semibold text-slate-500">{idx + 1}</td>{columns.map((col, colIdx) => <td key={col} className="max-w-[220px] border-b border-r border-slate-200 px-2 py-1 text-slate-600"><span title={cellToText(row[colIdx])} className="block truncate">{cellToText(row[colIdx]) || <span className="text-slate-300">пусто</span>}</span></td>)}</tr>)}</tbody></table></div>
-              <div className="grid gap-4 md:grid-cols-2"><MappingField label="Номер накладной" required columns={columns} value={mapping.waybill} onChange={(value) => setMapping({ ...mapping, waybill: value })} /><MappingField label="Получатель" required columns={columns} value={mapping.recipient} onChange={(value) => setMapping({ ...mapping, recipient: value })} /><MappingField label="Адрес доставки" required columns={columns} value={mapping.address} onChange={(value) => setMapping({ ...mapping, address: value })} /><PhoneMapping columns={columns} mapping={mapping} setMapping={setMapping} /></div>
-              <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><button type="button" onClick={() => { setShowMappingForm(false); setSelectedFile(null); setFileData([]); setColumns([]); }} className={secondaryButtonClass}>Отмена</button><button type="submit" disabled={loading} className={primaryButtonClass}>{loading ? 'Загрузка...' : 'Загрузить манифест'}</button></div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <MappingField label="Номер накладной" required columns={columns} value={mapping.waybill} onChange={(value) => setMapping({ ...mapping, waybill: value })} />
+                <MappingField label="Получатель" required columns={columns} value={mapping.recipient} onChange={(value) => setMapping({ ...mapping, recipient: value })} />
+                <MappingField label="Адрес доставки" required columns={columns} value={mapping.address} onChange={(value) => setMapping({ ...mapping, address: value })} />
+                <PhoneMapping columns={columns} mapping={mapping} setMapping={setMapping} />
+                <WeightMapping columns={columns} mapping={mapping} setMapping={setMapping} />
+              </div>
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><button type="button" onClick={() => { setShowMappingForm(false); setSelectedFile(null); setFileData([]); setColumns([]); setManifestPartnerId(null); }} className={secondaryButtonClass}>Отмена</button><button type="submit" disabled={loading} className={primaryButtonClass}>{loading ? 'Загрузка...' : 'Загрузить манифест'}</button></div>
             </form>
           </div>
         </div>, document.body)}
@@ -559,6 +684,56 @@ function MappingField({ label, required, columns, value, onChange }: { label: st
   return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">{label} {required && <span className="text-slate-400">*</span>}</label><AppSelect className="mt-2" compact value={value.column} options={columns.map(col => ({ value: col, label: `Столбец ${col}` }))} onChange={(column) => onChange({ ...value, column: String(column ?? '') })} emptyText="Нет столбцов" searchable={columns.length > 7} /><div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={value.startRow} onChange={(nextValue) => onChange({ ...value, startRow: nextValue })} /><RangeInput label="До строки" value={value.endRow} onChange={(nextValue) => onChange({ ...value, endRow: nextValue })} /></div></div>;
 }
 function PhoneMapping({ columns, mapping, setMapping }: { columns: string[]; mapping: FieldMapping; setMapping: React.Dispatch<React.SetStateAction<FieldMapping>> }) { return <div className="rounded-xl border border-slate-200 bg-white p-3"><label className="block text-sm font-semibold text-slate-900">Телефон</label><AppSelect className="mt-2" compact value={mapping.phone?.column ?? null} options={[{ value: null, label: 'Не использовать' }, ...columns.map(col => ({ value: col, label: `Столбец ${col}` }))]} onChange={(column) => setMapping((prev) => ({ ...prev, phone: typeof column === 'string' && column ? { column, startRow: prev.phone?.startRow || prev.waybill.startRow, endRow: prev.phone?.endRow || prev.waybill.endRow } : undefined }))} emptyText="Нет столбцов" searchable={columns.length > 7} />{mapping.phone && <div className="mt-3 grid grid-cols-2 gap-2"><RangeInput label="От строки" value={mapping.phone.startRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, startRow: value } }))} /><RangeInput label="До строки" value={mapping.phone.endRow} onChange={(value) => setMapping((prev) => ({ ...prev, phone: { ...prev.phone!, endRow: value } }))} /></div>}</div>; }
+function WeightMapping({ columns, mapping, setMapping }: { columns: string[]; mapping: FieldMapping; setMapping: React.Dispatch<React.SetStateAction<FieldMapping>> }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <label className="block text-sm font-semibold text-slate-900">
+        Вес <span className="text-slate-400">*</span>
+      </label>
+      <AppSelect
+        className="mt-2"
+        compact
+        value={mapping.weight?.column ?? null}
+        options={columns.map((col) => ({ value: col, label: `Столбец ${col}` }))}
+        onChange={(column) =>
+          setMapping((prev) => ({
+            ...prev,
+            weight: typeof column === 'string' && column
+              ? {
+                  column,
+                  startRow: prev.weight?.startRow || prev.waybill.startRow,
+                  endRow: prev.weight?.endRow || prev.waybill.endRow,
+                }
+              : undefined,
+          }))
+        }
+        emptyText="Нет столбцов"
+        searchable={columns.length > 7}
+      />
+      {mapping.weight && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <RangeInput
+            label="От строки"
+            value={mapping.weight.startRow}
+            onChange={(value) => setMapping((prev) => ({
+              ...prev,
+              weight: { ...prev.weight!, startRow: value },
+            }))}
+          />
+          <RangeInput
+            label="До строки"
+            value={mapping.weight.endRow}
+            onChange={(value) => setMapping((prev) => ({
+              ...prev,
+              weight: { ...prev.weight!, endRow: value },
+            }))}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RangeInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <label className="block"><span className="text-xs font-medium text-slate-500">{label}</span><input type="number" min="1" value={value} onChange={(e) => onChange(parseInt(e.target.value) || 1)} className={`${compactInputClass} mt-1`} /></label>; }
 
 

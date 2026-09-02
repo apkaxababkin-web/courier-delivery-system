@@ -16,7 +16,17 @@ type HemotestReconciliationItem = api.HemotestReconciliationItem;
 type HemotestHalfMonthPeriod = { key: string; label: string; start: string; end: string };
 type CounterpartyTab = 'clients' | 'partners' | 'transport';
 
-type ClientForm = { name: string; address: string; contactPerson: string; phone: string; email: string };
+type ClientForm = {
+  name: string;
+  address: string;
+  legalName: string;
+  inn: string;
+  kpp: string;
+  legalAddress: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+};
 type PointForm = { name: string; address: string; contactPerson: string; phone: string };
 type PartnerForm = { name: string; email: string; contactPerson: string; phone: string; comment: string };
 type TransportCompanyForm = { name: string; address: string; contactPerson: string; phone: string; comment: string };
@@ -25,7 +35,17 @@ type StandardTariffCategory = 'delivery' | 'transportCompany' | 'movement' | 'ot
 type ClientTariffs = { delivery: TariffRule; transportCompany: TariffRule; movement: TariffRule; other: TariffRule; hemotest: { pointPrice: string; sundayFirstPointPrice: string; sundayNextPointPrice: string } };
 type ExcelCell = string | number | null | undefined;
 
-const emptyClient: ClientForm = { name: '', address: '', contactPerson: '', phone: '', email: '' };
+const emptyClient: ClientForm = {
+  name: '',
+  address: '',
+  legalName: '',
+  inn: '',
+  kpp: '',
+  legalAddress: '',
+  contactPerson: '',
+  phone: '',
+  email: '',
+};
 const emptyPoint: PointForm = { name: '', address: '', contactPerson: '', phone: '' };
 const emptyPartner: PartnerForm = { name: '', email: '', contactPerson: '', phone: '', comment: '' };
 const emptyTransportCompany: TransportCompanyForm = { name: '', address: '', contactPerson: '', phone: '', comment: '' };
@@ -233,6 +253,10 @@ export default function ClientsViewV2() {
       setClientForm({
         name: client.name,
         address: client.address,
+        legalName: client.legalName || '',
+        inn: client.inn || '',
+        kpp: client.kpp || '',
+        legalAddress: client.legalAddress || '',
         contactPerson: client.contactPerson || '',
         phone: client.phone || '',
         email: client.email || '',
@@ -1969,6 +1993,8 @@ export default function ClientsViewV2() {
 function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partners: Partner[]; mails: Mail[]; loading: boolean; onEdit: (item: Partner) => void; onDelete: (item: Partner) => void }) {
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [selectedPartnerSection, setSelectedPartnerSection] = useState<'details' | 'reconciliation'>('details');
+  const [checkingMailId, setCheckingMailId] = useState<number | null>(null);
+  const [mailCheckOverrides, setMailCheckOverrides] = useState<Record<number, boolean>>({});
 
   const getDeliveredPartnerMails = (partner: Partner) =>
     mails
@@ -1997,11 +2023,32 @@ function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partner
     URL.revokeObjectURL(url);
   };
 
+  const isMailChecked = (mail: Mail) =>
+    mailCheckOverrides[mail.id] ?? Boolean(mail.billingCheckedAt);
+
+  const toggleMailChecked = async (mail: Mail) => {
+    const nextChecked = !isMailChecked(mail);
+
+    try {
+      setCheckingMailId(mail.id);
+      await api.setMailBillingChecked(mail.id, nextChecked);
+      setMailCheckOverrides((prev) => ({
+        ...prev,
+        [mail.id]: nextChecked,
+      }));
+    } catch (error) {
+      console.error('Failed to change mail reconciliation check:', error);
+      alert(`Не удалось изменить статус проверки: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      setCheckingMailId(null);
+    }
+  };
+
   if (selectedPartner) {
     const selectedPartnerMails = getDeliveredPartnerMails(selectedPartner);
 
     const selectedPartnerReconciliationRows: ExcelCell[][] = [
-      ['Дата доставки', 'Партнер', 'Накладная', 'Получатель', 'Телефон', 'Адрес'],
+      ['Дата доставки', 'Партнер', 'Накладная', 'Получатель', 'Телефон', 'Адрес', 'Вес, кг', 'Проверено'],
       ...selectedPartnerMails.map((mail) => [
         formatPartnerMailDate(mail.deliveredAt || mail.createdAt),
         selectedPartner.name,
@@ -2009,6 +2056,8 @@ function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partner
         mail.recipientName || '',
         mail.recipientPhone || '',
         mail.deliveryAddress || '',
+        mail.weight || '',
+        isMailChecked(mail) ? 'Да' : 'Нет',
       ]),
       [],
       ['Итого доставленных писем', selectedPartnerMails.length],
@@ -2146,7 +2195,7 @@ function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partner
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] table-fixed border-collapse text-xs">
+                <table className="w-full min-w-[1040px] table-fixed border-collapse text-xs">
                   <thead className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.08em] text-slate-500">
                     <tr>
                       <th className="px-5 py-3 font-semibold">Дата доставки</th>
@@ -2154,6 +2203,8 @@ function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partner
                       <th className="px-5 py-3 font-semibold">Получатель</th>
                       <th className="px-5 py-3 font-semibold">Телефон</th>
                       <th className="px-5 py-3 font-semibold">Адрес</th>
+                      <th className="px-5 py-3 font-semibold">Вес, кг</th>
+                      <th className="px-5 py-3 font-semibold">Проверено</th>
                     </tr>
                   </thead>
 
@@ -2165,6 +2216,27 @@ function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partner
                         <td className="px-2 py-2 text-center text-[11px] text-slate-600">{mail.recipientName || '—'}</td>
                         <td className="px-2 py-2 text-center text-[11px] text-slate-600">{mail.recipientPhone || '—'}</td>
                         <td className="max-w-[420px] truncate px-5 py-4 text-slate-600">{mail.deliveryAddress || '—'}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                          {mail.weight ? `${Number(mail.weight).toLocaleString('ru-RU', { maximumFractionDigits: 3 })}` : '—'}
+                        </td>
+                        <td className="px-5 py-4">
+                          <button
+                            type="button"
+                            disabled={checkingMailId === mail.id}
+                            onClick={() => void toggleMailChecked(mail)}
+                            className={`inline-flex h-9 min-w-[110px] items-center justify-center rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                              isMailChecked(mail)
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {checkingMailId === mail.id
+                              ? 'Сохраняем...'
+                              : isMailChecked(mail)
+                                ? 'Проверено'
+                                : 'Проверить'}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -2378,6 +2450,48 @@ function ClientModal({ form, setForm, editing, onSubmit, onClose }: { form: Clie
       <form onSubmit={onSubmit} className="space-y-3">
         <input className={inputClass} placeholder="Название клиента *" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <input className={inputClass} placeholder="Основной адрес *" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
+
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-3">
+            <p className="text-sm font-semibold text-slate-950">Реквизиты для документов</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Используются при формировании счёта, акта и реестра.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              className={inputClass}
+              placeholder="Юридическое наименование"
+              value={form.legalName}
+              onChange={(event) => setForm({ ...form, legalName: event.target.value })}
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                className={inputClass}
+                placeholder="ИНН"
+                value={form.inn}
+                onChange={(event) => setForm({ ...form, inn: event.target.value })}
+              />
+
+              <input
+                className={inputClass}
+                placeholder="КПП (если есть)"
+                value={form.kpp}
+                onChange={(event) => setForm({ ...form, kpp: event.target.value })}
+              />
+            </div>
+
+            <textarea
+              className={`${inputClass} min-h-20 py-3`}
+              placeholder="Юридический адрес"
+              value={form.legalAddress}
+              onChange={(event) => setForm({ ...form, legalAddress: event.target.value })}
+            />
+          </div>
+        </div>
+
         <input className={inputClass} placeholder="Контактное лицо" value={form.contactPerson} onChange={(event) => setForm({ ...form, contactPerson: event.target.value })} />
         <input className={inputClass} placeholder="Телефон" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         <input className={inputClass} placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />

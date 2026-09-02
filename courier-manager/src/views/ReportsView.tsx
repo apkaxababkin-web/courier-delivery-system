@@ -924,29 +924,25 @@ export default function ReportsView() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1900px] text-sm">
+          <table className="w-full min-w-[1350px] text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.06em] text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-semibold">Дата</th>
                 <th className="px-4 py-3 font-semibold">№</th>
                 <th className="min-w-[220px] px-4 py-3 font-semibold">Клиент</th>
-                <th className="px-4 py-3 font-semibold">Отправитель</th>
-                <th className="px-4 py-3 font-semibold">Получатель</th>
-                <th className="min-w-[240px] px-4 py-3 font-semibold">Откуда</th>
-                <th className="min-w-[240px] px-4 py-3 font-semibold">Куда</th>
-                <th className="px-4 py-3 font-semibold">Курьер</th>
+                <th className="min-w-[240px] px-4 py-3 font-semibold">Отправитель</th>
+                <th className="min-w-[240px] px-4 py-3 font-semibold">Получатель</th>
                 <th className="px-4 py-3 text-center font-semibold">Мест</th>
                 <th className="min-w-[140px] px-4 py-3 font-semibold">Стоимость</th>
                 <th className="min-w-[280px] px-4 py-3 font-semibold">Комментарий</th>
                 <th className="min-w-[150px] px-4 py-3 font-semibold">Проверено</th>
-                <th className="px-4 py-3 font-semibold">Статус</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100">
               {isLoading || isBillingLoading ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                     Загрузка заявок…
                   </td>
                 </tr>
@@ -995,24 +991,12 @@ export default function ReportsView() {
                       </select>
                     </td>
 
-                    <td className="px-4 py-3 text-slate-700">
-                      {requestSender(request)}
-                    </td>
-
-                    <td className="px-4 py-3 text-slate-700">
-                      {requestRecipient(request)}
-                    </td>
-
                     <td className="px-4 py-3 text-slate-600">
                       {requestFromAddress(request)}
                     </td>
 
                     <td className="px-4 py-3 text-slate-600">
                       {requestToAddress(request)}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                      {request.courierName || '—'}
                     </td>
 
                     <td className="px-4 py-3 text-center font-semibold text-slate-800">
@@ -1068,13 +1052,7 @@ export default function ReportsView() {
                       </button>
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass(request.status)}`}
-                      >
-                        {statusLabel(request.status)}
-                      </span>
-                    </td>
+
                   </tr>
                 ))
               )}
