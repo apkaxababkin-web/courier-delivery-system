@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import * as db from "../db";
 import { broadcastLive } from "./liveEvents";
 import { isExpoPushToken, sendExpoPush } from "./expoPush";
+import { assertCourierAccess, checkCourierAccess } from "./courierAccess";
 
 type ChatActorType = "manager" | "courier";
 
@@ -71,6 +72,17 @@ async function actorFromResponse(res: Response): Promise<ChatActor> {
   if (courierId) {
     const courier = await db.getCourierById(courierId);
     if (!courier?.isActive) throw new ChatV2HttpError(403, "Аккаунт курьера недоступен");
+
+    try {
+      await assertCourierAccess(courier.id, "chat");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Нет доступа к этому разделу";
+
+      throw new ChatV2HttpError(403, message);
+    }
     return { type: "courier", id: courier.id, name: courier.name };
   }
 
@@ -176,8 +188,13 @@ async function loadMessage(conn: any, messageId: number, actor: ChatActor) {
 
 async function sendPushForMessage(conn: any, actor: ChatActor, conversationId: number, messageId: number, text: string) {
   try {
-    const rows = resultRows<{ pushToken: string | null }>(await conn.execute(sql`
-      SELECT courier."pushToken"
+    const rows = resultRows<{
+      courierId: number;
+      pushToken: string | null;
+    }>(await conn.execute(sql`
+      SELECT
+        courier."id" AS "courierId",
+        courier."pushToken"
       FROM "chatV2Participants" participant
       INNER JOIN "couriers" courier
         ON participant."participantType" = 'courier'
@@ -190,17 +207,36 @@ async function sendPushForMessage(conn: any, actor: ChatActor, conversationId: n
         )
     `));
 
+    const allowedRows = (
+      await Promise.all(
+        rows.map(async (row) => {
+          const access = await checkCourierAccess(Number(row.courierId), "chat");
+          return access.allowed ? row : null;
+        }),
+      )
+    ).filter(
+      (
+        row,
+      ): row is {
+        courierId: number;
+        pushToken: string | null;
+      } => row !== null,
+    );
+
     const body = `${actor.name}: ${text}`.slice(0, 120);
+
     await Promise.allSettled(
-      rows
+      allowedRows
         .map((row) => row.pushToken)
         .filter((pushToken): pushToken is string => isExpoPushToken(pushToken))
-        .map((pushToken) => sendExpoPush(pushToken, "Чат МИГ", body, {
-          type: "chat_message_v2",
-          conversationId,
-          messageId,
-          url: `chat?conversationId=${conversationId}`,
-        })),
+        .map((pushToken) =>
+          sendExpoPush(pushToken, "Чат МИГ", body, {
+            type: "chat_message_v2",
+            conversationId,
+            messageId,
+            url: `chat?conversationId=${conversationId}`,
+          }),
+        ),
     );
   } catch (error) {
     console.error("[chat.v2.push] failed", error);

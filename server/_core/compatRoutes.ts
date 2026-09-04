@@ -37,6 +37,7 @@ import {
 import * as db from "../db";
 import { verifyCourierToken } from "../routers";
 import { toSafeCourier } from "./courierPublic";
+import { getCourierAccess, saveCourierAccess } from "./courierAccess";
 
 const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
 const MAX_REQUEST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -1189,7 +1190,16 @@ export function registerCompatRoutes(app: Express) {
 
   app.get("/api/manager/couriers", async (_req, res) => {
     try {
-      res.json((await db.getAllCouriers()).map(toSafeCourier));
+      const couriers = await db.getAllCouriers();
+
+      const rows = await Promise.all(
+        couriers.map(async (courier) => ({
+          ...toSafeCourier(courier),
+          access: await getCourierAccess(courier.id),
+        })),
+      );
+
+      res.json(rows);
     } catch (error) {
       sendError(res, error, "Failed to load manager couriers");
     }
@@ -1240,6 +1250,8 @@ export function registerCompatRoutes(app: Express) {
       const vehicleType = String(req.body?.vehicleType || "car").trim();
       const isActive = req.body?.isActive === false ? false : true;
 
+      const accessInput = req.body?.access;
+
       if (!name) throw new Error("name is required");
       if (!username) throw new Error("username is required");
 
@@ -1251,6 +1263,35 @@ export function registerCompatRoutes(app: Express) {
         isActive,
         updatedAt: new Date(),
       } as any);
+
+      if (accessInput && typeof accessInput === "object") {
+        await saveCourierAccess(id, {
+          allowedDaysMask:
+            typeof accessInput.allowedDaysMask === "number"
+              ? accessInput.allowedDaysMask
+              : undefined,
+          tasksAllowed:
+            typeof accessInput.tasksAllowed === "boolean"
+              ? accessInput.tasksAllowed
+              : undefined,
+          hemotestAllowed:
+            typeof accessInput.hemotestAllowed === "boolean"
+              ? accessInput.hemotestAllowed
+              : undefined,
+          sberbankAllowed:
+            typeof accessInput.sberbankAllowed === "boolean"
+              ? accessInput.sberbankAllowed
+              : undefined,
+          mailsAllowed:
+            typeof accessInput.mailsAllowed === "boolean"
+              ? accessInput.mailsAllowed
+              : undefined,
+          chatAllowed:
+            typeof accessInput.chatAllowed === "boolean"
+              ? accessInput.chatAllowed
+              : undefined,
+        });
+      }
 
       broadcastLive("couriers_changed", { courierId: id });
       broadcastLive("tasks_changed", { courierId: id });

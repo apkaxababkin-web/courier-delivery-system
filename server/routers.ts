@@ -7,6 +7,7 @@ import { syncTaskForRequestId, updateRequestStatusFromTask } from "./_core/reque
 import { isExpoPushToken, sendExpoPush } from "./_core/expoPush";
 import { broadcastLive } from "./_core/liveEvents";
 import { toSafeCourier } from "./_core/courierPublic";
+import { assertCourierAccess } from "./_core/courierAccess";
 import { systemRouter } from "./_core/systemRouter";
 import { managerProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
@@ -355,6 +356,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         const date = input.date ?? getBusinessDateKey();
         return db.getTasksByDateWithCourier(date);
@@ -371,6 +373,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         return db.getCompletedTasksWithCourier();
       }),
@@ -386,6 +389,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         return db.getTaskWithCourierById(input.id);
       }),
@@ -402,6 +406,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
@@ -427,6 +432,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
@@ -489,6 +495,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         await db.updateCourierUrgencyThresholds(
           payload.courierId,
@@ -510,6 +517,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
@@ -533,6 +541,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
@@ -553,6 +562,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
@@ -570,6 +580,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
 
         const today = new Date().toISOString().split("T")[0];
         const demoTasks = [
@@ -845,6 +856,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "hemotest");
         return await db.getHemotestPickupPointsForDate(payload.courierId, input.date);
       }),
 
@@ -856,6 +868,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "hemotest");
         return await db.getHemotestPickedCount(payload.courierId, input.date);
       }),
 
@@ -868,6 +881,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "hemotest");
         await db.toggleHemotestPickup(payload.courierId, input.pointId, input.date);
         broadcastLive("hemotest_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
@@ -883,6 +897,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "hemotest");
         await db.cancelHemotestPickup(payload.courierId, input.pointId, input.date);
         broadcastLive("hemotest_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
@@ -898,6 +913,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "hemotest");
         await db.assignHemotestPickupCourier(input.pointId, input.date, input.courierId);
         broadcastLive("hemotest_changed", { pointId: input.pointId, courierId: input.courierId });
         return { success: true };
@@ -1027,6 +1043,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "sberbank");
         return await db.getSberbankPickupPointsForDate(payload.courierId, input.date);
       }),
 
@@ -1038,6 +1055,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "sberbank");
         return await db.getSberbankPickedCount(payload.courierId, input.date);
       }),
 
@@ -1050,6 +1068,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "sberbank");
         await db.toggleSberbankPickup(payload.courierId, input.pointId, input.date);
         broadcastLive("sberbank_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
@@ -1065,6 +1084,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "sberbank");
         await db.cancelSberbankPickup(payload.courierId, input.pointId, input.date);
         broadcastLive("sberbank_changed", { pointId: input.pointId, courierId: payload.courierId });
         return { success: true };
@@ -1080,6 +1100,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "sberbank");
         await db.assignSberbankPickupCourier(input.pointId, input.date, input.courierId);
         broadcastLive("sberbank_changed", { pointId: input.pointId, courierId: input.courierId });
         return { success: true };
@@ -1094,6 +1115,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "mails");
         return await db.getCourierVisibleMails();
       }),
 
@@ -1105,6 +1127,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "mails");
         return await db.getMailByWaybill(input.waybillNumber);
       }),
 
@@ -1117,6 +1140,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "mails");
         await db.updateMailDelivery(input.waybillNumber, input.recipientSignature, payload.courierId);
         broadcastLive("mails_changed");
         return { success: true };
@@ -1130,6 +1154,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
+        await assertCourierAccess(payload.courierId, "mails");
         await db.markMailUndelivered(input.mailId);
         broadcastLive("mails_changed");
         return { success: true };

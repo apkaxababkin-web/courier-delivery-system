@@ -4,6 +4,15 @@ import { Bike, BellOff, Copy, Edit2, KeyRound, MapPin, Phone, Plus, RefreshCcw, 
 import { AppSelect } from '../components/AppSelect';
 import { managerFetch } from '../lib/api';
 
+type CourierAccess = {
+  allowedDaysMask: number;
+  tasksAllowed: boolean;
+  hemotestAllowed: boolean;
+  sberbankAllowed: boolean;
+  mailsAllowed: boolean;
+  chatAllowed: boolean;
+};
+
 type Courier = {
   id: number;
   name: string;
@@ -12,6 +21,7 @@ type Courier = {
   vehicleType?: string;
   isActive: boolean;
   totalDeliveries: number;
+  access?: CourierAccess;
 };
 
 type CourierFormData = {
@@ -28,6 +38,7 @@ type CourierEditFormData = {
   phone: string;
   vehicleType: string;
   isActive: boolean;
+  access: CourierAccess;
 };
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -46,12 +57,22 @@ const emptyForm: CourierFormData = {
   vehicleType: 'car',
 };
 
+const defaultCourierAccess: CourierAccess = {
+  allowedDaysMask: 127,
+  tasksAllowed: true,
+  hemotestAllowed: true,
+  sberbankAllowed: true,
+  mailsAllowed: true,
+  chatAllowed: true,
+};
+
 const emptyEditForm: CourierEditFormData = {
   name: '',
   username: '',
   phone: '',
   vehicleType: 'car',
   isActive: true,
+  access: { ...defaultCourierAccess },
 };
 
 const inputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 focus:bg-white';
@@ -168,6 +189,10 @@ export default function CouriersView() {
       phone: courier.phone || '',
       vehicleType: courier.vehicleType || 'car',
       isActive: courier.isActive !== false,
+      access: {
+        ...defaultCourierAccess,
+        ...(courier.access || {}),
+      },
     });
   };
 
@@ -195,6 +220,7 @@ export default function CouriersView() {
         phone: editFormData.phone.trim(),
         vehicleType: editFormData.vehicleType,
         isActive: editFormData.isActive,
+        access: editFormData.access,
       };
 
       const response = await managerFetch(`${API_URL}/api/manager/couriers/${editingCourier.id}`, {
@@ -238,6 +264,29 @@ export default function CouriersView() {
     const text = `Новый доступ для курьера ${resetCourier.name}\nЛогин: ${resetCourier.username}\nНовый пароль: ${resetPassword}\nАдрес входа: https://courier.couriermig.ru`;
     await navigator.clipboard.writeText(text);
     alert('Черновик нового доступа скопирован');
+  };
+
+  const toggleAccessDay = (dayIndex: number) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      access: {
+        ...prev.access,
+        allowedDaysMask: prev.access.allowedDaysMask ^ (1 << dayIndex),
+      },
+    }));
+  };
+
+  const setAccessField = (
+    field: 'tasksAllowed' | 'hemotestAllowed' | 'sberbankAllowed' | 'mailsAllowed' | 'chatAllowed',
+    value: boolean,
+  ) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      access: {
+        ...prev.access,
+        [field]: value,
+      },
+    }));
   };
 
   return (
@@ -348,7 +397,7 @@ export default function CouriersView() {
 
       {editingCourier && createPortal(
         <div className="modal-overlay">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold tracking-tight text-slate-950">Редактировать курьера</h3>
@@ -409,6 +458,88 @@ export default function CouriersView() {
                     options={[{ value: 'active', label: 'Активен' }, { value: 'disabled', label: 'Отключён' }]}
                     onChange={(value) => setEditFormData((prev) => ({ ...prev, isActive: value === 'active' }))}
                   />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-950">
+                  Доступ к информации в приложении
+                </p>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-semibold text-slate-500">Дни недели</p>
+
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {[
+                      ['Пн', 0],
+                      ['Вт', 1],
+                      ['Ср', 2],
+                      ['Чт', 3],
+                      ['Пт', 4],
+                      ['Сб', 5],
+                      ['Вс', 6],
+                    ].map(([label, rawIndex]) => {
+                      const index = Number(rawIndex);
+                      const enabled =
+                        (editFormData.access.allowedDaysMask & (1 << index)) !== 0;
+
+                      return (
+                        <button
+                          key={String(label)}
+                          type="button"
+                          onClick={() => toggleAccessDay(index)}
+                          className={`h-10 rounded-xl border text-xs font-semibold ${
+                            enabled
+                              ? 'border-slate-950 bg-slate-950 text-white'
+                              : 'border-slate-200 bg-white text-slate-400'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <p className="mb-2 text-xs font-semibold text-slate-500">
+                    Разделы приложения
+                  </p>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ['tasksAllowed', 'Заявки'],
+                      ['hemotestAllowed', 'Гемотест'],
+                      ['sberbankAllowed', 'Сбербанк'],
+                      ['mailsAllowed', 'Письма'],
+                      ['chatAllowed', 'Чат'],
+                    ].map(([rawField, label]) => {
+                      const field = rawField as
+                        | 'tasksAllowed'
+                        | 'hemotestAllowed'
+                        | 'sberbankAllowed'
+                        | 'mailsAllowed'
+                        | 'chatAllowed';
+
+                      const enabled = editFormData.access[field];
+
+                      return (
+                        <button
+                          key={field}
+                          type="button"
+                          onClick={() => setAccessField(field, !enabled)}
+                          className={`flex h-11 items-center justify-between rounded-xl border px-3 text-sm font-medium ${
+                            enabled
+                              ? 'border-slate-300 bg-white text-slate-950'
+                              : 'border-slate-200 bg-slate-100 text-slate-400'
+                          }`}
+                        >
+                          <span>{label}</span>
+                          <span>{enabled ? 'Вкл' : 'Выкл'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
