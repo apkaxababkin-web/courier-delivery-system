@@ -542,6 +542,11 @@ export async function createHemotestPoint(point: Omit<HemotestPoint, 'id' | 'cre
   return await trpcPost('hemotest.create', point as unknown as JsonRecord, {} as HemotestPoint);
 }
 
+/** Archive a Hemotest directory point (history is preserved). */
+export async function deleteHemotestPoint(id: number): Promise<void> {
+  await trpcPost('hemotest.deletePoint', { id }, { success: true });
+}
+
 // ─── Sberbank API ───────────────────────────────────────────────────────────
 
 export interface SberbankPoint {
@@ -560,6 +565,11 @@ export async function getAllSberbankPoints(): Promise<SberbankPoint[]> {
 
 export async function createSberbankPoint(point: Omit<SberbankPoint, 'id' | 'createdAt' | 'updatedAt'>): Promise<SberbankPoint> {
   return await trpcPost('sberbank.create', point as unknown as JsonRecord, {} as SberbankPoint);
+}
+
+/** Archive a Sberbank directory point (history is preserved). */
+export async function deleteSberbankPoint(id: number): Promise<void> {
+  await trpcPost('sberbank.deletePoint', { id }, { success: true });
 }
 
 export async function getSberbankScheduleForDay(dayOfWeek: number): Promise<SberbankPoint[]> {

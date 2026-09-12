@@ -218,6 +218,11 @@ export const hemotestPickupPoints = pgTable("hemotestPickupPoints", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   address: text("address").notNull(),
+  /**
+   * Soft-delete flag. Archived points (false) stay in history, old lists and
+   * reconciliation, but are hidden from new selections and new pickup lists.
+   */
+  isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -255,6 +260,11 @@ export const sberbankPickupPoints = pgTable("sberbankPickupPoints", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   address: text("address").notNull(),
+  /**
+   * Soft-delete flag. Archived points (false) stay in history, old lists and
+   * reconciliation, but are hidden from new selections and new pickup lists.
+   */
+  isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

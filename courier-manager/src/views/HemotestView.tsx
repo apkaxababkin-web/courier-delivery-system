@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, GripVertical, ListMinus, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
 import { formatLocalDate } from '../lib/local-time';
 
@@ -73,6 +73,9 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
     contactPerson: '',
   });
   const [loading, setLoading] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ kind: 'removeFromList' | 'archive'; point: HemotestPointRow } | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const visiblePoints = sortPointsByOrder(points, pointOrderIds);
 
@@ -140,24 +143,62 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
     }
   };
 
-  const handleRemovePointFromList = async (point: HemotestPointRow) => {
-    if (!point.listId) {
-      alert('Эта точка не входит в рабочий список на выбранную дату');
-      return;
-    }
+  const openRemoveFromList = (point: HemotestPointRow) => {
+    setFeedback(null);
+    setConfirmState({ kind: 'removeFromList', point });
+  };
 
-    if (!window.confirm(`Удалить точку «${point.name}» из рабочего списка?`)) return;
+  const openArchivePoint = (point: HemotestPointRow) => {
+    setFeedback(null);
+    setConfirmState({ kind: 'archive', point });
+  };
+
+  const closeConfirm = () => {
+    if (!actionBusy) setConfirmState(null);
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmState || actionBusy) return;
+
+    const { kind, point } = confirmState;
+    setActionBusy(true);
+    setFeedback(null);
 
     try {
-      setLoading(true);
-      await api.removePointFromHemotestList(point.listId, point.id);
-      setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
+      if (kind === 'removeFromList') {
+        if (!point.listId) {
+          throw new Error('Эта точка не входит в рабочий список на выбранную дату');
+        }
+
+        await api.removePointFromHemotestList(point.listId, point.id);
+        setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
+        setFeedback({ type: 'success', text: `Точку «${point.name}» убрали из рабочего списка на выбранную дату.` });
+      } else {
+        await api.deleteHemotestPoint(point.id);
+        setSelectedPoints((prev) => prev.filter((id) => id !== point.id));
+        setPointOrderIds((prev) => {
+          const next = prev.filter((id) => id !== point.id);
+          saveNumberArray(POINT_ORDER_STORAGE_KEY, next);
+          return next;
+        });
+        setFeedback({
+          type: 'success',
+          text: `Точка «${point.name}» удалена из справочника и больше не предлагается для новых списков. История сборов сохранена.`,
+        });
+      }
+
+      setConfirmState(null);
       await loadPoints();
     } catch (error) {
-      console.error('Error removing point from list:', error);
-      alert('Ошибка при удалении точки из списка');
+      const message = error instanceof Error && error.message ? error.message : 'Неизвестная ошибка';
+      setFeedback({
+        type: 'error',
+        text: kind === 'removeFromList'
+          ? `Не удалось убрать точку из списка: ${message}`
+          : `Не удалось удалить точку из справочника: ${message}`,
+      });
     } finally {
-      setLoading(false);
+      setActionBusy(false);
     }
   };
 
@@ -188,7 +229,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
     event.preventDefault();
 
     if (selectedPoints.length === 0) {
-      alert('Выберите хотя бы одну точку');
+      setFeedback({ type: 'error', text: 'Выберите хотя бы одну точку для списка.' });
       return;
     }
 
@@ -202,12 +243,13 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
       await api.createOrAppendHemotestPickupList(selectedDate, formattedDate, orderedSelectedPointIds);
 
-      alert(`Точки сохранены (${orderedSelectedPointIds.length} точек)`);
+      setFeedback({ type: 'success', text: `Точки сохранены (${orderedSelectedPointIds.length}).` });
       setSelectedPoints([]);
       setShowListForm(false);
     } catch (error) {
       console.error('Error creating list:', error);
-      alert('Ошибка при создании списка');
+      const message = error instanceof Error && error.message ? error.message : 'Неизвестная ошибка';
+      setFeedback({ type: 'error', text: `Не удалось создать список: ${message}` });
     } finally {
       setLoading(false);
     }
@@ -217,7 +259,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
     event.preventDefault();
 
     if (!formData.name.trim() || !formData.address.trim()) {
-      alert('Заполните название и адрес');
+      setFeedback({ type: 'error', text: 'Заполните название и адрес точки.' });
       return;
     }
 
@@ -240,7 +282,8 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
       await loadPoints();
     } catch (error) {
       console.error('Error saving point:', error);
-      alert('Ошибка при сохранении точки');
+      const message = error instanceof Error && error.message ? error.message : 'Неизвестная ошибка';
+      setFeedback({ type: 'error', text: `Не удалось сохранить точку: ${message}` });
     } finally {
       setLoading(false);
     }
@@ -266,6 +309,19 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
   return (
     <div className="w-full space-y-5">
+      {feedback && (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            feedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+          }`}
+          role="status"
+        >
+          {feedback.text}
+        </div>
+      )}
+
       {showForm &&
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
@@ -350,6 +406,43 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
           document.body
         )}
 
+      {confirmState &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-950">
+                    {confirmState.kind === 'archive' ? 'Удалить точку из справочника?' : 'Убрать точку из списка?'}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {confirmState.kind === 'archive'
+                      ? <>Точка <span className="font-semibold text-slate-950">«{confirmState.point.name}»</span> перестанет предлагаться для новых списков и сборов. История выполненных сборов, старые списки, сверка и биллинг сохранятся.</>
+                      : <>Точка <span className="font-semibold text-slate-950">«{confirmState.point.name}»</span> будет убрана только из рабочего списка на выбранную дату. Справочник точек не изменится.</>}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleConfirmAction}
+                  disabled={actionBusy}
+                  className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-rose-600 px-5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                >
+                  {actionBusy ? 'Выполняем...' : confirmState.kind === 'archive' ? 'Удалить' : 'Убрать из списка'}
+                </button>
+
+                <button type="button" onClick={closeConfirm} disabled={actionBusy} className={`flex-1 ${secondaryButtonClass}`}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div className="flex items-center gap-3">
@@ -379,7 +472,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
         ) : (
           <div className="overflow-hidden">
             <div className="w-full">
-              <div className="grid grid-cols-[36px_36px_minmax(150px,1fr)_minmax(220px,1.6fr)_minmax(96px,0.7fr)_176px] items-center border-b border-slate-200 bg-slate-50/95 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <div className="grid grid-cols-[36px_36px_minmax(150px,1fr)_minmax(220px,1.6fr)_minmax(96px,0.7fr)_280px] items-center border-b border-slate-200 bg-slate-50/95 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
                 <div />
                 <div />
                 <div>Точка</div>
@@ -397,7 +490,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={() => handleDropPoint(point.id)}
                     onDragEnd={() => setDraggedPointId(null)}
-                    className={`grid grid-cols-[36px_36px_minmax(150px,1fr)_minmax(220px,1.6fr)_minmax(96px,0.7fr)_176px] items-center gap-0 px-4 py-3 transition hover:bg-slate-50 ${
+                    className={`grid grid-cols-[36px_36px_minmax(150px,1fr)_minmax(220px,1.6fr)_minmax(96px,0.7fr)_280px] items-center gap-0 px-4 py-3 transition hover:bg-slate-50 ${
                       draggedPointId === point.id ? 'bg-slate-50 opacity-60' : ''
                     }`}
                   >
@@ -452,10 +545,21 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
 
                       <button
                         type="button"
-                        onClick={() => handleRemovePointFromList(point)}
-                        disabled={!point.listId || loading}
-                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-                        title={point.listId ? 'Убрать точку из рабочего списка' : 'Точки нет в рабочем списке на выбранную дату'}
+                        onClick={() => openRemoveFromList(point)}
+                        disabled={!point.listId || loading || actionBusy}
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={point.listId ? 'Убрать точку из рабочего списка на выбранную дату' : 'Точки нет в рабочем списке на выбранную дату'}
+                      >
+                        <ListMinus size={14} />
+                        Из списка
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openArchivePoint(point)}
+                        disabled={loading || actionBusy}
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Удалить точку из справочника (история сборов сохранится)"
                       >
                         <Trash2 size={14} />
                         Удалить

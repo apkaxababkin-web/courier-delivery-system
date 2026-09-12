@@ -1234,6 +1234,16 @@ export async function toggleHemotestPickup(
       })
       .where(eq(hemotestPickups.id, pickup.id));
   } else {
+    const point = await db
+      .select({ isActive: hemotestPickupPoints.isActive })
+      .from(hemotestPickupPoints)
+      .where(eq(hemotestPickupPoints.id, pointId))
+      .limit(1);
+
+    if (point[0]?.isActive !== true) {
+      throw new Error("Точка удалена из справочника и недоступна для новых сборов");
+    }
+
     await db.insert(hemotestPickups).values({
       courierId,
       pointId,
@@ -1512,6 +1522,16 @@ export async function toggleSberbankPickup(
       })
       .where(eq(sberbankPickups.id, pickup.id));
   } else {
+    const point = await db
+      .select({ isActive: sberbankPickupPoints.isActive })
+      .from(sberbankPickupPoints)
+      .where(eq(sberbankPickupPoints.id, pointId))
+      .limit(1);
+
+    if (point[0]?.isActive !== true) {
+      throw new Error("Точка удалена из справочника и недоступна для новых сборов");
+    }
+
     await db.insert(sberbankPickups).values({
       courierId,
       pointId,
@@ -1778,7 +1798,10 @@ export async function getSberbankScheduleForDay(dayOfWeek: number): Promise<Sber
   return await db
     .select()
     .from(sberbankPickupPoints)
-    .where(inArray(sberbankPickupPoints.id, pointIds))
+    .where(and(
+      inArray(sberbankPickupPoints.id, pointIds),
+      eq(sberbankPickupPoints.isActive, true)
+    ))
     .orderBy(sberbankPickupPoints.name);
 }
 
@@ -1879,7 +1902,29 @@ export async function getAllHemotestPoints(): Promise<HemotestPickupPoint[]> {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(hemotestPickupPoints).orderBy(hemotestPickupPoints.name);
+  return await db
+    .select()
+    .from(hemotestPickupPoints)
+    .where(eq(hemotestPickupPoints.isActive, true))
+    .orderBy(hemotestPickupPoints.name);
+}
+
+/**
+ * Archive (soft-delete) a Hemotest pickup point.
+ * History (pickups, list items) is never touched: the point only disappears
+ * from new selections and new pickup lists.
+ */
+export async function archiveHemotestPoint(id: number): Promise<HemotestPickupPoint | null> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const updated = await db
+    .update(hemotestPickupPoints)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(eq(hemotestPickupPoints.id, id))
+    .returning();
+
+  return updated[0] ?? null;
 }
 
 /**
@@ -1914,7 +1959,29 @@ export async function getAllSberbankPoints(): Promise<SberbankPickupPoint[]> {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(sberbankPickupPoints).orderBy(sberbankPickupPoints.name);
+  return await db
+    .select()
+    .from(sberbankPickupPoints)
+    .where(eq(sberbankPickupPoints.isActive, true))
+    .orderBy(sberbankPickupPoints.name);
+}
+
+/**
+ * Archive (soft-delete) a Sberbank pickup point.
+ * History (pickups, list items, schedule) is never touched: the point only
+ * disappears from new selections and new pickup lists.
+ */
+export async function archiveSberbankPoint(id: number): Promise<SberbankPickupPoint | null> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const updated = await db
+    .update(sberbankPickupPoints)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(eq(sberbankPickupPoints.id, id))
+    .returning();
+
+  return updated[0] ?? null;
 }
 
 
@@ -1959,7 +2026,17 @@ export async function createHemotestPickupList(data: {
     list = created[0]!;
   }
 
-  const uniquePointIds = [...new Set(data.pointIds)];
+  const requestedPointIds = [...new Set(data.pointIds)];
+  const activePointRows = requestedPointIds.length
+    ? await db
+        .select({ id: hemotestPickupPoints.id })
+        .from(hemotestPickupPoints)
+        .where(and(
+          inArray(hemotestPickupPoints.id, requestedPointIds),
+          eq(hemotestPickupPoints.isActive, true)
+        ))
+    : [];
+  const uniquePointIds = activePointRows.map((row: { id: number }) => row.id);
   for (const pointId of uniquePointIds) {
     const existingItem = await db
       .select()
@@ -2048,6 +2125,16 @@ export async function addPointToHemotestList(listId: number, pointId: number): P
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  const point = await db
+    .select({ isActive: hemotestPickupPoints.isActive })
+    .from(hemotestPickupPoints)
+    .where(eq(hemotestPickupPoints.id, pointId))
+    .limit(1);
+
+  if (point[0]?.isActive !== true) {
+    throw new Error("Точка удалена из справочника и не может быть добавлена в список");
+  }
+
   // Check if point already exists in the list
   const existing = await db
     .select()
@@ -2124,7 +2211,17 @@ export async function createSberbankPickupList(data: {
     list = created[0]!;
   }
 
-  const uniquePointIds = [...new Set(data.pointIds)];
+  const requestedPointIds = [...new Set(data.pointIds)];
+  const activePointRows = requestedPointIds.length
+    ? await db
+        .select({ id: sberbankPickupPoints.id })
+        .from(sberbankPickupPoints)
+        .where(and(
+          inArray(sberbankPickupPoints.id, requestedPointIds),
+          eq(sberbankPickupPoints.isActive, true)
+        ))
+    : [];
+  const uniquePointIds = activePointRows.map((row: { id: number }) => row.id);
   for (const pointId of uniquePointIds) {
     const existingItem = await db
       .select()
@@ -2228,6 +2325,16 @@ export async function getSberbankPickupListWithItems(listId: number): Promise<{
 export async function addPointToSberbankList(listId: number, pointId: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  const point = await db
+    .select({ isActive: sberbankPickupPoints.isActive })
+    .from(sberbankPickupPoints)
+    .where(eq(sberbankPickupPoints.id, pointId))
+    .limit(1);
+
+  if (point[0]?.isActive !== true) {
+    throw new Error("Точка удалена из справочника и не может быть добавлена в список");
+  }
 
   // Check if point already exists in the list
   const existing = await db

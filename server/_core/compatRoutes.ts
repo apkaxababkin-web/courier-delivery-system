@@ -3185,90 +3185,52 @@ export function registerCompatRoutes(app: Express) {
 
   app.post("/api/trpc/hemotest.deletePoint", async (req, res) => {
     try {
-      const conn = await db.getDb();
-      if (!conn) throw new Error("Database not available");
-
       const input = inputFrom(req);
       const id = Number(input.id);
-      if (!id) throw new Error("id is required");
+      if (!id) {
+        res.status(400).json({ error: { message: "id is required" } });
+        return;
+      }
 
-      const existing = await conn
-        .select()
-        .from(hemotestPickupPoints)
-        .where(eq(hemotestPickupPoints.id, id))
-        .limit(1);
-
-      const point = existing[0];
-
-      await conn.delete(hemotestListItems).where(eq(hemotestListItems.pointId, id));
-      await conn.delete(hemotestPickups).where(eq(hemotestPickups.pointId, id));
-      await conn.delete(hemotestPickupPoints).where(eq(hemotestPickupPoints.id, id));
-
-      if (point) {
-        await conn.delete(clientPoints).where(sql`
-          ${clientPoints.clientId} = 6
-          AND lower(trim(coalesce(${clientPoints.name}, ''))) = lower(trim(coalesce(${point.name}, '')))
-          AND lower(trim(coalesce(${clientPoints.address}, ''))) = lower(trim(coalesce(${point.address}, '')))
-        `);
+      // Safe removal: archive the directory point (isActive = false).
+      // Historical pickups, list items and client points are never touched.
+      const archived = await db.archiveHemotestPoint(id);
+      if (!archived) {
+        res.status(404).json({ error: { message: "Точка не найдена" } });
+        return;
       }
 
       broadcastLive("hemotest_changed", { id });
-      broadcastLive("clients_changed", { clientId: 6 });
 
-      res.json(trpcBatchJson({ success: true }));
+      res.json(trpcBatchJson({ success: true, archived: true }));
     } catch (error) {
-      sendError(res, error, "Failed to delete hemotest point");
+      sendError(res, error, "Failed to archive hemotest point");
     }
   });
 
 
   app.post("/api/trpc/sberbank.deletePoint", async (req, res) => {
     try {
-      const conn = await db.getDb();
-      if (!conn) throw new Error("Database not available");
-
       const input = inputFrom(req);
       const id = Number(input.id);
-      if (!id) throw new Error("id is required");
+      if (!id) {
+        res.status(400).json({ error: { message: "id is required" } });
+        return;
+      }
 
-      const existing = await conn
-        .select()
-        .from(sberbankPickupPoints)
-        .where(eq(sberbankPickupPoints.id, id))
-        .limit(1);
-
-      const point = existing[0];
-
-      await conn.delete(sberbankListItems).where(eq(sberbankListItems.pointId, id));
-      await conn.delete(sberbankPickups).where(eq(sberbankPickups.pointId, id));
-      await conn.delete(sberbankPickupPoints).where(eq(sberbankPickupPoints.id, id));
-
-      if (point) {
-        const sberbankClientRows = await conn.execute(sql`
-          SELECT id
-          FROM clients
-          WHERE lower(name) LIKE '%сбербанк%'
-          ORDER BY id
-          LIMIT 1
-        `) as any;
-
-        const sberbankClient = Array.isArray(sberbankClientRows) ? sberbankClientRows[0] : sberbankClientRows?.rows?.[0];
-
-        if (sberbankClient?.id) {
-          await conn.delete(clientPoints).where(sql`
-            ${clientPoints.clientId} = ${Number(sberbankClient.id)}
-            AND lower(trim(coalesce(${clientPoints.name}, ''))) = lower(trim(coalesce(${point.name}, '')))
-            AND lower(trim(coalesce(${clientPoints.address}, ''))) = lower(trim(coalesce(${point.address}, '')))
-          `);
-        }
+      // Safe removal: archive the directory point (isActive = false).
+      // Historical pickups, list items, schedule and client points are never touched.
+      const archived = await db.archiveSberbankPoint(id);
+      if (!archived) {
+        res.status(404).json({ error: { message: "Точка не найдена" } });
+        return;
       }
 
       broadcastLive("sberbank_changed", { id });
-      broadcastLive("clients_changed", {});
 
-      res.json(trpcBatchJson({ success: true }));
+      res.json(trpcBatchJson({ success: true, archived: true }));
     } catch (error) {
-      sendError(res, error, "Failed to delete sberbank point");
+      sendError(res, error, "Failed to archive sberbank point");
     }
   });
 
