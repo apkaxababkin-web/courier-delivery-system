@@ -1177,10 +1177,14 @@ export function registerCompatRoutes(app: Express) {
   app.get("/api/manager/couriers", async (_req, res) => {
     try {
       const couriers = await db.getAllCouriers();
+      const completedRequestCounts = await db.getCompletedRequestCountsByCourier();
 
       const rows = await Promise.all(
         couriers.map(async (courier) => ({
-          ...toSafeCourier(courier),
+          ...toSafeCourier({
+            ...courier,
+            completedRequests: completedRequestCounts.get(courier.id) ?? 0,
+          }),
           access: await getCourierAccess(courier.id),
         })),
       );

@@ -9,6 +9,8 @@ export type SafeCourier = {
   vehicleType: string;
   isActive: boolean;
   totalDeliveries: number;
+  /** Completed requests (requests.status = 'completed'), computed on read. */
+  completedRequests: number;
   urgencyThresholdOrange: number;
   urgencyThresholdRed: number;
   createdAt: Date;
@@ -27,6 +29,7 @@ export function toSafeCourier(courier: any): SafeCourier {
     vehicleType: courier.vehicleType,
     isActive: courier.isActive,
     totalDeliveries: courier.totalDeliveries,
+    completedRequests: Number.isFinite(Number(courier?.completedRequests)) ? Number(courier.completedRequests) : 0,
     urgencyThresholdOrange: courier.urgencyThresholdOrange,
     urgencyThresholdRed: courier.urgencyThresholdRed,
     createdAt: courier.createdAt,

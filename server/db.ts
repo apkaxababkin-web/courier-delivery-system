@@ -2,7 +2,7 @@ import { lockCorrespondenceWrites, guardLegacyWaybills } from './_core/correspon
 // Removed mysql2 - now using postgres driver
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and, or, gte, lte, lt, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, or, gte, lte, lt, inArray, desc, isNotNull, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   couriers,
@@ -396,6 +396,35 @@ export async function incrementCourierDeliveries(courierId: number): Promise<voi
   await db.update(couriers)
     .set({ totalDeliveries: courier.totalDeliveries + 1 })
     .where(eq(couriers.id, courierId));
+}
+
+/**
+ * Completed requests per courier, computed in one aggregate GROUP BY query (no N+1).
+ * Counts only requests with status = 'completed' and a non-null courierId.
+ * Read-only: the stored couriers.totalDeliveries counter is not touched.
+ */
+export async function getCompletedRequestCountsByCourier(): Promise<Map<number, number>> {
+  const db = await getDb();
+  const counts = new Map<number, number>();
+  if (!db) return counts;
+
+  const rows = await db
+    .select({
+      courierId: requests.courierId,
+      completedCount: sql<number>`count(*)::int`,
+    })
+    .from(requests)
+    .where(and(eq(requests.status, "completed"), isNotNull(requests.courierId)))
+    .groupBy(requests.courierId);
+
+  for (const row of rows) {
+    const courierId = Number(row.courierId);
+    if (Number.isSafeInteger(courierId) && courierId > 0) {
+      counts.set(courierId, Number(row.completedCount) || 0);
+    }
+  }
+
+  return counts;
 }
 
 // ─── Task helpers ─────────────────────────────────────────────────────────────

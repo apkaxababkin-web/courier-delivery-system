@@ -22,6 +22,7 @@ type Courier = {
   displayIcon?: string;
   isActive: boolean;
   totalDeliveries: number;
+  completedRequests?: number;
   access?: CourierAccess;
 };
 
@@ -387,19 +388,19 @@ export default function CouriersView() {
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[920px]">
-              <div className="grid grid-cols-[minmax(220px,1.6fr)_140px_160px_130px_100px_minmax(310px,auto)] items-center gap-4 border-b border-slate-200 bg-slate-50/70 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <div className="grid grid-cols-[minmax(220px,1.6fr)_140px_160px_130px_140px_minmax(310px,auto)] items-center gap-4 border-b border-slate-200 bg-slate-50/70 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 <div>Курьер</div>
                 <div>Телефон</div>
                 <div>Транспорт</div>
                 <div>Статус</div>
-                <div>Доставки</div>
+                <div>Выполнено заявок</div>
                 <div className="text-right">Действия</div>
               </div>
 
               {filteredCouriers.map((courier) => (
                 <div
                   key={courier.id}
-                  className="grid grid-cols-[minmax(220px,1.6fr)_140px_160px_130px_100px_minmax(310px,auto)] items-center gap-4 border-b border-slate-100 px-5 py-3 transition last:border-b-0 hover:bg-slate-50"
+                  className="grid grid-cols-[minmax(220px,1.6fr)_140px_160px_130px_140px_minmax(310px,auto)] items-center gap-4 border-b border-slate-100 px-5 py-3 transition last:border-b-0 hover:bg-slate-50"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
@@ -439,7 +440,7 @@ export default function CouriersView() {
                   </div>
 
                   <div className="text-sm font-semibold text-slate-950">
-                    {courier.totalDeliveries || 0}
+                    {courier.completedRequests ?? 0}
                   </div>
 
                   <div className="flex justify-end gap-2">
