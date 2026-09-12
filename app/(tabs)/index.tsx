@@ -322,6 +322,18 @@ export default function TaskListScreen() {
       };
     }
 
+    if (type === "courier_call") {
+      return {
+        isNuts: false,
+        leftTitle: "Забрать у",
+        leftName: item.senderCompany || item.senderName || "—",
+        leftAddress: item.senderAddress || "",
+        rightTitle: "",
+        rightName: "",
+        rightAddress: "",
+      };
+    }
+
     return {
       isNuts: false,
       leftTitle: "Откуда",
@@ -641,13 +653,13 @@ export default function TaskListScreen() {
                   <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
                     <View style={{ flex: timeLabel ? 35 : 49, paddingRight: 7, alignItems: "center" }}>
                       <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>{info.leftTitle}</Text>
-                      <Text numberOfLines={1} style={{ color: "#0F172A", fontSize: 13, fontWeight: "900", marginTop: 2 }}>
+                      <Text numberOfLines={2} style={{ color: "#0F172A", fontSize: 13, fontWeight: "800", marginTop: 2, textAlign: "center" }}>
                         {info.leftName}
                       </Text>
                       {!!info.leftAddress && (
                         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                           <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                          <Text numberOfLines={1} style={{ color: "#64748B", fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
+                          <Text numberOfLines={2} style={{ color: "#64748B", fontSize: 10, fontWeight: "600", marginLeft: 3, flexShrink: 1 }}>
                             {info.leftAddress}
                           </Text>
                         </View>
@@ -658,20 +670,22 @@ export default function TaskListScreen() {
                       <View style={{ width: 1, height: 36, backgroundColor: "#E2E8F0" }} />
                     </View>
 
-                    <View style={{ flex: timeLabel ? 35 : 49, paddingHorizontal: 7, alignItems: "center" }}>
-                      <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>{info.rightTitle}</Text>
-                      <Text numberOfLines={1} style={{ color: "#0F172A", fontSize: 13, fontWeight: "900", marginTop: 2 }}>
-                        {info.rightName}
-                      </Text>
-                      {!!info.rightAddress && (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                          <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                          <Text numberOfLines={1} style={{ color: "#64748B", fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
-                            {info.rightAddress}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
+                    {!!info.rightTitle && (
+                      <View style={{ flex: timeLabel ? 35 : 49, paddingHorizontal: 7, alignItems: "center" }}>
+                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>{info.rightTitle}</Text>
+                        <Text numberOfLines={2} style={{ color: "#0F172A", fontSize: 13, fontWeight: "800", marginTop: 2, textAlign: "center" }}>
+                          {info.rightName}
+                        </Text>
+                        {!!info.rightAddress && (
+                          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
+                            <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
+                            <Text numberOfLines={2} style={{ color: "#64748B", fontSize: 10, fontWeight: "600", marginLeft: 3, flexShrink: 1 }}>
+                              {info.rightAddress}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
 
                     {timeLabel && (
                       <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>

@@ -1990,281 +1990,106 @@ export default function ClientsViewV2() {
   );
 }
 
-function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partners: Partner[]; mails: Mail[]; loading: boolean; onEdit: (item: Partner) => void; onDelete: (item: Partner) => void }) {
+function PartnersTable({ partners, mails: _mails, loading, onEdit, onDelete }: { partners: Partner[]; mails: Mail[]; loading: boolean; onEdit: (item: Partner) => void; onDelete: (item: Partner) => void }) {
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
-  const [selectedPartnerSection, setSelectedPartnerSection] = useState<'details' | 'reconciliation'>('details');
-  const [checkingMailId, setCheckingMailId] = useState<number | null>(null);
-  const [mailCheckOverrides, setMailCheckOverrides] = useState<Record<number, boolean>>({});
 
-  const getDeliveredPartnerMails = (partner: Partner) =>
-    mails
-      .filter((mail) => mail.status === 'delivered' && mail.partnerId === partner.id)
-      .sort((a, b) => {
-        const aTime = new Date(a.deliveredAt || a.createdAt).getTime();
-        const bTime = new Date(b.deliveredAt || b.createdAt).getTime();
-        return bTime - aTime;
-      });
-
-  const formatPartnerMailDate = (value?: string | null) => {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '—';
-    return date.toLocaleString('ru-RU');
-  };
-
-  const downloadPartnerExcel = (fileName: string, rows: ExcelCell[][]) => {
-    const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body><table>${rows.map((row) => `<tr>${row.map((cell) => `<td>${String(cell ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const isMailChecked = (mail: Mail) =>
-    mailCheckOverrides[mail.id] ?? Boolean(mail.billingCheckedAt);
-
-  const toggleMailChecked = async (mail: Mail) => {
-    const nextChecked = !isMailChecked(mail);
-
-    try {
-      setCheckingMailId(mail.id);
-      await api.setMailBillingChecked(mail.id, nextChecked);
-      setMailCheckOverrides((prev) => ({
-        ...prev,
-        [mail.id]: nextChecked,
-      }));
-    } catch (error) {
-      console.error('Failed to change mail reconciliation check:', error);
-      alert(`Не удалось изменить статус проверки: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
-    } finally {
-      setCheckingMailId(null);
-    }
-  };
+  const safePartners = Array.isArray(partners) ? partners : [];
 
   if (selectedPartner) {
-    const selectedPartnerMails = getDeliveredPartnerMails(selectedPartner);
-
-    const selectedPartnerReconciliationRows: ExcelCell[][] = [
-      ['Дата доставки', 'Партнер', 'Накладная', 'Получатель', 'Телефон', 'Адрес', 'Вес, кг', 'Проверено'],
-      ...selectedPartnerMails.map((mail) => [
-        formatPartnerMailDate(mail.deliveredAt || mail.createdAt),
-        selectedPartner.name,
-        mail.waybillNumber,
-        mail.recipientName || '',
-        mail.recipientPhone || '',
-        mail.deliveryAddress || '',
-        mail.weight || '',
-        isMailChecked(mail) ? 'Да' : 'Нет',
-      ]),
-      [],
-      ['Итого доставленных писем', selectedPartnerMails.length],
-    ];
-
-    const downloadSelectedPartnerReconciliation = () => {
-      const filePartnerName = selectedPartner.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'partner';
-      downloadPartnerExcel(`mig-partner-sverka-${filePartnerName}.xls`, selectedPartnerReconciliationRows);
-    };
-
     return (
       <div className="w-full space-y-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
             <button
               type="button"
-              onClick={() => {
-                setSelectedPartner(null);
-                setSelectedPartnerSection('details');
-              }}
+              onClick={() => setSelectedPartner(null)}
               className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
 
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{selectedPartner.name}</h1>
-              <p className="mt-1 text-sm text-slate-500">Данные партнёра и сверка по доставленным письмам.</p>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+                {selectedPartner.name}
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Данные партнёра.
+              </p>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setSelectedPartnerSection('reconciliation')} className={buttonSecondary}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Сверка
-            </button>
-
-            <button type="button" onClick={downloadSelectedPartnerReconciliation} className={buttonSecondary} disabled={selectedPartnerMails.length === 0}>
-              <Download className="h-4 w-4" />
-              Excel
-            </button>
-
-            <button type="button" onClick={() => onEdit(selectedPartner)} className={buttonSecondary}>
+            <button
+              type="button"
+              onClick={() => onEdit(selectedPartner)}
+              className={buttonSecondary}
+            >
               <Edit2 className="h-4 w-4" />
               Редактировать
             </button>
 
-            <button type="button" onClick={() => onDelete(selectedPartner)} className={buttonSecondary}>
+            <button
+              type="button"
+              onClick={() => onDelete(selectedPartner)}
+              className={buttonSecondary}
+            >
               <Trash2 className="h-4 w-4" />
               Удалить
             </button>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedPartnerSection('details')}
-              className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${
-                selectedPartnerSection === 'details'
-                  ? 'bg-slate-950 text-white'
-                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-950'
-              }`}
-            >
-              Данные партнёра
-            </button>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+            <UserRound className="h-4 w-4" />
+            Контактные данные
+          </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedPartnerSection('reconciliation')}
-              className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${
-                selectedPartnerSection === 'reconciliation'
-                  ? 'bg-slate-950 text-white'
-                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-950'
-              }`}
-            >
-              Сверка
-            </button>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Info label="Партнёр" value={selectedPartner.name} />
+            <Info label="Контакт" value={selectedPartner.contactPerson || '—'} />
+            <Info label="Телефон" value={selectedPartner.phone || '—'} />
+            <Info label="Email" value={selectedPartner.email || '—'} />
           </div>
         </div>
 
-        {selectedPartnerSection === 'details' && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-              <UserRound className="h-4 w-4" />
-              Контактные данные
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Info label="Партнёр" value={selectedPartner.name} />
-              <Info label="Контакт" value={selectedPartner.contactPerson || '—'} />
-              <Info label="Телефон" value={selectedPartner.phone || '—'} />
-              <Info label="Email" value={selectedPartner.email || '—'} />
-            </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-sm font-semibold text-slate-950">
+            Дополнительная информация
           </div>
-        )}
 
-        {(selectedPartnerSection === 'details' || selectedPartnerSection === 'reconciliation') && (
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-950">Сверка партнёра</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Только доставленные письма, созданные с этим партнёром.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm">
-                  <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border-2 ${selectedPartnerMails.length > 0 ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-white'}`}>
-                    <span className={`h-2.5 w-2.5 rounded-full ${selectedPartnerMails.length > 0 ? 'bg-emerald-500' : 'bg-transparent'}`} />
-                  </span>
-                  {selectedPartnerMails.length} доставлено
-                </div>
-
-                <button
-                  type="button"
-                  onClick={downloadSelectedPartnerReconciliation}
-                  disabled={selectedPartnerMails.length === 0}
-                  className={buttonSecondary}
-                >
-                  <Download className="h-4 w-4" />
-                  Скачать Excel
-                </button>
-              </div>
-            </div>
-
-
-            {selectedPartnerMails.length === 0 ? (
-              <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
-                <FileSpreadsheet className="mb-3 h-8 w-8 text-slate-300" />
-                <p className="text-sm font-medium text-slate-950">Доставленных писем для сверки пока нет</p>
-                <p className="mt-1 text-xs text-slate-500">Письма попадут сюда после доставки и привязки к партнёру.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1040px] table-fixed border-collapse text-xs">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.08em] text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3 font-semibold">Дата доставки</th>
-                      <th className="px-5 py-3 font-semibold">Накладная</th>
-                      <th className="px-5 py-3 font-semibold">Получатель</th>
-                      <th className="px-5 py-3 font-semibold">Телефон</th>
-                      <th className="px-5 py-3 font-semibold">Адрес</th>
-                      <th className="px-5 py-3 font-semibold">Вес, кг</th>
-                      <th className="px-5 py-3 font-semibold">Проверено</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {selectedPartnerMails.map((mail) => (
-                      <tr key={mail.id} className="hover:bg-slate-50/80">
-                        <td className="whitespace-nowrap px-5 py-4 text-slate-600">{formatPartnerMailDate(mail.deliveredAt)}</td>
-                        <td className="px-5 py-4 font-semibold text-slate-950">{mail.waybillNumber}</td>
-                        <td className="px-2 py-2 text-center text-[11px] text-slate-600">{mail.recipientName || '—'}</td>
-                        <td className="px-2 py-2 text-center text-[11px] text-slate-600">{mail.recipientPhone || '—'}</td>
-                        <td className="max-w-[420px] truncate px-5 py-4 text-slate-600">{mail.deliveryAddress || '—'}</td>
-                        <td className="whitespace-nowrap px-5 py-4 text-slate-600">
-                          {mail.weight ? `${Number(mail.weight).toLocaleString('ru-RU', { maximumFractionDigits: 3 })}` : '—'}
-                        </td>
-                        <td className="px-5 py-4">
-                          <button
-                            type="button"
-                            disabled={checkingMailId === mail.id}
-                            onClick={() => void toggleMailChecked(mail)}
-                            className={`inline-flex h-9 min-w-[110px] items-center justify-center rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                              isMailChecked(mail)
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                            }`}
-                          >
-                            {checkingMailId === mail.id
-                              ? 'Сохраняем...'
-                              : isMailChecked(mail)
-                                ? 'Проверено'
-                                : 'Проверить'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <div className="mt-4">
+            <Info label="Комментарий" value={selectedPartner.comment || '—'} />
           </div>
-        )}
+        </div>
       </div>
     );
   }
-
-  const safePartners = Array.isArray(partners) ? partners : [];
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-2 border-b border-slate-200 p-5">
         <h2 className="text-sm font-semibold text-slate-950">Партнёры</h2>
-        <p className="text-xs text-slate-500">Организации и люди, которые присылают письма, накладные и файлы.</p>
+        <p className="text-xs text-slate-500">
+          Организации и люди, которые присылают письма, накладные и файлы.
+        </p>
       </div>
 
       {loading ? (
-        <div className="space-y-3 p-5">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton-block h-16" />)}</div>
+        <div className="space-y-3 p-5">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="skeleton-block h-16" />
+          ))}
+        </div>
       ) : safePartners.length === 0 ? (
         <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
           <Building2 className="mb-3 h-8 w-8 text-slate-300" />
-          <p className="text-sm font-medium text-slate-950">Партнёров пока нет</p>
-          <p className="mt-1 text-xs text-slate-500">Нажми плюс справа снизу, чтобы добавить партнёра.</p>
+          <p className="text-sm font-medium text-slate-950">
+            Партнёров пока нет
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Нажми плюс справа снизу, чтобы добавить партнёра.
+          </p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -2276,7 +2101,9 @@ function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partner
                 <th className="px-5 py-3 font-semibold">Контакт</th>
                 <th className="px-5 py-3 font-semibold">Телефон</th>
                 <th className="px-5 py-3 font-semibold">Комментарий</th>
-                <th className="w-[86px] px-2 py-2 text-right font-semibold">Открыть</th>
+                <th className="w-[86px] px-2 py-2 text-right font-semibold">
+                  Открыть
+                </th>
               </tr>
             </thead>
 
@@ -2284,20 +2111,34 @@ function PartnersTable({ partners, mails, loading, onEdit, onDelete }: { partner
               {safePartners.map((item) => (
                 <tr
                   key={item.id}
-                  onClick={() => {
-                    setSelectedPartner(item);
-                    setSelectedPartnerSection('details');
-                  }}
+                  onClick={() => setSelectedPartner(item)}
                   className="group cursor-pointer hover:bg-slate-50/80"
                 >
                   <td className="px-5 py-4">
-                    <p className="font-semibold text-slate-950">{item.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">Вся строка кликабельна</p>
+                    <p className="font-semibold text-slate-950">
+                      {item.name}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Вся строка кликабельна
+                    </p>
                   </td>
-                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">{item.email || '—'}</td>
-                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">{item.contactPerson || '—'}</td>
-                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">{item.phone || '—'}</td>
-                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">{item.comment || '—'}</td>
+
+                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">
+                    {item.email || '—'}
+                  </td>
+
+                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">
+                    {item.contactPerson || '—'}
+                  </td>
+
+                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">
+                    {item.phone || '—'}
+                  </td>
+
+                  <td className="px-2 py-2 text-center text-[11px] text-slate-600">
+                    {item.comment || '—'}
+                  </td>
+
                   <td className="px-5 py-4 text-right">
                     <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition group-hover:bg-slate-950 group-hover:text-white">
                       <ChevronRight className="h-4 w-4" />

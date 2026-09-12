@@ -31,6 +31,118 @@ const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
 
+function getPushRoute(data: Record<string, unknown> | undefined) {
+  if (!data) return null;
+
+  const type =
+    typeof data.type === "string"
+      ? data.type.trim()
+      : "";
+
+  const requestId =
+    typeof data.requestId === "number"
+      ? data.requestId
+      : typeof data.requestId === "string"
+        ? Number(data.requestId)
+        : NaN;
+
+  const conversationId =
+    typeof data.conversationId === "number"
+      ? data.conversationId
+      : typeof data.conversationId === "string"
+        ? Number(data.conversationId)
+        : NaN;
+
+  // ----------------------------------------------------------
+  // Обычные заявки.
+  // ----------------------------------------------------------
+
+  if (
+    (type === "new_request_available" ||
+      type === "request_assigned") &&
+    Number.isFinite(requestId) &&
+    requestId > 0
+  ) {
+    return `/task/${requestId}`;
+  }
+
+  // ----------------------------------------------------------
+  // Chat V2 — сразу конкретный диалог.
+  // ----------------------------------------------------------
+
+  if (type === "chat_message_v2") {
+    if (
+      Number.isFinite(conversationId) &&
+      conversationId > 0
+    ) {
+      return `/(tabs)/chat?conversationId=${conversationId}`;
+    }
+
+    return "/(tabs)/chat";
+  }
+
+  // Legacy chat.
+  if (type === "chat_message") {
+    return "/(tabs)/chat";
+  }
+
+  // ----------------------------------------------------------
+  // Гемотест.
+  // ----------------------------------------------------------
+
+  if (
+    type === "hemotest_list_created" ||
+    type === "hemotest_point_added" ||
+    type === "hemotest_point_removed"
+  ) {
+    return "/(tabs)/pickup-gemotest";
+  }
+
+  // ----------------------------------------------------------
+  // Сбербанк.
+  // ----------------------------------------------------------
+
+  if (
+    type === "sberbank_list_created" ||
+    type === "sberbank_point_added" ||
+    type === "sberbank_point_removed"
+  ) {
+    return "/(tabs)/pickup-sberbank";
+  }
+
+  // ----------------------------------------------------------
+  // Напоминание о незакрытых заявках.
+  // Открываем главный экран со списком заявок.
+  // ----------------------------------------------------------
+
+  if (type === "unfinished_tasks_reminder") {
+    return "/(tabs)";
+  }
+
+  // ----------------------------------------------------------
+  // Старые/явные push с URL.
+  // Оставляем как fallback для совместимости.
+  // ----------------------------------------------------------
+
+  if (typeof data.url === "string" && data.url.trim()) {
+    const rawUrl = data.url.trim();
+
+    // Старый URL чата переводим в реальный Expo Router route.
+    if (rawUrl === "chat") {
+      return "/(tabs)/chat";
+    }
+
+    if (rawUrl.startsWith("chat?")) {
+      return `/(tabs)/${rawUrl}`;
+    }
+
+    const url = rawUrl.replace(/^\/+/, "");
+    return `/${url}`;
+  }
+
+  return null;
+}
+
 async function hideAndroidNavigationBar() {
   if (Platform.OS !== "android") return;
 
@@ -237,16 +349,67 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === "web") return;
 
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
+    let active = true;
+    let lastHandledNotificationId: string | null = null;
+
+    const handleNotificationResponse = (
+      response: Notifications.NotificationResponse,
+    ) => {
+      if (!active) return;
+
+      const notificationId =
+        response.notification.request.identifier || null;
+
+      if (
+        notificationId &&
+        notificationId === lastHandledNotificationId
+      ) {
+        return;
+      }
+
+      const data = response.notification.request.content.data as
+        | Record<string, unknown>
+        | undefined;
+
       console.log("[App] Push notification tapped:", data);
 
-      if (data.url) {
-        router.push(`/${data.url}` as any);
-      }
-    });
+      const route = getPushRoute(data);
 
-    return () => subscription.remove();
+      if (!route) {
+        console.log("[App] Push has no navigation route:", data);
+        return;
+      }
+
+      lastHandledNotificationId = notificationId;
+
+      console.log("[App] Opening push route:", route);
+      router.push(route as any);
+    };
+
+    // Нажатие, пока приложение уже запущено/в фоне.
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(
+        handleNotificationResponse,
+      );
+
+    // Нажатие, которым приложение было запущено из закрытого состояния.
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          handleNotificationResponse(response);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "[App] Failed to read last notification response:",
+          error,
+        );
+      });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
   }, [router]);
 
   const providerInitialMetrics = useMemo(() => {

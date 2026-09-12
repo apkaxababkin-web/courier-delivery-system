@@ -1,7 +1,7 @@
 import { getDisplayRequestId } from "@/shared/request-number";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBadge } from "@/components/status-badge";
-import { CourierBadge } from "@/components/courier-badge";
+import { CourierBadge } from "./courier-badge";
 import { type TaskStatus } from "@/shared/types";
 import { useColors } from "@/hooks/use-colors";
 import { calculateUrgencyFromTimeString } from "@/lib/task-sorting";
@@ -60,6 +60,8 @@ export interface TaskCardData {
   deliveryTimeFrom?: string | null;
   deliveryTimeTo?: string | null;
   courierName?: string | null;
+  courierColor?: string | null;
+  courierIcon?: string | null;
   taskType?: "regular" | "warehouse_pickup" | "courier_call";
   items?: string | null; // JSON array of {name: string, quantity: number}
 }
@@ -75,7 +77,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
   const colors = useColors();
   const urgency = calculateUrgencyFromTimeString(task.deliveryTimeTo);
   const borderColor = urgency === "red" ? "#EF4444" : (urgency === "orange" ? "#FF6D00" : STATUS_BORDER_COLORS[task.status] ?? "#9CA3AF");
-  const courierColor = task.courierName ? getCourierColor(task.courierName) : colors.muted;
+  const courierColor = task.courierColor || (task.courierName ? getCourierColor(task.courierName) : colors.muted);
 
   const hasTimeInterval = task.deliveryTimeFrom || task.deliveryTimeTo;
   const timeLabel = hasTimeInterval
@@ -231,6 +233,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
           <CourierBadge
             name={shortName(task.courierName)}
             color={courierColor}
+            icon={task.courierIcon}
             size="sm"
           />
         )}

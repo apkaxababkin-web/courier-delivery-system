@@ -1,12 +1,19 @@
 import { StyleSheet, Text, View } from "react-native";
+import { CourierIcon } from "./courier-icon";
 
 interface CourierBadgeProps {
   name: string;
   color: string;
+  icon?: string | null;
   size?: "sm" | "md";
 }
 
-export function CourierBadge({ name, color, size = "md" }: CourierBadgeProps) {
+export function CourierBadge({
+  name,
+  color,
+  icon,
+  size = "md",
+}: CourierBadgeProps) {
   const isSmall = size === "sm";
 
   return (
@@ -17,10 +24,16 @@ export function CourierBadge({ name, color, size = "md" }: CourierBadgeProps) {
         isSmall && styles.badgeSm,
       ]}
     >
+      <CourierIcon
+        icon={icon}
+        color={color}
+        size={isSmall ? 12 : 14}
+      />
+
       <Text
         style={[
           styles.text,
-          { color: color },
+          { color },
           isSmall && styles.textSm,
         ]}
       >
@@ -37,16 +50,22 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
+
   badgeSm: {
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
+
   text: {
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 18,
   },
+
   textSm: {
     fontSize: 11,
     lineHeight: 16,

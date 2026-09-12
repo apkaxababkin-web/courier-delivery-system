@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bike, BellOff, Copy, Edit2, KeyRound, MapPin, Phone, Plus, RefreshCcw, Search, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
+import { Bike, BellOff, Copy, Edit2, KeyRound, MapPin, Phone, Plus, RefreshCcw, Search, ShieldCheck, Trash2, UserRound, X, User, CircleUserRound, Contact, Users, Car, CarFront, Truck, Bus, Plane, Ship, Rocket, Navigation, Compass, Route, Star, Heart, Zap, Flame, Sun, Moon, Cloud, Snowflake, Umbrella, Sparkles, Crown, Gem, Diamond, Shield, Circle, Square, Triangle, Hexagon, Octagon, Flag, Bookmark, Tag, Bell, Package, Briefcase, Key, Wrench, Hammer, Camera, Gift, Trophy, Medal } from 'lucide-react';
 import { AppSelect } from '../components/AppSelect';
 import { managerFetch } from '../lib/api';
 
@@ -18,7 +18,8 @@ type Courier = {
   name: string;
   username: string;
   phone?: string | null;
-  vehicleType?: string;
+  displayColor?: string;
+  displayIcon?: string;
   isActive: boolean;
   totalDeliveries: number;
   access?: CourierAccess;
@@ -29,32 +30,24 @@ type CourierFormData = {
   username: string;
   password: string;
   phone: string;
-  vehicleType: string;
 };
 
 type CourierEditFormData = {
   name: string;
   username: string;
   phone: string;
-  vehicleType: string;
+  displayColor: string;
+  displayIcon: string;
   isActive: boolean;
   access: CourierAccess;
 };
 
 const API_URL = import.meta.env.VITE_API_URL || '';
-const vehicleOptions = [
-  { value: 'car', label: 'Авто' },
-  { value: 'scooter', label: 'Скутер' },
-  { value: 'bicycle', label: 'Велосипед' },
-  { value: 'foot', label: 'Пеший' },
-];
-
 const emptyForm: CourierFormData = {
   name: '',
   username: '',
   password: '',
   phone: '',
-  vehicleType: 'car',
 };
 
 const defaultCourierAccess: CourierAccess = {
@@ -70,7 +63,8 @@ const emptyEditForm: CourierEditFormData = {
   name: '',
   username: '',
   phone: '',
-  vehicleType: 'car',
+  displayColor: '#2563EB',
+  displayIcon: 'UserRound',
   isActive: true,
   access: { ...defaultCourierAccess },
 };
@@ -80,7 +74,58 @@ const primaryButtonClass = 'inline-flex h-11 items-center justify-center gap-2 r
 const secondaryButtonClass = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60';
 const tinyButtonClass = 'inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-950';
 
-const vehicleLabels: Record<string, string> = { car: 'Авто', scooter: 'Скутер', bicycle: 'Велосипед', foot: 'Пеший' };
+const courierIconOptions = [
+  { value: 'User', Icon: User },
+  { value: 'UserRound', Icon: UserRound },
+  { value: 'CircleUserRound', Icon: CircleUserRound },
+  { value: 'Contact', Icon: Contact },
+  { value: 'Users', Icon: Users },
+  { value: 'Car', Icon: Car },
+  { value: 'CarFront', Icon: CarFront },
+  { value: 'Truck', Icon: Truck },
+  { value: 'Bike', Icon: Bike },
+  { value: 'Bus', Icon: Bus },
+  { value: 'Plane', Icon: Plane },
+  { value: 'Ship', Icon: Ship },
+  { value: 'Rocket', Icon: Rocket },
+  { value: 'Navigation', Icon: Navigation },
+  { value: 'Compass', Icon: Compass },
+  { value: 'MapPin', Icon: MapPin },
+  { value: 'Route', Icon: Route },
+  { value: 'Star', Icon: Star },
+  { value: 'Heart', Icon: Heart },
+  { value: 'Zap', Icon: Zap },
+  { value: 'Flame', Icon: Flame },
+  { value: 'Sun', Icon: Sun },
+  { value: 'Moon', Icon: Moon },
+  { value: 'Cloud', Icon: Cloud },
+  { value: 'Snowflake', Icon: Snowflake },
+  { value: 'Umbrella', Icon: Umbrella },
+  { value: 'Sparkles', Icon: Sparkles },
+  { value: 'Crown', Icon: Crown },
+  { value: 'Gem', Icon: Gem },
+  { value: 'Diamond', Icon: Diamond },
+  { value: 'Shield', Icon: Shield },
+  { value: 'ShieldCheck', Icon: ShieldCheck },
+  { value: 'Circle', Icon: Circle },
+  { value: 'Square', Icon: Square },
+  { value: 'Triangle', Icon: Triangle },
+  { value: 'Hexagon', Icon: Hexagon },
+  { value: 'Octagon', Icon: Octagon },
+  { value: 'Flag', Icon: Flag },
+  { value: 'Bookmark', Icon: Bookmark },
+  { value: 'Tag', Icon: Tag },
+  { value: 'Bell', Icon: Bell },
+  { value: 'Package', Icon: Package },
+  { value: 'Briefcase', Icon: Briefcase },
+  { value: 'Key', Icon: Key },
+  { value: 'Wrench', Icon: Wrench },
+  { value: 'Hammer', Icon: Hammer },
+  { value: 'Camera', Icon: Camera },
+  { value: 'Gift', Icon: Gift },
+  { value: 'Trophy', Icon: Trophy },
+  { value: 'Medal', Icon: Medal },
+] as const;
 
 const makeUsername = (name: string) =>
   name
@@ -141,7 +186,7 @@ export default function CouriersView() {
   const filteredCouriers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return activeCouriers;
-    return activeCouriers.filter((courier) => [courier.name, courier.username, courier.phone || '', courier.vehicleType || ''].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)));
+    return activeCouriers.filter((courier) => [courier.name, courier.username, courier.phone || ''].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)));
   }, [activeCouriers, searchQuery]);
 
   const handleNameChange = (name: string) => setFormData((prev) => ({ ...prev, name, username: prev.username || makeUsername(name) }));
@@ -155,7 +200,7 @@ export default function CouriersView() {
 
     try {
       setSaving(true);
-      const payload = { name: formData.name.trim(), username: formData.username.trim(), password: formData.password, phone: formData.phone.trim(), vehicleType: formData.vehicleType };
+      const payload = { name: formData.name.trim(), username: formData.username.trim(), password: formData.password, phone: formData.phone.trim() };
       const response = await managerFetch(`${API_URL}/api/manager/couriers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'Ошибка при создании курьера');
@@ -187,7 +232,8 @@ export default function CouriersView() {
       name: courier.name || '',
       username: courier.username || '',
       phone: courier.phone || '',
-      vehicleType: courier.vehicleType || 'car',
+      displayColor: courier.displayColor || '#2563EB',
+      displayIcon: courier.displayIcon || 'UserRound',
       isActive: courier.isActive !== false,
       access: {
         ...defaultCourierAccess,
@@ -218,7 +264,8 @@ export default function CouriersView() {
         name: editFormData.name.trim(),
         username: editFormData.username.trim().toLowerCase(),
         phone: editFormData.phone.trim(),
-        vehicleType: editFormData.vehicleType,
+        displayColor: editFormData.displayColor,
+        displayIcon: editFormData.displayIcon,
         isActive: editFormData.isActive,
         access: editFormData.access,
       };
@@ -338,39 +385,94 @@ export default function CouriersView() {
             {activeCouriers.length === 0 && <button onClick={() => setShowForm(true)} className={`mt-5 ${primaryButtonClass}`}><Plus className="h-4 w-4" />Выдать доступ курьеру</button>}
           </div>
         ) : (
-          <div className="grid gap-4 p-5 lg:grid-cols-2 xl:grid-cols-3">
-            {filteredCouriers.map((courier) => (
-              <div key={courier.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md">
-                <div className="flex items-start justify-between gap-3">
+          <div className="overflow-x-auto">
+            <div className="min-w-[920px]">
+              <div className="grid grid-cols-[minmax(220px,1.6fr)_140px_160px_130px_100px_minmax(310px,auto)] items-center gap-4 border-b border-slate-200 bg-slate-50/70 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <div>Курьер</div>
+                <div>Телефон</div>
+                <div>Транспорт</div>
+                <div>Статус</div>
+                <div>Доставки</div>
+                <div className="text-right">Действия</div>
+              </div>
+
+              {filteredCouriers.map((courier) => (
+                <div
+                  key={courier.id}
+                  className="grid grid-cols-[minmax(220px,1.6fr)_140px_160px_130px_100px_minmax(310px,auto)] items-center gap-4 border-b border-slate-100 px-5 py-3 transition last:border-b-0 hover:bg-slate-50"
+                >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm"><Bike className="h-5 w-5" /></div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
+                      <Bike className="h-4 w-4" />
+                    </div>
+
                     <div className="min-w-0">
-                      <h3 className="truncate font-semibold text-slate-950">{courier.name}</h3>
-                      <div className="mt-1 flex items-center gap-2 text-sm text-slate-500"><UserRound className="h-3.5 w-3.5" /><span className="truncate">{courier.username}</span></div>
+                      <div className="truncate text-sm font-semibold text-slate-950">
+                        {courier.name}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
+                        <UserRound className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{courier.username}</span>
+                      </div>
                     </div>
                   </div>
-                  <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{courier.isActive ? 'Активен' : 'Отключён'}</span>
-                </div>
 
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <InfoBox icon={<Phone className="h-3.5 w-3.5" />} label="Телефон" value={courier.phone || 'Не указан'} />
-                  <InfoBox icon={<MapPin className="h-3.5 w-3.5" />} label="Доставки" value={courier.totalDeliveries || 0} large />
-                </div>
+                  <div className="truncate text-sm text-slate-600">
+                    {courier.phone || '—'}
+                  </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <InfoBox icon={<Bike className="h-3.5 w-3.5" />} label="Транспорт" value={vehicleLabels[courier.vehicleType || ''] || courier.vehicleType || 'Не указан'} />
-                  <InfoBox icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Назначения" value="Видимы" />
-                </div>
+                  <div>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                        courier.isActive
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          courier.isActive ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      {courier.isActive ? 'Активен' : 'Отключён'}
+                    </span>
+                  </div>
 
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => openEditCourier(courier)} className={tinyButtonClass}><Edit2 className="h-3.5 w-3.5" />Редактировать</button>
-                    <button type="button" onClick={() => openResetModal(courier)} className={tinyButtonClass}><RefreshCcw className="h-3.5 w-3.5" />Сброс пароля</button>
-                    <button type="button" onClick={() => handleDeactivateCourier(courier)} className={tinyButtonClass}><Trash2 className="h-3.5 w-3.5" />Отключить</button>
+                  <div className="text-sm font-semibold text-slate-950">
+                    {courier.totalDeliveries || 0}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditCourier(courier)}
+                      className={tinyButtonClass}
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                      Редактировать
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openResetModal(courier)}
+                      className={tinyButtonClass}
+                    >
+                      <RefreshCcw className="h-3.5 w-3.5" />
+                      Пароль
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeactivateCourier(courier)}
+                      className={tinyButtonClass}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Отключить
+                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -387,7 +489,7 @@ export default function CouriersView() {
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div><label className="mb-2 block text-sm font-medium text-slate-700">Телефон</label><input value={formData.phone} onChange={(event) => setFormData((prev) => ({ ...prev, phone: event.target.value }))} placeholder="+7..." className={inputClass} /></div>
-                <div><label className="mb-2 block text-sm font-medium text-slate-700">Транспорт</label><AppSelect value={formData.vehicleType} options={vehicleOptions} onChange={(value) => setFormData((prev) => ({ ...prev, vehicleType: String(value ?? 'car') }))} /></div>
+                
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">Курьер сможет войти только по выданному логину и паролю. Самостоятельной регистрации в курьерском приложении нет.</div>
               <div className="flex gap-3 pt-2"><button type="submit" disabled={saving} className={`flex-1 ${primaryButtonClass}`}>{saving ? 'Создание...' : 'Создать доступ'}</button><button type="button" onClick={() => setShowForm(false)} className={`flex-1 ${secondaryButtonClass}`}>Отмена</button></div>
@@ -443,21 +545,99 @@ export default function CouriersView() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Транспорт</label>
-                  <AppSelect
-                    value={editFormData.vehicleType}
-                    options={vehicleOptions}
-                    onChange={(value) => setEditFormData((prev) => ({ ...prev, vehicleType: String(value ?? 'car') }))}
-                  />
-                </div>
-
-                <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">Статус</label>
                   <AppSelect
                     value={editFormData.isActive ? 'active' : 'disabled'}
                     options={[{ value: 'active', label: 'Активен' }, { value: 'disabled', label: 'Отключён' }]}
                     onChange={(value) => setEditFormData((prev) => ({ ...prev, isActive: value === 'active' }))}
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Цвет курьера в приложении
+                </label>
+
+                <div className="flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  {[
+                    '#2563EB',
+                    '#0891B2',
+                    '#059669',
+                    '#65A30D',
+                    '#D97706',
+                    '#EA580C',
+                    '#DC2626',
+                    '#DB2777',
+                    '#7C3AED',
+                    '#475569',
+                  ].map((color) => {
+                    const selected =
+                      editFormData.displayColor.toUpperCase() === color.toUpperCase();
+
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        title={color}
+                        aria-label={`Выбрать цвет ${color}`}
+                        onClick={() =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            displayColor: color,
+                          }))
+                        }
+                        className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition ${
+                          selected
+                            ? 'border-slate-950 ring-2 ring-slate-300 ring-offset-2'
+                            : 'border-white shadow-sm hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: color }}
+                      >
+                        {selected ? (
+                          <span className="text-base font-bold text-white">✓</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Иконка курьера в приложении
+                </label>
+
+                <div className="grid grid-cols-5 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-10">
+                  {courierIconOptions.map(({ value, Icon }) => {
+                    const selected = editFormData.displayIcon === value;
+
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        title={value}
+                        aria-label={`Выбрать иконку ${value}`}
+                        onClick={() =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            displayIcon: value,
+                          }))
+                        }
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl border transition ${
+                          selected
+                            ? 'border-slate-950 bg-white ring-2 ring-slate-300'
+                            : 'border-slate-200 bg-white hover:border-slate-400'
+                        }`}
+                      >
+                        <Icon
+                          size={19}
+                          strokeWidth={selected ? 2.5 : 2}
+                          style={{ color: editFormData.displayColor }}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

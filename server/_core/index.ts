@@ -8,9 +8,11 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
+import { registerCorrespondenceRoutes } from "./correspondenceRoutes";
 import { mirrorLegacyChatMessageToV2, registerChatV2Routes } from "./chatV2Routes";
 import { sendExpoPush } from "./expoPush";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
+import { startRequestPushScheduler } from "./requestPushScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
 import { managerApiAuthGate } from "./managerSecurity";
 import { toSafeCourier } from "./courierPublic";
@@ -254,6 +256,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
 }
 
   registerCompatRoutes(app);
+  registerCorrespondenceRoutes(app);
   registerChatV2Routes(app);
 
   app.get("/api/health", (_req, res) => {
@@ -405,9 +408,13 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
 
       const allowedTextFields = [
         "senderName",
+        "senderCompany",
+        "senderCity",
         "senderPhone",
         "senderAddress",
         "recipientName",
+        "recipientCompany",
+        "recipientCity",
         "recipientPhone",
         "recipientAddress",
         "deliveryAddress",
@@ -455,10 +462,97 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
         updateData.estimatedMinutes = input.estimatedMinutes == null || input.estimatedMinutes === "" ? null : Number(input.estimatedMinutes);
       }
 
-      const updated = await conn.update(requests).set(updateData as any).where(eq(requests.id, id)).returning();
+      const beforeRows = await conn
+        .select()
+        .from(requests)
+        .where(eq(requests.id, id))
+        .limit(1);
+
+      const before = beforeRows[0] as Record<string, unknown> | undefined;
+
+      if (!before) {
+        throw new Error("Request not found");
+      }
+
+      const updated = await conn
+        .update(requests)
+        .set(updateData as any)
+        .where(eq(requests.id, id))
+        .returning();
+
       if (!updated[0]) throw new Error("Request not found");
 
       const request = updated[0] as any;
+
+      // ------------------------------------------------------
+      // Audit: сохраняем только реальные пользовательские
+      // изменения, без служебных timestamp/billing полей.
+      // ------------------------------------------------------
+
+      const ignoredAuditFields = new Set([
+        "updatedAt",
+        "billingCheckedAt",
+        "billingCheckedByManagerId",
+        "scheduledPushSentAt",
+      ]);
+
+      const normalizeAuditValue = (value: unknown) => {
+        if (value instanceof Date) {
+          return value.toISOString();
+        }
+
+        return value ?? null;
+      };
+
+      const changes: Record<string, unknown> = {};
+
+      for (const key of Object.keys(updateData)) {
+        if (ignoredAuditFields.has(key)) continue;
+
+        const from = normalizeAuditValue(before[key]);
+        const to = normalizeAuditValue(request[key]);
+
+        if (JSON.stringify(from) !== JSON.stringify(to)) {
+          changes[key] = { from, to };
+        }
+      }
+
+      if (Object.keys(changes).length > 0) {
+        const reqAny = req as any;
+
+        const actor =
+          reqAny.manager ??
+          reqAny.managerUser ??
+          reqAny.user ??
+          res.locals?.manager ??
+          res.locals?.user ??
+          null;
+
+        const actorIdRaw = Number(actor?.id);
+        const actorId =
+          Number.isFinite(actorIdRaw) && actorIdRaw > 0
+            ? actorIdRaw
+            : null;
+
+        const actorName =
+          String(
+            actor?.name ??
+            actor?.username ??
+            actor?.email ??
+            "Менеджер",
+          ).trim() || "Менеджер";
+
+        await db.addRequestActivityEvent({
+          requestId: id,
+          actorType: "manager",
+          actorId,
+          actorName,
+          action: "updated",
+          note: "Заявка изменена",
+          changes,
+        });
+      }
+
       const marker = `[request:${id}]`;
 
       await conn.update(tasks)
@@ -560,6 +654,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
     console.log(`[api] server listening on port ${port}`);
     console.log(`[api] serving static files from ${publicPath}`);
     startCourierReminderScheduler();
+    startRequestPushScheduler();
   });
 }
 

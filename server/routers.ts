@@ -11,6 +11,7 @@ import { assertCourierAccess } from "./_core/courierAccess";
 import { systemRouter } from "./_core/systemRouter";
 import { managerProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
+import { buildNewRequestPush, buildAssignedRequestPush } from "./_core/requestPushPresentation";
 
 const BUSINESS_TIME_ZONE = "Asia/Irkutsk";
 
@@ -93,58 +94,23 @@ function getPointsLabel(count: unknown) {
   return `${points} точек`;
 }
 
-function buildNewRequestPush(input: {
-  id: number;
-  requestType?: unknown;
-  deliveryAddress?: unknown;
-  recipientAddress?: unknown;
-  senderAddress?: unknown;
-  senderName?: unknown;
-  senderCompany?: unknown;
-  recipientName?: unknown;
-  recipientCompany?: unknown;
-  tcName?: unknown;
-  packageDescription?: unknown;
-  placesCount?: unknown;
-  paymentMethod?: unknown;
-}) {
-  const typeLabels: Record<string, string> = {
-    delivery: "Доставка",
-    movement: "Перемещение",
-    nuts: "Орехи",
-    courier_call: "Вызов курьера",
-    pickup_from_tc: "Транспортная компания",
-    simple: "Заявка",
-  };
+function isScheduledForToday(value: unknown) {
+  if (!value) return true;
 
-  const requestType = String(input.requestType || "");
-  const typeLabel = typeLabels[requestType] || "Заявка";
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return true;
 
-  const name = compactText(
-    input.packageDescription ||
-      input.tcName ||
-      input.senderCompany ||
-      input.recipientCompany ||
-      input.recipientName ||
-      input.senderName,
-    "",
-  );
+  const format = (input: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Irkutsk",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(input);
 
-  const pickupPlace = compactText(
-    input.senderAddress ||
-      input.tcName ||
-      input.deliveryAddress ||
-      input.recipientAddress,
-    "",
-  );
-
-  const title = name ? `${typeLabel} · ${name}` : typeLabel;
-
-  return {
-    title: truncatePushText(title, 90),
-    body: truncatePushText(pickupPlace, 120),
-  };
+  return format(date) === format(new Date());
 }
+
 
 
 // ─── Manager JWT helpers ─────────────────────────────────────────────────────
@@ -413,8 +379,66 @@ export const appRouter = router({
 
         // If assigning a courier, set status to assigned; if removing, keep current status
         const newStatus = input.courierId ? "assigned" : task.status;
+        const previousCourierId = task.courierId ?? null;
 
         await db.assignTaskToCourier(input.taskId, input.courierId, newStatus);
+
+        // Keep the linked manager request in sync with the mobile task.
+        await updateRequestStatusFromTask(
+          input.taskId,
+          newStatus,
+          input.courierId,
+        );
+
+        const requestId =
+          task.requestId ??
+          task.sourceRequestId ??
+          Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
+          0;
+
+        if (requestId && previousCourierId !== input.courierId) {
+          const actorCourier = await db.getCourierById(payload.courierId);
+
+          const previousCourier = previousCourierId
+            ? await db.getCourierById(previousCourierId)
+            : null;
+
+          const nextCourier = input.courierId
+            ? await db.getCourierById(input.courierId)
+            : null;
+
+          await db.addRequestActivityEvent({
+            requestId,
+            actorType: "courier",
+            actorId: payload.courierId,
+            actorName: actorCourier?.name ?? `Курьер #${payload.courierId}`,
+            action: input.courierId
+              ? "courier_assigned"
+              : "courier_unassigned",
+            note: input.courierId
+              ? `Назначен курьер: ${nextCourier?.name ?? `#${input.courierId}`}`
+              : `Назначение снято${previousCourier?.name ? `: ${previousCourier.name}` : ""}`,
+            changes: {
+              courierId: {
+                from: previousCourierId,
+                to: input.courierId,
+              },
+            },
+          });
+        }
+
+        broadcastLive("tasks_changed", {
+          taskId: input.taskId,
+          requestId,
+          courierId: input.courierId,
+        });
+
+        broadcastLive("requests_changed", {
+          taskId: input.taskId,
+          requestId,
+          courierId: input.courierId,
+        });
+
         return { success: true };
       }),
 
@@ -472,6 +496,7 @@ export const appRouter = router({
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: input.status,
+          changedByUserId: payload.courierId,
           note: input.status === "assigned"
             ? "Назначение отменено"
             : input.status === "in_progress"
@@ -480,6 +505,45 @@ export const appRouter = router({
             ? "Доставка выполнена"
             : "Задание отменено",
         });
+
+        const linkedRequestId =
+          task.requestId ??
+          task.sourceRequestId ??
+          null;
+
+        if (linkedRequestId) {
+          const courier = await db.getCourierById(payload.courierId);
+
+          await db.addRequestActivityEvent({
+            requestId: linkedRequestId,
+            actorType: "courier",
+            actorId: payload.courierId,
+            actorName: courier?.name ?? `Курьер #${payload.courierId}`,
+            action:
+              input.status === "in_progress"
+                ? "started"
+                : input.status === "completed"
+                  ? "completed"
+                  : input.status === "cancelled"
+                    ? "cancelled"
+                    : "status_changed",
+            note:
+              input.status === "in_progress"
+                ? "Курьер принял заявку"
+                : input.status === "completed"
+                  ? "Курьер выполнил заявку"
+                  : input.status === "cancelled"
+                    ? "Курьер отменил заявку"
+                    : "Статус заявки изменён",
+            changes: {
+              status: {
+                from: task.status,
+                to: input.status,
+              },
+            },
+          });
+        }
+
         return { success: true };
       }),
 
@@ -567,8 +631,41 @@ export const appRouter = router({
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
 
-        const newDateStr = input.newDate.toISOString().split("T")[0];
+        const previousDate = task.scheduledAt ?? null;
+
         await db.updateTaskDate(input.taskId, input.newDate);
+
+        const requestId =
+          task.requestId ??
+          task.sourceRequestId ??
+          Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
+          0;
+
+        if (
+          requestId &&
+          (previousDate?.getTime() ?? null) !== input.newDate.getTime()
+        ) {
+          const courier = await db.getCourierById(payload.courierId);
+
+          await db.addRequestActivityEvent({
+            requestId,
+            actorType: "courier",
+            actorId: payload.courierId,
+            actorName: courier?.name ?? `Курьер #${payload.courierId}`,
+            action: "updated",
+            note: "Изменена дата заявки",
+            changes: {
+              scheduledAt: {
+                from: previousDate?.toISOString() ?? null,
+                to: input.newDate.toISOString(),
+              },
+            },
+          });
+        }
+
+        broadcastLive("tasks_changed", { taskId: input.taskId, requestId });
+        broadcastLive("requests_changed", { taskId: input.taskId, requestId });
+
         return { success: true };
       }),
 
@@ -1312,7 +1409,7 @@ export const appRouter = router({
           { message: "Необходимо изменить стоимость или комментарий" },
         ),
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const request = await db.getRequestById(input.requestId);
 
         if (!request) {
@@ -1323,14 +1420,52 @@ export const appRouter = router({
           throw new Error("Редактировать расчёт можно только у завершённой заявки");
         }
 
-        await db.updateRequest(input.requestId, {
+        const updatePayload = {
           ...(input.deliveryFee !== undefined
             ? { deliveryFee: input.deliveryFee.toFixed(2) }
             : {}),
           ...(input.comments !== undefined
             ? { comments: input.comments }
             : {}),
-        });
+        };
+
+        await db.updateRequest(input.requestId, updatePayload);
+
+        const changes: Record<string, unknown> = {};
+
+        if (
+          input.deliveryFee !== undefined &&
+          String(request.deliveryFee ?? "") !== input.deliveryFee.toFixed(2)
+        ) {
+          changes.deliveryFee = {
+            from: request.deliveryFee ?? null,
+            to: input.deliveryFee.toFixed(2),
+          };
+        }
+
+        if (
+          input.comments !== undefined &&
+          (request.comments ?? "") !== input.comments
+        ) {
+          changes.comments = {
+            from: request.comments ?? null,
+            to: input.comments,
+          };
+        }
+
+        if (Object.keys(changes).length > 0) {
+          const manager = await db.getManagerById(ctx.managerId);
+
+          await db.addRequestActivityEvent({
+            requestId: input.requestId,
+            actorType: "manager",
+            actorId: ctx.managerId,
+            actorName: manager?.name ?? "Менеджер",
+            action: "updated",
+            note: "Заявка изменена",
+            changes,
+          });
+        }
 
         broadcastLive("requests_changed", { requestId: input.requestId });
 
@@ -1383,30 +1518,51 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const createdByUserId = ctx.user?.id ?? 0;
         const id = await db.createRequest({ ...input, createdByUserId });
+
+        await db.addRequestActivityEvent({
+          requestId: id,
+          actorType: "manager",
+          actorId: ctx.user?.id ?? null,
+          actorName: ctx.user?.name ?? ctx.user?.email ?? "Менеджер",
+          action: "created",
+          note: "Заявка создана",
+        });
+
         await syncTaskForRequestId(id);
 
         const requestForPush = await db.getRequestById(id);
-        const push = buildNewRequestPush({
-          id,
-          requestType: requestForPush?.requestType || input.requestType,
-          deliveryAddress: requestForPush?.deliveryAddress || input.deliveryAddress,
-          recipientAddress: requestForPush?.recipientAddress || input.recipientAddress,
-          senderAddress: requestForPush?.senderAddress || input.senderAddress,
-          senderName: requestForPush?.senderName || input.senderName,
-          senderCompany: requestForPush?.senderCompany || input.senderCompany,
-          recipientName: requestForPush?.recipientName || input.recipientName,
-          recipientCompany: requestForPush?.recipientCompany || input.recipientCompany,
-          tcName: requestForPush?.tcName || input.tcName,
-          packageDescription: requestForPush?.packageDescription || input.packageDescription,
-          placesCount: requestForPush?.placesCount || input.placesCount,
-          paymentMethod: requestForPush?.paymentMethod || input.paymentMethod,
-        });
+        if (isScheduledForToday(requestForPush?.scheduledAt)) {
+  const push = buildNewRequestPush({
+            id,
+            requestType: requestForPush?.requestType || input.requestType,
+            deliveryAddress: requestForPush?.deliveryAddress || input.deliveryAddress,
+            recipientAddress: requestForPush?.recipientAddress || input.recipientAddress,
+            senderAddress: requestForPush?.senderAddress || input.senderAddress,
+            senderName: requestForPush?.senderName || input.senderName,
+            senderCompany: requestForPush?.senderCompany || input.senderCompany,
+            recipientName: requestForPush?.recipientName || input.recipientName,
+            recipientCompany: requestForPush?.recipientCompany || input.recipientCompany,
+            tcName: requestForPush?.tcName || input.tcName,
+            tcAddress: requestForPush?.tcAddress || input.tcAddress,
+            comments: requestForPush?.comments || input.comments,
+            items: requestForPush?.items || input.items,
+            packageDescription: requestForPush?.packageDescription || input.packageDescription,
+            placesCount: requestForPush?.placesCount || input.placesCount,
+            paymentMethod: requestForPush?.paymentMethod || input.paymentMethod,
+          });
+  
+          await sendPushToAllCouriers(push.title, push.body, {
+            type: "new_request_available",
+            requestId: id,
+            requestType: input.requestType,
+          });
 
-        await sendPushToAllCouriers(push.title, push.body, {
-          type: "new_request_available",
-          requestId: id,
-          requestType: input.requestType,
-        });
+          if (requestForPush?.scheduledAt) {
+            await db.updateRequest(id, {
+              scheduledPushSentAt: new Date(),
+            });
+          }
+}
         broadcastLive("requests_changed", { requestId: id });
         broadcastLive("tasks_changed", { requestId: id });
         return { id, success: true };
@@ -1421,6 +1577,13 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         return await db.getRequestById(input.id);
+      }),
+
+
+    activity: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return await db.getRequestActivity(input.id);
       }),
 
     update: publicProcedure
@@ -1465,15 +1628,55 @@ export const appRouter = router({
         deliveryTimeTo: z.string().optional(),
         estimatedMinutes: z.number().nullable().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const before = await db.getRequestById(input.id);
         const { id, paymentAmount, ...data } = input;
 
-        await db.updateRequest(id, {
+        const updatePayload = {
           ...data,
           ...(paymentAmount !== undefined
             ? { paymentAmount: paymentAmount === null ? null : String(paymentAmount) }
             : {}),
-        });
+        };
+
+        await db.updateRequest(id, updatePayload);
+
+        if (before) {
+          const after = await db.getRequestById(id);
+          const changes: Record<string, unknown> = {};
+
+          for (const [key, nextValue] of Object.entries(updatePayload)) {
+            const previousValue = (before as Record<string, unknown>)[key];
+            const currentValue = after
+              ? (after as Record<string, unknown>)[key]
+              : nextValue;
+
+            const normalize = (value: unknown) =>
+              value instanceof Date ? value.toISOString() : value ?? null;
+
+            if (
+              JSON.stringify(normalize(previousValue)) !==
+              JSON.stringify(normalize(currentValue))
+            ) {
+              changes[key] = {
+                from: normalize(previousValue),
+                to: normalize(currentValue),
+              };
+            }
+          }
+
+          if (Object.keys(changes).length > 0) {
+            await db.addRequestActivityEvent({
+              requestId: id,
+              actorType: "manager",
+              actorId: ctx.user?.id ?? null,
+              actorName: ctx.user?.name ?? ctx.user?.email ?? "Менеджер",
+              action: "updated",
+              note: "Заявка изменена",
+              changes,
+            });
+          }
+        }
 
         await syncTaskForRequestId(id);
         broadcastLive("requests_changed", { requestId: id });
@@ -1487,8 +1690,44 @@ export const appRouter = router({
         id: z.number(),
         status: z.enum(["pending", "assigned", "in_progress", "completed", "cancelled"]),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const before = await db.getRequestById(input.id);
+
         await db.updateRequestStatus(input.id, input.status);
+
+        if (before?.status !== input.status) {
+          const action =
+            input.status === "completed"
+              ? "completed"
+              : input.status === "cancelled"
+                ? "cancelled"
+                : input.status === "in_progress"
+                  ? "started"
+                  : "status_changed";
+
+          await db.addRequestActivityEvent({
+            requestId: input.id,
+            actorType: "manager",
+            actorId: ctx.user?.id ?? null,
+            actorName: ctx.user?.name ?? ctx.user?.email ?? "Менеджер",
+            action,
+            note:
+              input.status === "completed"
+                ? "Заявка завершена"
+                : input.status === "cancelled"
+                  ? "Заявка отменена"
+                  : input.status === "in_progress"
+                    ? "Заявка переведена в работу"
+                    : `Статус изменён: ${input.status}`,
+            changes: {
+              status: {
+                from: before?.status ?? null,
+                to: input.status,
+              },
+            },
+          });
+        }
+
         await syncTaskForRequestId(input.id);
         broadcastLive("requests_changed", { requestId: input.id });
         broadcastLive("tasks_changed", { requestId: input.id });
@@ -1500,8 +1739,38 @@ export const appRouter = router({
         id: z.number(),
         courierId: z.number().nullable(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const before = await db.getRequestById(input.id);
+        const previousCourierId = before?.courierId ?? null;
+
         await db.assignRequestCourier(input.id, input.courierId);
+
+        if (previousCourierId !== input.courierId) {
+          const previousCourier = previousCourierId
+            ? await db.getCourierById(previousCourierId)
+            : null;
+          const nextCourier = input.courierId
+            ? await db.getCourierById(input.courierId)
+            : null;
+
+          await db.addRequestActivityEvent({
+            requestId: input.id,
+            actorType: "manager",
+            actorId: ctx.user?.id ?? null,
+            actorName: ctx.user?.name ?? ctx.user?.email ?? "Менеджер",
+            action: input.courierId ? "courier_assigned" : "courier_unassigned",
+            note: input.courierId
+              ? `Назначен курьер: ${nextCourier?.name ?? `#${input.courierId}`}`
+              : `Назначение снято${previousCourier?.name ? `: ${previousCourier.name}` : ""}`,
+            changes: {
+              courierId: {
+                from: previousCourierId,
+                to: input.courierId,
+              },
+            },
+          });
+        }
+
         await syncTaskForRequestId(input.id);
 
         if (input.courierId) {
@@ -1513,7 +1782,7 @@ export const appRouter = router({
             console.log("[PUSH] courier", courier?.id);
             console.log("[PUSH] token exists", !!courier?.pushToken);
 
-            if (request && courier?.pushToken) {
+            if (request && courier?.pushToken && isScheduledForToday(request.scheduledAt)) {
               const address =
                 request.deliveryAddress ||
                 request.recipientAddress ||
@@ -1522,7 +1791,7 @@ export const appRouter = router({
 
               console.log("[PUSH] sending to", courier.pushToken.slice(0, 25));
 
-              const push = buildNewRequestPush({
+              const push = buildAssignedRequestPush({
                 id: request.id,
                 requestType: request.requestType,
                 deliveryAddress: request.deliveryAddress,
@@ -1533,6 +1802,9 @@ export const appRouter = router({
                 recipientName: request.recipientName,
                 recipientCompany: request.recipientCompany,
                 tcName: request.tcName,
+                tcAddress: request.tcAddress,
+                comments: request.comments,
+                items: request.items,
                 packageDescription: request.packageDescription,
               });
 
@@ -1541,10 +1813,16 @@ export const appRouter = router({
                 push.title,
                 push.body,
                 {
-                  type: "new_request",
+                  type: "request_assigned",
                   requestId: request.id,
                 },
               );
+
+              if (request.scheduledAt) {
+                await db.updateRequest(request.id, {
+                  scheduledPushSentAt: new Date(),
+                });
+              }
 
               console.log("[PUSH] sent successfully");
             } else {

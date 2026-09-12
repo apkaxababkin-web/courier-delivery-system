@@ -1,0 +1,14 @@
+# Build against a local tag of the currently running API image.
+# No package installation; no frontend build; no migration or startup during build.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS api_builder
+WORKDIR /app
+COPY server/ ./server/
+COPY shared/ ./shared/
+COPY drizzle/ ./drizzle/
+RUN ./node_modules/.bin/esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=/tmp/correspondence-dist
+
+FROM ${BASE_IMAGE}
+WORKDIR /app
+COPY --from=api_builder /tmp/correspondence-dist/index.js ./dist/index.js
+# /app/public, dependencies, entrypoint and environment defaults remain from BASE_IMAGE.

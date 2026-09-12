@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { skipToken } from "@tanstack/react-query";
 import { ScreenContainer } from "@/components/screen-container";
+import { CourierIcon } from "../components/courier-icon";
 import { NetworkBanner } from "@/components/network-banner";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
@@ -19,6 +20,8 @@ interface PickupPoint {
   isPicked: boolean;
   pickedAt: Date | null;
   courierName?: string;
+  courierColor?: string;
+  courierIcon?: string;
 }
 
 function isDarkBackground(background: string) {
@@ -106,9 +109,6 @@ export default function SberbankScreen() {
   const renderPickupPoint = ({ item, index }: { item: PickupPoint; index: number }) => {
     const selected = selectedPointId === item.id;
     const picked = item.isPicked;
-    const pickedMeta = picked
-      ? `${formatTime(item.pickedAt)}${item.courierName ? ` • ${item.courierName}` : ""}`
-      : "";
 
     return (
       <Pressable
@@ -138,20 +138,42 @@ export default function SberbankScreen() {
             <Text style={{ fontWeight: "500", color: colors.muted }}> • {item.address}</Text>
           </Text>
 
-          {!!pickedMeta && (
-            <Text
-              numberOfLines={1}
-              style={{
-                maxWidth: 120,
-                color: picked ? "#22C55E" : colors.primary,
-                fontSize: 11,
-                lineHeight: 16,
-                fontWeight: "900",
-                textAlign: "right",
-              }}
-            >
-              {pickedMeta}
-            </Text>
+          {picked && (
+            <View style={{ maxWidth: 160, alignItems: "flex-end" }}>
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: "#22C55E",
+                  fontSize: 11,
+                  lineHeight: 16,
+                  fontWeight: "900",
+                  textAlign: "right",
+                }}
+              >
+                {formatTime(item.pickedAt)}
+              </Text>
+
+              {item.courierName ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                  <CourierIcon
+                    icon={item.courierIcon}
+                    color={item.courierColor || "#2563EB"}
+                    size={11}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: item.courierColor || "#2563EB",
+                      fontSize: 11,
+                      lineHeight: 16,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {item.courierName}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           )}
         </View>
       </Pressable>

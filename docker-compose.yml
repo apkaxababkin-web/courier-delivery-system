@@ -29,6 +29,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: courier-api
+    env_file:
+      - ./.env.deepseek
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:-postgresql://courier:courier_password@postgres:5432/courier_db}

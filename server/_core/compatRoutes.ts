@@ -38,6 +38,7 @@ import * as db from "../db";
 import { verifyCourierToken } from "../routers";
 import { toSafeCourier } from "./courierPublic";
 import { getCourierAccess, saveCourierAccess } from "./courierAccess";
+import { buildNewRequestPush, buildAssignedRequestPush } from "./requestPushPresentation";
 
 const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
 const MAX_REQUEST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -148,59 +149,44 @@ function getPlacesLabel(count: unknown) {
   return `${places} мест`;
 }
 
-function buildNewRequestPush(input: {
-  id: number;
-  requestType?: unknown;
-  deliveryAddress?: unknown;
-  recipientAddress?: unknown;
-  senderAddress?: unknown;
-  senderName?: unknown;
-  senderCompany?: unknown;
-  recipientName?: unknown;
-  recipientCompany?: unknown;
-  tcName?: unknown;
-  packageDescription?: unknown;
-  placesCount?: unknown;
-  paymentMethod?: unknown;
-}) {
-  const typeLabels: Record<string, string> = {
-    delivery: "Доставка",
-    movement: "Перемещение",
-    nuts: "Орехи",
-    courier_call: "Вызов курьера",
-    pickup_from_tc: "Транспортная компания",
-    simple: "Заявка",
-  };
+function isScheduledForToday(value: unknown) {
+  if (!value) return true;
 
-  const requestType = String(input.requestType || "");
-  const typeLabel = typeLabels[requestType] || "Заявка";
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return true;
 
-  const name = compactText(
-    input.packageDescription ||
-      input.tcName ||
-      input.senderCompany ||
-      input.recipientCompany ||
-      input.recipientName ||
-      input.senderName,
-    "",
-  );
+  const format = (input: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Irkutsk",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(input);
 
-  const pickupPlace = compactText(
-    input.senderAddress ||
-      input.tcName ||
-      input.deliveryAddress ||
-      input.recipientAddress,
-    "",
-  );
-
-  const title = name ? `${typeLabel} · ${name}` : typeLabel;
-
-  return {
-    title: truncatePushText(title, 90),
-    body: truncatePushText(pickupPlace, 120),
-  };
+  return format(date) === format(new Date());
 }
 
+
+
+
+async function managerActivityActor(res: Response): Promise<{
+  actorId: number | null;
+  actorName: string;
+}> {
+  const managerId =
+    Number(
+      (res.locals.manager as { managerId?: number } | undefined)?.managerId || 0,
+    ) || null;
+
+  const manager = managerId
+    ? await db.getManagerById(managerId)
+    : null;
+
+  return {
+    actorId: managerId,
+    actorName: manager?.name ?? "Менеджер",
+  };
+}
 
 
 function inputFrom(req: Request): Record<string, unknown> {
@@ -1212,7 +1198,7 @@ export function registerCompatRoutes(app: Express) {
       const username = String(input.username || "").trim().toLowerCase();
       const password = String(input.password || "");
       const phone = input.phone ? String(input.phone).trim() : null;
-      const vehicleType = String(input.vehicleType || "car");
+      const vehicleType = "car";
 
       if (!name || !username || !password) {
         res.status(400).json({ error: "Укажите имя, логин и пароль курьера" });
@@ -1247,8 +1233,16 @@ export function registerCompatRoutes(app: Express) {
       const name = String(req.body?.name || "").trim();
       const username = String(req.body?.username || "").trim().toLowerCase();
       const phone = String(req.body?.phone || "").trim();
-      const vehicleType = String(req.body?.vehicleType || "car").trim();
+      const vehicleType = "car";
       const isActive = req.body?.isActive === false ? false : true;
+      const rawDisplayColor = String(req.body?.displayColor || "#2563EB").trim();
+      const displayColor = /^#[0-9A-Fa-f]{6}$/.test(rawDisplayColor)
+        ? rawDisplayColor.toUpperCase()
+        : "#2563EB";
+      const rawDisplayIcon = String(req.body?.displayIcon || "UserRound").trim();
+      const displayIcon = /^[A-Za-z0-9]+$/.test(rawDisplayIcon)
+        ? rawDisplayIcon
+        : "UserRound";
 
       const accessInput = req.body?.access;
 
@@ -1259,6 +1253,8 @@ export function registerCompatRoutes(app: Express) {
         name,
         username,
         phone: phone || null,
+        displayColor,
+        displayIcon,
         vehicleType: vehicleType as any,
         isActive,
         updatedAt: new Date(),
@@ -1576,17 +1572,98 @@ export function registerCompatRoutes(app: Express) {
       const taskId = Number(input.taskId || input.id);
       const status = normalizeTaskStatus(input.status);
       if (!taskId) throw new Error("taskId is required");
+
       const task = await db.getTaskById(taskId);
       if (!task) throw new Error("Task not found");
+
       const assignedCourierId = task.courierId ?? courierId ?? null;
+
       await db.updateTaskStatus(taskId, status, {
         courierId: assignedCourierId,
         acceptedAt: status === "in_progress" ? new Date() : task.acceptedAt,
         completedAt: status === "completed" ? new Date() : null,
         updatedAt: new Date(),
       });
+
       await updateRequestStatusFromTask(taskId, status, assignedCourierId);
+
+      const requestId =
+        task.requestId ??
+        task.sourceRequestId ??
+        Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
+        0;
+
+      if (requestId && task.status !== status) {
+        const managerId =
+          Number((res.locals.manager as { managerId?: number } | undefined)?.managerId || 0) || null;
+
+        if (managerId) {
+          const manager = await db.getManagerById(managerId);
+
+          await db.addRequestActivityEvent({
+            requestId,
+            actorType: "manager",
+            actorId: managerId,
+            actorName: manager?.name ?? "Менеджер",
+            action:
+              status === "in_progress"
+                ? "started"
+                : status === "completed"
+                  ? "completed"
+                  : status === "cancelled"
+                    ? "cancelled"
+                    : "status_changed",
+            note:
+              status === "in_progress"
+                ? "Заявка переведена в работу"
+                : status === "completed"
+                  ? "Заявка завершена"
+                  : status === "cancelled"
+                    ? "Заявка отменена"
+                    : `Статус изменён: ${status}`,
+            changes: {
+              status: {
+                from: task.status,
+                to: status,
+              },
+            },
+          });
+        } else if (courierId) {
+          const courier = await db.getCourierById(courierId);
+
+          await db.addRequestActivityEvent({
+            requestId,
+            actorType: "courier",
+            actorId: courierId,
+            actorName: courier?.name ?? `Курьер #${courierId}`,
+            action:
+              status === "in_progress"
+                ? "started"
+                : status === "completed"
+                  ? "completed"
+                  : status === "cancelled"
+                    ? "cancelled"
+                    : "status_changed",
+            note:
+              status === "in_progress"
+                ? "Курьер принял заявку"
+                : status === "completed"
+                  ? "Курьер выполнил заявку"
+                  : status === "cancelled"
+                    ? "Курьер отменил заявку"
+                    : "Статус заявки изменён",
+            changes: {
+              status: {
+                from: task.status,
+                to: status,
+              },
+            },
+          });
+        }
+      }
+
       broadcastLive("tasks_changed");
+      broadcastLive("requests_changed", { taskId, requestId });
       res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to set task status"); }
   });
@@ -1649,9 +1726,72 @@ export function registerCompatRoutes(app: Express) {
 
       if (Number.isNaN(newDate.getTime())) throw new Error("Invalid newDate");
 
+      const task = await db.getTaskById(taskId);
+      if (!task) throw new Error("Task not found");
+
+      const previousDate = task.scheduledAt ?? null;
+
       await db.updateTaskDate(taskId, newDate);
-      broadcastLive("tasks_changed");
-      broadcastLive("requests_changed");
+
+      const requestId =
+        task.requestId ??
+        task.sourceRequestId ??
+        Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
+        0;
+
+      if (
+        requestId &&
+        (previousDate?.getTime() ?? null) !== newDate.getTime()
+      ) {
+        const managerId =
+          Number(
+            (res.locals.manager as { managerId?: number } | undefined)?.managerId || 0,
+          ) || null;
+
+        const courierId =
+          Number(
+            (res.locals.courier as { courierId?: number } | undefined)?.courierId || 0,
+          ) || await courierIdFromReq(req);
+
+        if (managerId) {
+          const manager = await db.getManagerById(managerId);
+
+          await db.addRequestActivityEvent({
+            requestId,
+            actorType: "manager",
+            actorId: managerId,
+            actorName: manager?.name ?? "Менеджер",
+            action: "updated",
+            note: "Изменена дата заявки",
+            changes: {
+              scheduledAt: {
+                from: previousDate?.toISOString() ?? null,
+                to: newDate.toISOString(),
+              },
+            },
+          });
+        } else if (courierId) {
+          const courier = await db.getCourierById(courierId);
+
+          await db.addRequestActivityEvent({
+            requestId,
+            actorType: "courier",
+            actorId: courierId,
+            actorName: courier?.name ?? `Курьер #${courierId}`,
+            action: "updated",
+            note: "Изменена дата заявки",
+            changes: {
+              scheduledAt: {
+                from: previousDate?.toISOString() ?? null,
+                to: newDate.toISOString(),
+              },
+            },
+          });
+        }
+      }
+
+      broadcastLive("tasks_changed", { taskId, requestId });
+      broadcastLive("requests_changed", { taskId, requestId });
       res.json(trpcBatchJson({ success: true }));
     } catch (error) {
       sendError(res, error, "Failed to reschedule task");
@@ -1753,11 +1893,60 @@ export function registerCompatRoutes(app: Express) {
       const taskId = Number(input.taskId || input.id);
       const status = normalizeTaskStatus(input.status);
       if (!taskId) throw new Error("taskId is required");
+
       const task = await db.getTaskById(taskId);
       if (!task) throw new Error("Task not found");
-      await db.updateTaskStatus(taskId, status, { completedAt: status === "completed" ? new Date() : null, updatedAt: new Date() });
+
+      await db.updateTaskStatus(taskId, status, {
+        completedAt: status === "completed" ? new Date() : null,
+        updatedAt: new Date(),
+      });
+
       await updateRequestStatusFromTask(taskId, status, task.courierId);
+
+      const requestId =
+        task.requestId ??
+        task.sourceRequestId ??
+        Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
+        0;
+
+      if (requestId && task.status !== status) {
+        const managerId =
+          Number((res.locals.manager as { managerId?: number } | undefined)?.managerId || 0) || null;
+        const manager = managerId ? await db.getManagerById(managerId) : null;
+
+        await db.addRequestActivityEvent({
+          requestId,
+          actorType: "manager",
+          actorId: managerId,
+          actorName: manager?.name ?? "Менеджер",
+          action:
+            status === "in_progress"
+              ? "started"
+              : status === "completed"
+                ? "completed"
+                : status === "cancelled"
+                  ? "cancelled"
+                  : "status_changed",
+          note:
+            status === "in_progress"
+              ? "Заявка переведена в работу"
+              : status === "completed"
+                ? "Заявка завершена"
+                : status === "cancelled"
+                  ? "Заявка отменена"
+                  : `Статус изменён: ${status}`,
+          changes: {
+            status: {
+              from: task.status,
+              to: status,
+            },
+          },
+        });
+      }
+
       broadcastLive("tasks_changed");
+      broadcastLive("requests_changed", { taskId, requestId });
       res.json(trpcBatchJson({ success: true }));
     } catch (error) { sendError(res, error, "Failed to update manager task status"); }
   });
@@ -1772,10 +1961,20 @@ export function registerCompatRoutes(app: Express) {
       const courierId = input.courierId == null ? null : Number(input.courierId);
       if (!taskId) throw new Error("taskId is required");
 
+      const beforeTask = await db.getTaskById(taskId);
+      if (!beforeTask) throw new Error("Task not found");
+
+      const previousCourierId = beforeTask.courierId ?? null;
+
       await db.assignTaskToCourier(taskId, courierId, "assigned");
 
       const task = await db.getTaskById(taskId);
-      const requestId = Number(task?.comments?.match(/\[request:(\d+)\]/)?.[1] || 0);
+
+      const requestId =
+        task?.requestId ??
+        task?.sourceRequestId ??
+        Number(task?.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
+        0;
 
       if (requestId) {
         await conn.update(requests)
@@ -1785,6 +1984,37 @@ export function registerCompatRoutes(app: Express) {
             updatedAt: new Date(),
           })
           .where(eq(requests.id, requestId));
+
+        if (previousCourierId !== courierId) {
+          const managerId =
+            Number((res.locals.manager as { managerId?: number } | undefined)?.managerId || 0) || null;
+          const manager = managerId ? await db.getManagerById(managerId) : null;
+
+          const previousCourier = previousCourierId
+            ? await db.getCourierById(previousCourierId)
+            : null;
+
+          const nextCourier = courierId
+            ? await db.getCourierById(courierId)
+            : null;
+
+          await db.addRequestActivityEvent({
+            requestId,
+            actorType: "manager",
+            actorId: managerId,
+            actorName: manager?.name ?? "Менеджер",
+            action: courierId ? "courier_assigned" : "courier_unassigned",
+            note: courierId
+              ? `Назначен курьер: ${nextCourier?.name ?? `#${courierId}`}`
+              : `Назначение снято${previousCourier?.name ? `: ${previousCourier.name}` : ""}`,
+            changes: {
+              courierId: {
+                from: previousCourierId,
+                to: courierId,
+              },
+            },
+          });
+        }
       }
 
       broadcastLive("tasks_changed", { taskId, requestId, courierId });
@@ -2064,6 +2294,14 @@ export function registerCompatRoutes(app: Express) {
         deliveryFee = numericValue.toFixed(2);
       }
 
+      const beforeRows = await conn
+        .select()
+        .from(requests)
+        .where(eq(requests.id, requestId))
+        .limit(1);
+
+      const before = beforeRows[0] as DeliveryRequest | undefined;
+
       const updated = await conn
         .update(requests)
         .set({
@@ -2074,6 +2312,28 @@ export function registerCompatRoutes(app: Express) {
         })
         .where(eq(requests.id, requestId))
         .returning();
+
+      if (
+        before &&
+        String(before.deliveryFee ?? "") !== String(deliveryFee ?? "")
+      ) {
+        const actor = await managerActivityActor(res);
+
+        await db.addRequestActivityEvent({
+          requestId,
+          actorType: "manager",
+          actorId: actor.actorId,
+          actorName: actor.actorName,
+          action: "updated",
+          note: "Заявка изменена",
+          changes: {
+            deliveryFee: {
+              from: before.deliveryFee ?? null,
+              to: deliveryFee,
+            },
+          },
+        });
+      }
 
       if (!updated[0]) {
         return res.status(404).json({
@@ -2463,6 +2723,22 @@ export function registerCompatRoutes(app: Express) {
     try { res.json(trpcBatchJson(await requestRows())); } catch (error) { sendError(res, error, "Failed to load requests"); }
   });
 
+  app.post("/api/trpc/requests.activity", async (req, res) => {
+    try {
+      const input = inputFrom(req);
+      const id = Number(input.id);
+
+      if (!id) {
+        throw new Error("id is required");
+      }
+
+      const activity = await db.getRequestActivity(id);
+      res.json(trpcBatchJson(activity));
+    } catch (error) {
+      sendError(res, error, "Failed to get request activity");
+    }
+  });
+
   app.post("/api/trpc/requests.updateClient", async (req, res) => {
     try {
       const conn = await db.getDb();
@@ -2481,6 +2757,14 @@ export function registerCompatRoutes(app: Express) {
         throw new Error("client id is invalid");
       }
 
+      const beforeRows = await conn
+        .select()
+        .from(requests)
+        .where(eq(requests.id, id))
+        .limit(1);
+
+      const before = beforeRows[0] as DeliveryRequest | undefined;
+
       await conn
         .update(requests)
         .set({
@@ -2490,6 +2774,25 @@ export function registerCompatRoutes(app: Express) {
           updatedAt: new Date(),
         })
         .where(eq(requests.id, id));
+
+      if (before && (before.clientId ?? null) !== clientId) {
+        const actor = await managerActivityActor(res);
+
+        await db.addRequestActivityEvent({
+          requestId: id,
+          actorType: "manager",
+          actorId: actor.actorId,
+          actorName: actor.actorName,
+          action: "updated",
+          note: "Заявка изменена",
+          changes: {
+            clientId: {
+              from: before.clientId ?? null,
+              to: clientId,
+            },
+          },
+        });
+      }
 
       broadcastLive("requests_changed", {
         requestId: id,
@@ -2572,36 +2875,60 @@ export function registerCompatRoutes(app: Express) {
       };
       const inserted = await conn.insert(requests).values(payload).returning();
       const request = inserted[0] as DeliveryRequest;
+
+      const actor = await managerActivityActor(res);
+
+      await db.addRequestActivityEvent({
+        requestId: request.id,
+        actorType: "manager",
+        actorId: actor.actorId,
+        actorName: actor.actorName,
+        action: "created",
+        note: "Заявка создана",
+      });
+
       const taskId = await syncTaskForRequest(request);
 
       if (!isHistoricalCompleted) {
         const requestForPush = await db.getRequestById(request.id);
 
-        const push = buildNewRequestPush({
-          id: request.id,
-          requestType: requestForPush?.requestType || request.requestType,
-          deliveryAddress: requestForPush?.deliveryAddress || request.deliveryAddress,
-          recipientAddress: requestForPush?.recipientAddress || request.recipientAddress,
-          senderAddress: requestForPush?.senderAddress || request.senderAddress,
-          senderName: requestForPush?.senderName || request.senderName,
-          senderCompany: requestForPush?.senderCompany || request.senderCompany,
-          recipientName: requestForPush?.recipientName || request.recipientName,
-          recipientCompany: requestForPush?.recipientCompany || request.recipientCompany,
-          tcName: requestForPush?.tcName || request.tcName,
-          packageDescription: requestForPush?.packageDescription || request.packageDescription,
-          placesCount: requestForPush?.placesCount || request.placesCount,
-          paymentMethod: requestForPush?.paymentMethod || request.paymentMethod,
-        });
+        if (isScheduledForToday(requestForPush?.scheduledAt)) {
+  const push = buildNewRequestPush({
+            id: request.id,
+            requestType: requestForPush?.requestType || request.requestType,
+            deliveryAddress: requestForPush?.deliveryAddress || request.deliveryAddress,
+            recipientAddress: requestForPush?.recipientAddress || request.recipientAddress,
+            senderAddress: requestForPush?.senderAddress || request.senderAddress,
+            senderName: requestForPush?.senderName || request.senderName,
+            senderCompany: requestForPush?.senderCompany || request.senderCompany,
+            recipientName: requestForPush?.recipientName || request.recipientName,
+            recipientCompany: requestForPush?.recipientCompany || request.recipientCompany,
+            tcName: requestForPush?.tcName || request.tcName,
+            tcAddress: requestForPush?.tcAddress || request.tcAddress,
+            comments: requestForPush?.comments || request.comments,
+            items: requestForPush?.items || request.items,
+            packageDescription: requestForPush?.packageDescription || request.packageDescription,
+            placesCount: requestForPush?.placesCount || request.placesCount,
+            paymentMethod: requestForPush?.paymentMethod || request.paymentMethod,
+          });
+  
+          await sendPushToAllCouriers(
+            push.title,
+            push.body,
+            {
+              type: "new_request_available",
+              requestId: request.id,
+              requestType: request.requestType,
+            },
+          );
 
-        await sendPushToAllCouriers(
-          push.title,
-          push.body,
-          {
-            type: "new_request_available",
-            requestId: request.id,
-            requestType: request.requestType,
-          },
-        );
+          if (requestForPush?.scheduledAt) {
+            await conn
+              .update(requests)
+              .set({ scheduledPushSentAt: new Date() })
+              .where(eq(requests.id, request.id));
+          }
+}
       }
 
       broadcastLive("requests_changed");
@@ -2618,8 +2945,63 @@ export function registerCompatRoutes(app: Express) {
       const id = Number(input.id);
       if (!id) throw new Error("id is required");
       const status = normalizeRequestStatus(input.status);
-      const updated = await conn.update(requests).set({ status, completedAt: status === "completed" ? new Date() : null, updatedAt: new Date() }).where(eq(requests.id, id)).returning();
-      if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
+
+      const beforeRows = await conn
+        .select()
+        .from(requests)
+        .where(eq(requests.id, id))
+        .limit(1);
+
+      const before = beforeRows[0] as DeliveryRequest | undefined;
+
+      const updated = await conn
+        .update(requests)
+        .set({
+          status,
+          completedAt: status === "completed" ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(requests.id, id))
+        .returning();
+
+      if (updated[0]) {
+        await syncTaskForRequest(updated[0] as DeliveryRequest);
+
+        if (before?.status !== status) {
+          const action =
+            status === "completed"
+              ? "completed"
+              : status === "cancelled"
+                ? "cancelled"
+                : status === "in_progress"
+                  ? "started"
+                  : "status_changed";
+
+          const actor = await managerActivityActor(res);
+
+          await db.addRequestActivityEvent({
+            requestId: id,
+            actorType: "manager",
+            actorId: actor.actorId,
+            actorName: actor.actorName,
+            action,
+            note:
+              status === "completed"
+                ? "Заявка завершена"
+                : status === "cancelled"
+                  ? "Заявка отменена"
+                  : status === "in_progress"
+                    ? "Заявка переведена в работу"
+                    : `Статус изменён: ${status}`,
+            changes: {
+              status: {
+                from: before?.status ?? null,
+                to: status,
+              },
+            },
+          });
+        }
+      }
       broadcastLive("requests_changed");
       broadcastLive("tasks_changed");
       res.json(trpcBatchJson({ success: true }));
@@ -2634,8 +3016,59 @@ export function registerCompatRoutes(app: Express) {
       const id = Number(input.id);
       const courierId = input.courierId == null ? null : Number(input.courierId);
       if (!id) throw new Error("id is required");
-      const updated = await conn.update(requests).set({ courierId, status: courierId ? "assigned" : "pending", updatedAt: new Date() }).where(eq(requests.id, id)).returning();
-      if (updated[0]) await syncTaskForRequest(updated[0] as DeliveryRequest);
+      const beforeRows = await conn
+        .select()
+        .from(requests)
+        .where(eq(requests.id, id))
+        .limit(1);
+
+      const before = beforeRows[0] as DeliveryRequest | undefined;
+      const previousCourierId = before?.courierId ?? null;
+
+      const updated = await conn
+        .update(requests)
+        .set({
+          courierId,
+          status: courierId ? "assigned" : "pending",
+          updatedAt: new Date(),
+        })
+        .where(eq(requests.id, id))
+        .returning();
+
+      if (updated[0]) {
+        await syncTaskForRequest(updated[0] as DeliveryRequest);
+
+        if (previousCourierId !== courierId) {
+          const previousCourier = previousCourierId
+            ? await db.getCourierById(previousCourierId)
+            : null;
+
+          const nextCourier = courierId
+            ? await db.getCourierById(courierId)
+            : null;
+
+          const actor = await managerActivityActor(res);
+
+          await db.addRequestActivityEvent({
+            requestId: id,
+            actorType: "manager",
+            actorId: actor.actorId,
+            actorName: actor.actorName,
+            action: courierId
+              ? "courier_assigned"
+              : "courier_unassigned",
+            note: courierId
+              ? `Назначен курьер: ${nextCourier?.name ?? `#${courierId}`}`
+              : `Назначение снято${previousCourier?.name ? `: ${previousCourier.name}` : ""}`,
+            changes: {
+              courierId: {
+                from: previousCourierId,
+                to: courierId,
+              },
+            },
+          });
+        }
+      }
 
       if (courierId && updated[0]) {
         try {
@@ -2646,7 +3079,7 @@ export function registerCompatRoutes(app: Express) {
           console.log("[PUSH] compat courier", courier?.id);
           console.log("[PUSH] compat token exists", !!courier?.pushToken);
 
-          if (courier?.pushToken) {
+          if (courier?.pushToken && isScheduledForToday(request.scheduledAt)) {
             const address =
               request.deliveryAddress ||
               request.recipientAddress ||
@@ -2655,7 +3088,7 @@ export function registerCompatRoutes(app: Express) {
 
             console.log("[PUSH] compat sending to", courier.pushToken.slice(0, 25));
 
-            const push = buildNewRequestPush({
+            const push = buildAssignedRequestPush({
               id: request.id,
               requestType: request.requestType,
               deliveryAddress: request.deliveryAddress,
@@ -2666,6 +3099,9 @@ export function registerCompatRoutes(app: Express) {
               recipientName: request.recipientName,
               recipientCompany: request.recipientCompany,
               tcName: request.tcName,
+              tcAddress: request.tcAddress,
+              comments: request.comments,
+              items: request.items,
               packageDescription: request.packageDescription,
             });
 
@@ -2674,10 +3110,17 @@ export function registerCompatRoutes(app: Express) {
               push.title,
               push.body,
               {
-                type: "new_request",
+                type: "request_assigned",
                 requestId: request.id,
               },
             );
+
+            if (request.scheduledAt) {
+              await conn
+                .update(requests)
+                .set({ scheduledPushSentAt: new Date() })
+                .where(eq(requests.id, request.id));
+            }
 
             console.log("[PUSH] compat sent successfully");
           } else {

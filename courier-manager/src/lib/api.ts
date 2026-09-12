@@ -1174,3 +1174,35 @@ export async function resetCourierPassword(courierId: number): Promise<{ success
     method: 'POST',
   });
 }
+
+// ─── Request Activity API ────────────────────────────────────────────────────
+
+export type RequestActivityAction =
+  | 'created'
+  | 'updated'
+  | 'courier_assigned'
+  | 'courier_unassigned'
+  | 'status_changed'
+  | 'started'
+  | 'completed'
+  | 'cancelled';
+
+export interface RequestActivity {
+  id: number;
+  requestId: number;
+  actorType: 'manager' | 'courier' | 'system';
+  actorId?: number | null;
+  actorName?: string | null;
+  action: RequestActivityAction;
+  note?: string | null;
+  changes?: string | null;
+  createdAt: string;
+}
+
+export async function getRequestActivity(
+  requestId: number,
+): Promise<RequestActivity[]> {
+  return asArray<RequestActivity>(
+    await trpcGet('requests.activity', { id: requestId }, []),
+  );
+}

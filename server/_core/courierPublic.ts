@@ -4,6 +4,8 @@ export type SafeCourier = {
   name: string;
   username: string;
   phone: string | null;
+  displayColor: string;
+  displayIcon: string;
   vehicleType: string;
   isActive: boolean;
   totalDeliveries: number;
@@ -20,6 +22,8 @@ export function toSafeCourier(courier: any): SafeCourier {
     name: courier.name,
     username: courier.username,
     phone: courier.phone ?? null,
+    displayColor: courier.displayColor || "#2563EB",
+    displayIcon: courier.displayIcon || "UserRound",
     vehicleType: courier.vehicleType,
     isActive: courier.isActive,
     totalDeliveries: courier.totalDeliveries,

@@ -111,6 +111,8 @@ export const couriers = pgTable("couriers", {
   /** Bcrypt hashed password */
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 50 }),
+  displayColor: varchar("displayColor", { length: 20 }).default("#2563EB").notNull(),
+  displayIcon: varchar("displayIcon", { length: 50 }).default("UserRound").notNull(),
   vehicleType: courierVehicleTypeEnum("vehicleType").default("scooter").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   totalDeliveries: integer("totalDeliveries").default(0).notNull(),
@@ -638,6 +640,8 @@ export const requests = pgTable("requests", {
   // Status tracking
   /** When the request was scheduled */
   scheduledAt: timestamp("scheduledAt"),
+  /** When the start-of-day push for a future request was sent */
+  scheduledPushSentAt: timestamp("scheduledPushSentAt"),
   /** When courier accepted the request */
   acceptedAt: timestamp("acceptedAt"),
   /** When the request was completed */
@@ -651,6 +655,38 @@ export const requests = pgTable("requests", {
 
 export type Request = typeof requests.$inferSelect;
 export type InsertRequest = typeof requests.$inferInsert;
+
+// ─── Request Activity Table ──────────────────────────────────────────────────
+
+/**
+ * Full audit trail for requests.
+ *
+ * actorType:
+ *   manager | courier | system
+ *
+ * action:
+ *   created | updated | courier_assigned | courier_unassigned |
+ *   status_changed | started | completed | cancelled
+ *
+ * changes contains JSON with changed fields when applicable.
+ */
+export const requestActivity = pgTable("requestActivity", {
+  id: serial("id").primaryKey(),
+  requestId: integer("requestId").notNull(),
+
+  actorType: varchar("actorType", { length: 20 }).notNull(),
+  actorId: integer("actorId"),
+  actorName: varchar("actorName", { length: 255 }),
+
+  action: varchar("action", { length: 50 }).notNull(),
+  note: text("note"),
+  changes: text("changes"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type RequestActivity = typeof requestActivity.$inferSelect;
+export type InsertRequestActivity = typeof requestActivity.$inferInsert;
 
 // ─── Request Attachments Table ───────────────────────────────────────────────
 

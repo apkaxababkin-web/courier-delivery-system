@@ -1,3 +1,4 @@
+import { lockCorrespondenceWrites, guardLegacyWaybills } from './_core/correspondenceWaybills';
 // Removed mysql2 - now using postgres driver
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -7,6 +8,7 @@ import {
   couriers,
   tasks,
   taskStatusHistory,
+  requestActivity,
   users,
   hemotestPickupPoints,
   hemotestPickups,
@@ -24,6 +26,7 @@ import {
   type InsertCourier,
   type InsertTask,
   type InsertTaskStatusHistory,
+  type InsertRequestActivity,
   type InsertUser,
   type Task,
   type HemotestPickupPoint,
@@ -108,9 +111,12 @@ export async function getCourierVisibleMails(targetDate: Date = new Date()): Pro
 export async function createMail(mail: InsertMail): Promise<Mail> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(mails).values(mail);
-  const result = await db.select().from(mails).where(eq(mails.waybillNumber, mail.waybillNumber));
-  return result[0];
+  return db.transaction(async tx => {
+    await lockCorrespondenceWrites(tx);
+    await guardLegacyWaybills(tx, [mail.waybillNumber]);
+    const result = await tx.insert(mails).values(mail).returning();
+    return result[0];
+  });
 }
 
 export async function updateMailDelivery(
@@ -199,7 +205,12 @@ export async function markMailUndelivered(mailId: number): Promise<Mail> {
 export async function bulkCreateMails(mailList: InsertMail[]): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(mails).values(mailList);
+  if (!mailList.length) return;
+  await db.transaction(async tx => {
+    await lockCorrespondenceWrites(tx);
+    await guardLegacyWaybills(tx, mailList.map(m => m.waybillNumber));
+    await tx.insert(mails).values(mailList);
+  });
 }
 
 export async function getMailsByFilter(
@@ -390,7 +401,82 @@ export async function incrementCourierDeliveries(courierId: number): Promise<voi
 // ─── Task helpers ─────────────────────────────────────────────────────────────
 
 /** Task with optional courier name attached */
-export type TaskWithCourier = Task & { courierName: string | null; requestType?: Request["requestType"] | null; paymentAmount?: string | null };
+export type TaskRequestMeta = Pick<
+  Request,
+  | "requestType"
+  | "clientId"
+  | "recipientName"
+  | "recipientPhone"
+  | "recipientAddress"
+  | "deliveryAddress"
+  | "deliveryCity"
+  | "packageDescription"
+  | "placesCount"
+  | "senderName"
+  | "senderCompany"
+  | "senderCity"
+  | "senderAddress"
+  | "senderPhone"
+  | "recipientCompany"
+  | "recipientCity"
+  | "items"
+  | "totalAmount"
+  | "callReason"
+  | "tcName"
+  | "tcAddress"
+  | "trackingNumber"
+  | "description"
+  | "specialInstructions"
+  | "comments"
+  | "paymentMethod"
+  | "paymentAmount"
+  | "deliveryTimeFrom"
+  | "deliveryTimeTo"
+  | "scheduledAt"
+>;
+
+export type TaskWithCourier = Task &
+  Partial<TaskRequestMeta> & {
+    courierName: string | null;
+    courierColor: string | null;
+    courierIcon: string | null;
+  };
+
+const requestMetaSelection = {
+  id: requests.id,
+  requestType: requests.requestType,
+  clientId: requests.clientId,
+  recipientName: requests.recipientName,
+  recipientPhone: requests.recipientPhone,
+  recipientAddress: requests.recipientAddress,
+  deliveryAddress: requests.deliveryAddress,
+  deliveryCity: requests.deliveryCity,
+  packageDescription: requests.packageDescription,
+  placesCount: requests.placesCount,
+  senderName: requests.senderName,
+  senderCompany: requests.senderCompany,
+  senderCity: requests.senderCity,
+  senderAddress: requests.senderAddress,
+  senderPhone: requests.senderPhone,
+  recipientCompany: requests.recipientCompany,
+  recipientCity: requests.recipientCity,
+  items: requests.items,
+  totalAmount: requests.totalAmount,
+  callReason: requests.callReason,
+  tcName: requests.tcName,
+  tcAddress: requests.tcAddress,
+  trackingNumber: requests.trackingNumber,
+  description: requests.description,
+  specialInstructions: requests.specialInstructions,
+  comments: requests.comments,
+  paymentMethod: requests.paymentMethod,
+  paymentAmount: requests.paymentAmount,
+  deliveryTimeFrom: requests.deliveryTimeFrom,
+  deliveryTimeTo: requests.deliveryTimeTo,
+  scheduledAt: requests.scheduledAt,
+} as const;
+
+type RequestMetaRow = TaskRequestMeta & { id: number };
 
 /** Join tasks with courier name */
 async function fetchTasksWithCourier(
@@ -401,11 +487,18 @@ async function fetchTasksWithCourier(
   const allTasks = whereClause
     ? await (whereClause as () => Promise<Task[]>)()
     : await db.select().from(tasks).orderBy(desc(tasks.createdAt));
-  const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  const allCouriers = await db.select({ id: couriers.id, name: couriers.name, displayColor: couriers.displayColor, displayIcon: couriers.displayIcon }).from(couriers);
+  const courierMap = new Map<number, { name: string; displayColor: string; displayIcon: string }>(
+    allCouriers.map((c: { id: number; name: string; displayColor: string; displayIcon: string }) => [
+      c.id,
+      { name: c.name, displayColor: c.displayColor, displayIcon: c.displayIcon },
+    ]),
+  );
   return allTasks.map((t: Task) => ({
     ...t,
-    courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+    courierName: t.courierId ? (courierMap.get(t.courierId)?.name ?? null) : null,
+    courierColor: t.courierId ? (courierMap.get(t.courierId)?.displayColor ?? null) : null,
+    courierIcon: t.courierId ? (courierMap.get(t.courierId)?.displayIcon ?? null) : null,
   }));
 }
 
@@ -417,11 +510,18 @@ export async function getAllTasksWithCourier(): Promise<TaskWithCourier[]> {
     .from(tasks)
     .where(inArray(tasks.status, ["assigned", "in_progress"]))
     .orderBy(desc(tasks.createdAt));
-  const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  const allCouriers = await db.select({ id: couriers.id, name: couriers.name, displayColor: couriers.displayColor, displayIcon: couriers.displayIcon }).from(couriers);
+  const courierMap = new Map<number, { name: string; displayColor: string; displayIcon: string }>(
+    allCouriers.map((c: { id: number; name: string; displayColor: string; displayIcon: string }) => [
+      c.id,
+      { name: c.name, displayColor: c.displayColor, displayIcon: c.displayIcon },
+    ]),
+  );
   return allTasks.map((t: Task) => ({
     ...t,
-    courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+    courierName: t.courierId ? (courierMap.get(t.courierId)?.name ?? null) : null,
+    courierColor: t.courierId ? (courierMap.get(t.courierId)?.displayColor ?? null) : null,
+    courierIcon: t.courierId ? (courierMap.get(t.courierId)?.displayIcon ?? null) : null,
   }));
 }
 
@@ -433,11 +533,18 @@ export async function getCompletedTasksWithCourier(): Promise<TaskWithCourier[]>
     .from(tasks)
     .where(inArray(tasks.status, ["completed", "cancelled"]))
     .orderBy(desc(tasks.updatedAt));
-  const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  const allCouriers = await db.select({ id: couriers.id, name: couriers.name, displayColor: couriers.displayColor, displayIcon: couriers.displayIcon }).from(couriers);
+  const courierMap = new Map<number, { name: string; displayColor: string; displayIcon: string }>(
+    allCouriers.map((c: { id: number; name: string; displayColor: string; displayIcon: string }) => [
+      c.id,
+      { name: c.name, displayColor: c.displayColor, displayIcon: c.displayIcon },
+    ]),
+  );
   return allTasks.map((t: Task) => ({
     ...t,
-    courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+    courierName: t.courierId ? (courierMap.get(t.courierId)?.name ?? null) : null,
+    courierColor: t.courierId ? (courierMap.get(t.courierId)?.displayColor ?? null) : null,
+    courierIcon: t.courierId ? (courierMap.get(t.courierId)?.displayIcon ?? null) : null,
   }));
 }
 
@@ -481,8 +588,13 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
     .orderBy(desc(tasks.createdAt))
     .limit(500);
   
-  const allCouriers = await db.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  const courierMap = new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  const allCouriers = await db.select({ id: couriers.id, name: couriers.name, displayColor: couriers.displayColor, displayIcon: couriers.displayIcon }).from(couriers);
+  const courierMap = new Map<number, { name: string; displayColor: string; displayIcon: string }>(
+    allCouriers.map((c: { id: number; name: string; displayColor: string; displayIcon: string }) => [
+      c.id,
+      { name: c.name, displayColor: c.displayColor, displayIcon: c.displayIcon },
+    ]),
+  );
 
   const requestIds: number[] = Array.from(new Set(
     allTasks
@@ -493,18 +605,16 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
       .filter((id: number | null): id is number => id !== null)
   ));
 
-  const requestMetaMap = new Map<number, { requestType: Request["requestType"]; paymentAmount: string | null }>();
+  const requestMetaMap = new Map<number, TaskRequestMeta>();
   if (requestIds.length > 0) {
-    const requestRows = await db
-      .select({ id: requests.id, requestType: requests.requestType, paymentAmount: requests.paymentAmount })
+    const requestRows: RequestMetaRow[] = await db
+      .select(requestMetaSelection)
       .from(requests)
       .where(inArray(requests.id, requestIds));
 
     for (const request of requestRows) {
-      requestMetaMap.set(request.id, {
-        requestType: request.requestType,
-        paymentAmount: request.paymentAmount,
-      });
+      const { id: _id, ...meta } = request;
+      requestMetaMap.set(request.id, meta);
     }
   }
 
@@ -513,9 +623,12 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
     const requestMeta = requestId ? requestMetaMap.get(requestId) : null;
     return {
       ...t,
+      ...(requestMeta ?? {}),
       requestType: requestMeta?.requestType ?? null,
       paymentAmount: requestMeta?.paymentAmount ?? null,
-      courierName: t.courierId ? (courierMap.get(t.courierId) ?? null) : null,
+      courierName: t.courierId ? (courierMap.get(t.courierId)?.name ?? null) : null,
+    courierColor: t.courierId ? (courierMap.get(t.courierId)?.displayColor ?? null) : null,
+    courierIcon: t.courierId ? (courierMap.get(t.courierId)?.displayIcon ?? null) : null,
     };
   });
 }
@@ -527,27 +640,39 @@ export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCo
   const task = rows[0] ?? null;
   if (!task) return null;
   let courierName: string | null = null;
+  let courierColor: string | null = null;
+  let courierIcon: string | null = null;
   if (task.courierId) {
     const courier = await getCourierById(task.courierId);
     courierName = courier?.name ?? null;
+    courierColor = courier?.displayColor ?? null;
+    courierIcon = courier?.displayIcon ?? null;
   }
 
   const requestId = task.requestId ?? task.sourceRequestId ?? null;
-  let requestMeta: { requestType: Request["requestType"]; paymentAmount: string | null } | null = null;
+  let requestMeta: TaskRequestMeta | null = null;
   if (requestId) {
-    const requestRows = await db
-      .select({ requestType: requests.requestType, paymentAmount: requests.paymentAmount })
+    const requestRows: RequestMetaRow[] = await db
+      .select(requestMetaSelection)
       .from(requests)
       .where(eq(requests.id, requestId))
       .limit(1);
-    requestMeta = requestRows[0] ?? null;
+
+    const requestRow = requestRows[0] ?? null;
+    if (requestRow) {
+      const { id: _id, ...meta } = requestRow;
+      requestMeta = meta;
+    }
   }
 
   return {
     ...task,
+    ...(requestMeta ?? {}),
     requestType: requestMeta?.requestType ?? null,
     paymentAmount: requestMeta?.paymentAmount ?? null,
     courierName,
+    courierColor,
+    courierIcon,
   };
 }
 
@@ -639,6 +764,58 @@ export async function getTaskStatusHistory(taskId: number) {
     .where(eq(taskStatusHistory.taskId, taskId))
     .orderBy(desc(taskStatusHistory.createdAt));
 }
+
+// ─── Request activity ────────────────────────────────────────────────────────
+
+export async function addRequestActivity(
+  data: InsertRequestActivity,
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.insert(requestActivity).values(data);
+}
+
+export async function getRequestActivity(requestId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(requestActivity)
+    .where(eq(requestActivity.requestId, requestId))
+    .orderBy(desc(requestActivity.createdAt));
+}
+
+
+export async function addRequestActivityEvent(input: {
+  requestId: number;
+  actorType: "manager" | "courier" | "system";
+  actorId?: number | null;
+  actorName?: string | null;
+  action:
+    | "created"
+    | "updated"
+    | "courier_assigned"
+    | "courier_unassigned"
+    | "status_changed"
+    | "started"
+    | "completed"
+    | "cancelled";
+  note?: string | null;
+  changes?: Record<string, unknown> | null;
+}): Promise<void> {
+  await addRequestActivity({
+    requestId: input.requestId,
+    actorType: input.actorType,
+    actorId: input.actorId ?? null,
+    actorName: input.actorName ?? null,
+    action: input.action,
+    note: input.note ?? null,
+    changes: input.changes ? JSON.stringify(input.changes) : null,
+  });
+}
+
 
 // ─── Seed helpers ─────────────────────────────────────────────────────────────
 
@@ -918,6 +1095,8 @@ export type HemotestPickupWithStatus = HemotestPickupPoint & {
   cancelledAt: Date | null;
   courierId?: number | null;
   courierName?: string;
+  courierColor?: string;
+  courierIcon?: string;
 };
 
 export async function getHemotestPickupPointsForDate(
@@ -962,9 +1141,9 @@ export async function getHemotestPickupPointsForDate(
 
   const pickupMap = new Map<
     number,
-    { hemotestPickups: HemotestPickup; couriers: { name: string | null } | null }
+    { hemotestPickups: HemotestPickup; couriers: { name: string | null; displayColor: string | null; displayIcon: string | null } | null }
   >(
-    pickups.map((p: { hemotestPickups: HemotestPickup; couriers: { name: string | null } | null }) => [
+    pickups.map((p: { hemotestPickups: HemotestPickup; couriers: { name: string | null; displayColor: string | null; displayIcon: string | null } | null }) => [
       p.hemotestPickups.pointId,
       p,
     ])
@@ -981,6 +1160,8 @@ export async function getHemotestPickupPointsForDate(
       cancelledAt: pickup?.hemotestPickups.cancelledAt ?? null,
       courierId: pickup?.hemotestPickups.courierId ?? null,
       courierName: pickup?.couriers?.name ?? undefined,
+      courierColor: pickup?.couriers?.displayColor ?? undefined,
+      courierIcon: pickup?.couriers?.displayIcon ?? undefined,
     };
   });
 
@@ -1187,6 +1368,8 @@ export type SberbankPickupWithStatus = SberbankPickupPoint & {
   cancelledAt: Date | null;
   courierId?: number | null;
   courierName?: string;
+  courierColor?: string;
+  courierIcon?: string;
 };
 
 function getBusinessDayOfWeek(targetDate: Date): number {
@@ -1236,9 +1419,9 @@ export async function getSberbankPickupPointsForDate(
 
   const pickupMap = new Map<
     number,
-    { sberbankPickups: SberbankPickup; couriers: { name: string | null } | null }
+    { sberbankPickups: SberbankPickup; couriers: { name: string | null; displayColor: string | null; displayIcon: string | null } | null }
   >(
-    pickups.map((p: { sberbankPickups: SberbankPickup; couriers: { name: string | null } | null }) => [
+    pickups.map((p: { sberbankPickups: SberbankPickup; couriers: { name: string | null; displayColor: string | null; displayIcon: string | null } | null }) => [
       p.sberbankPickups.pointId,
       p,
     ])
@@ -1255,6 +1438,8 @@ export async function getSberbankPickupPointsForDate(
       cancelledAt: pickup?.sberbankPickups.cancelledAt ?? null,
       courierId: pickup?.sberbankPickups.courierId ?? null,
       courierName: pickup?.couriers?.name ?? undefined,
+      courierColor: pickup?.couriers?.displayColor ?? undefined,
+      courierIcon: pickup?.couriers?.displayIcon ?? undefined,
     };
   });
 
