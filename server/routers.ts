@@ -929,8 +929,7 @@ export const appRouter = router({
         pointId: z.number(),
       }))
       .mutation(async ({ input }) => {
-        const points = await db.getAllHemotestPoints();
-        const point = points.find((item: any) => Number(item.id) === Number(input.pointId));
+        const point = await db.getHemotestPointById(input.pointId);
         const pointName = String(point?.name || point?.address || "точка").trim();
 
         await db.removePointFromHemotestList(input.listId, input.pointId);
@@ -1115,8 +1114,7 @@ export const appRouter = router({
         pointId: z.number(),
       }))
       .mutation(async ({ input }) => {
-        const points = await db.getAllSberbankPoints();
-        const point = points.find((item: any) => Number(item.id) === Number(input.pointId));
+        const point = await db.getSberbankPointById(input.pointId);
         const pointName = String(point?.name || point?.address || "точка").trim();
 
         await db.removePointFromSberbankList(input.listId, input.pointId);

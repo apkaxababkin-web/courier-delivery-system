@@ -1200,6 +1200,90 @@ export async function getHemotestPickupPointsForDate(
   );
 }
 
+/**
+ * True when the pickup point exists and is not archived.
+ */
+async function isPickupPointActive(db: any, kind: "hemotest" | "sberbank", pointId: number): Promise<boolean> {
+  const rows = kind === "hemotest"
+    ? await db
+        .select({ isActive: hemotestPickupPoints.isActive })
+        .from(hemotestPickupPoints)
+        .where(eq(hemotestPickupPoints.id, pointId))
+        .limit(1)
+    : await db
+        .select({ isActive: sberbankPickupPoints.isActive })
+        .from(sberbankPickupPoints)
+        .where(eq(sberbankPickupPoints.id, pointId))
+        .limit(1);
+
+  return rows[0]?.isActive === true;
+}
+
+/**
+ * Guard for NEW pickup rows: an archived directory point must never get one.
+ * Existing historical pickups stay untouched and can still be updated.
+ */
+async function assertPickupPointActive(db: any, kind: "hemotest" | "sberbank", pointId: number): Promise<void> {
+  if (!(await isPickupPointActive(db, kind, pointId))) {
+    throw new Error("Точка удалена из справочника и недоступна для новых сборов");
+  }
+}
+
+type PickupInsertValues = {
+  courierId: number | null;
+  pointId: number;
+  date: string;
+  isPicked: boolean;
+  pickedAt: Date | null;
+  isCancelled: boolean;
+  cancelledAt: Date | null;
+};
+
+/**
+ * Single entry point for creating pickup rows: rejects archived points.
+ */
+async function insertPickupRow(db: any, kind: "hemotest" | "sberbank", values: PickupInsertValues): Promise<void> {
+  await assertPickupPointActive(db, kind, values.pointId);
+
+  if (kind === "hemotest") {
+    await db.insert(hemotestPickups).values(values);
+  } else {
+    await db.insert(sberbankPickups).values(values);
+  }
+}
+
+/**
+ * Look up a Hemotest point by id, including archived ones (labels, push text).
+ */
+export async function getHemotestPointById(id: number): Promise<HemotestPickupPoint | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db
+    .select()
+    .from(hemotestPickupPoints)
+    .where(eq(hemotestPickupPoints.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+/**
+ * Look up a Sberbank point by id, including archived ones (labels, push text).
+ */
+export async function getSberbankPointById(id: number): Promise<SberbankPickupPoint | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db
+    .select()
+    .from(sberbankPickupPoints)
+    .where(eq(sberbankPickupPoints.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 export async function toggleHemotestPickup(
   courierId: number,
   pointId: number,
@@ -1234,17 +1318,7 @@ export async function toggleHemotestPickup(
       })
       .where(eq(hemotestPickups.id, pickup.id));
   } else {
-    const point = await db
-      .select({ isActive: hemotestPickupPoints.isActive })
-      .from(hemotestPickupPoints)
-      .where(eq(hemotestPickupPoints.id, pointId))
-      .limit(1);
-
-    if (point[0]?.isActive !== true) {
-      throw new Error("Точка удалена из справочника и недоступна для новых сборов");
-    }
-
-    await db.insert(hemotestPickups).values({
+    await insertPickupRow(db, "hemotest", {
       courierId,
       pointId,
       date: dateStr,
@@ -1289,7 +1363,7 @@ export async function setHemotestPickupStatusByManager(
       })
       .where(eq(hemotestPickups.id, existing[0].id));
   } else {
-    await db.insert(hemotestPickups).values({
+    await insertPickupRow(db, "hemotest", {
       courierId,
       pointId,
       date: dateStr,
@@ -1335,7 +1409,7 @@ export async function cancelHemotestPickup(
       })
       .where(eq(hemotestPickups.id, pickup.id));
   } else {
-    await db.insert(hemotestPickups).values({
+    await insertPickupRow(db, "hemotest", {
       courierId,
       pointId,
       date: dateStr,
@@ -1381,7 +1455,7 @@ export async function assignHemotestPickupCourier(
       })
       .where(eq(hemotestPickups.id, pickup.id));
   } else {
-    await db.insert(hemotestPickups).values({
+    await insertPickupRow(db, "hemotest", {
       courierId,
       pointId,
       date: dateStr,
@@ -1522,17 +1596,7 @@ export async function toggleSberbankPickup(
       })
       .where(eq(sberbankPickups.id, pickup.id));
   } else {
-    const point = await db
-      .select({ isActive: sberbankPickupPoints.isActive })
-      .from(sberbankPickupPoints)
-      .where(eq(sberbankPickupPoints.id, pointId))
-      .limit(1);
-
-    if (point[0]?.isActive !== true) {
-      throw new Error("Точка удалена из справочника и недоступна для новых сборов");
-    }
-
-    await db.insert(sberbankPickups).values({
+    await insertPickupRow(db, "sberbank", {
       courierId,
       pointId,
       date: dateStr,
@@ -1577,7 +1641,7 @@ export async function setSberbankPickupStatusByManager(
       })
       .where(eq(sberbankPickups.id, existing[0].id));
   } else {
-    await db.insert(sberbankPickups).values({
+    await insertPickupRow(db, "sberbank", {
       courierId,
       pointId,
       date: dateStr,
@@ -1623,7 +1687,7 @@ export async function cancelSberbankPickup(
       })
       .where(eq(sberbankPickups.id, pickup.id));
   } else {
-    await db.insert(sberbankPickups).values({
+    await insertPickupRow(db, "sberbank", {
       courierId,
       pointId,
       date: dateStr,
@@ -1669,7 +1733,7 @@ export async function assignSberbankPickupCourier(
       })
       .where(eq(sberbankPickups.id, pickup.id));
   } else {
-    await db.insert(sberbankPickups).values({
+    await insertPickupRow(db, "sberbank", {
       courierId,
       pointId,
       date: dateStr,

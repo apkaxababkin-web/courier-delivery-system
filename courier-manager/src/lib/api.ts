@@ -530,6 +530,8 @@ export interface HemotestPoint {
   address: string;
   phone?: string;
   contactPerson?: string;
+  /** False for archived directory points (kept for history, hidden from selection). */
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -555,6 +557,8 @@ export interface SberbankPoint {
   address: string;
   phone?: string;
   contactPerson?: string;
+  /** False for archived directory points (kept for history, hidden from selection). */
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
 }
