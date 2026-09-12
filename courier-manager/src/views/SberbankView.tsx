@@ -77,6 +77,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
   const [actionBusy, setActionBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [currentList, setCurrentList] = useState<SberbankPointRow[]>([]);
 
   const visiblePoints = sortPointsByOrder(points, pointOrderIds);
   const selectablePoints = visiblePoints.filter((point) => !point.isArchived);
@@ -113,12 +114,18 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
       ]);
       const pointListIds = new Map<number, number>();
       const listedPoints = new Map<number, api.SberbankPoint>();
+      const currentRows: SberbankPointRow[] = [];
+      const seenListed = new Set<number>();
 
       for (const list of lists) {
         const fullList = await api.getSberbankList(list.id);
         for (const point of fullList?.items ?? []) {
           if (!pointListIds.has(point.id)) pointListIds.set(point.id, list.id);
           if (!listedPoints.has(point.id)) listedPoints.set(point.id, point);
+          if (!seenListed.has(point.id)) {
+            seenListed.add(point.id);
+            currentRows.push({ ...point, listId: list.id, isArchived: point.isActive === false });
+          }
         }
       }
 
@@ -137,6 +144,7 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
       }
 
       setPoints(rows);
+      setCurrentList(currentRows);
     } catch (error) {
       console.error('Error loading points:', error);
       setPoints([]);
@@ -494,6 +502,48 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
           document.body
         )}
 
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-950">Текущий список сбора на {formatLocalDate(selectedDate)}</h2>
+            <p className="mt-1 text-xs text-slate-500">Точки, уже включённые в рабочий список на выбранную дату. Удаление здесь убирает точку только из этого списка и не меняет справочник.</p>
+          </div>
+          <span className="inline-flex h-9 shrink-0 items-center rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
+            {currentList.length} точек
+          </span>
+        </div>
+
+        {currentList.length === 0 ? (
+          <div className="px-5 py-6 text-sm text-slate-500">На выбранную дату список ещё не сформирован.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {currentList.map((point) => (
+              <div key={point.id} className="flex flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="truncate text-sm font-semibold text-slate-950" title={point.name}>{point.name}</p>
+                    {point.isArchived && (
+                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Архив</span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-slate-500" title={point.address}>{point.address}</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openRemoveFromList(point)}
+                  disabled={loading || actionBusy}
+                  className="inline-flex h-8 shrink-0 items-center justify-center gap-1 self-start rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 sm:self-auto"
+                >
+                  <ListMinus size={14} />
+                  Из списка
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div className="flex items-center gap-3">
@@ -601,17 +651,6 @@ export default function SberbankView({ archiveDate }: { archiveDate?: string }) 
                       >
                         <Pencil size={14} />
                         Изменить
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openRemoveFromList(point)}
-                        disabled={!point.listId || loading || actionBusy}
-                        className="inline-flex h-8 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-                        title={point.listId ? 'Убрать точку из рабочего списка на выбранную дату' : 'Точки нет в рабочем списке на выбранную дату'}
-                      >
-                        <ListMinus size={14} />
-                        Из списка
                       </button>
 
                       <button

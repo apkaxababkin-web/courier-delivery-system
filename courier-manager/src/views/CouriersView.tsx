@@ -20,10 +20,18 @@ type Courier = {
   phone?: string | null;
   displayColor?: string;
   displayIcon?: string;
+  vehicleType?: string;
   isActive: boolean;
   totalDeliveries: number;
   completedRequests?: number;
   access?: CourierAccess;
+};
+
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  bicycle: 'Велосипед',
+  scooter: 'Самокат',
+  car: 'Автомобиль',
+  foot: 'Пешком',
 };
 
 type CourierFormData = {
@@ -420,6 +428,12 @@ export default function CouriersView() {
 
                   <div className="truncate text-sm text-slate-600">
                     {courier.phone || '—'}
+                  </div>
+
+                  <div className="truncate text-sm text-slate-600">
+                    {courier.vehicleType
+                      ? VEHICLE_TYPE_LABELS[courier.vehicleType] || courier.vehicleType
+                      : '—'}
                   </div>
 
                   <div>
