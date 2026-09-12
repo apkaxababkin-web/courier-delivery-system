@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Activity, CheckCircle2, Landmark, Loader2, Mail, MapPin, RotateCcw } from 'lucide-react';
+import { Activity, CheckCircle2, Landmark, Loader2, Mail, MapPin, RotateCcw, Trash2 } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -18,6 +18,7 @@ import { EmptyState } from './components/EmptyState';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { TaskDetailsModal } from './components/modals/TaskDetailsModal';
 import { AiTaskModal } from './components/modals/AiTaskModal';
+import { Modal } from '../../components/Modal';
 import MailsView from '../../views/MailsView';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
 import { getFilteredRequests } from './model/filters';
@@ -207,6 +208,9 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const [operationLists, setOperationLists] = useState<OperationList[]>([]);
   const [isOperationLoading, setIsOperationLoading] = useState(false);
   const [updatingPickupKey, setUpdatingPickupKey] = useState<string | null>(null);
+  const [pickupToRemove, setPickupToRemove] = useState<(OperationPoint & { listId: number }) | null>(null);
+  const [removingPickupKey, setRemovingPickupKey] = useState<string | null>(null);
+  const [removePickupError, setRemovePickupError] = useState<string | null>(null);
   const [hemotestDate, setHemotestDate] = useState(getTodayDate());
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const selectedDate = archiveDate || getTodayDate();
@@ -353,8 +357,50 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
     }
   };
 
+  const openRemovePickupPoint = (point: OperationPoint & { listId: number }) => {
+    setRemovePickupError(null);
+    setPickupToRemove(point);
+  };
+
+  const closeRemovePickupPoint = () => {
+    if (removingPickupKey) return;
+    setPickupToRemove(null);
+    setRemovePickupError(null);
+  };
+
+  const handleRemovePickupPoint = async () => {
+    const point = pickupToRemove;
+    if (!point) return;
+    if (operationMode !== 'hemotest' && operationMode !== 'sberbank') return;
+
+    const pointId = point.pointId || point.id;
+    setRemovingPickupKey(`${operationMode}-${pointId}`);
+    setRemovePickupError(null);
+
+    try {
+      await trpcMutation(
+        operationMode === 'hemotest' ? 'hemotest.removePointFromList' : 'sberbank.removePointFromList',
+        { listId: point.listId, pointId },
+      );
+      setPickupToRemove(null);
+
+      if (operationMode === 'hemotest') {
+        await loadHemotestLists(false);
+      } else {
+        await loadSberbankLists(false);
+      }
+    } catch (error) {
+      console.error('Failed to remove point from list:', error);
+      setRemovePickupError(
+        error instanceof Error && error.message ? error.message : 'Не удалось удалить точку из списка',
+      );
+    } finally {
+      setRemovingPickupKey(null);
+    }
+  };
+
   const filteredRequests = getFilteredRequests(requests, selectedStatus, selectedDate, searchQuery);
-  const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listName: list.name, listMeta: list.meta })));
+  const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listId: list.id, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
 
 
@@ -657,7 +703,14 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                       : '—';
 
                     return (
-                      <tr key={`${point.listName}-${point.id}`} className="transition-colors hover:bg-slate-50/80">
+                      <tr
+                        key={`${point.listName}-${point.id}`}
+                        className={
+                          pickup.isPicked
+                            ? 'bg-emerald-50/70 transition-colors hover:bg-emerald-100/60'
+                            : 'transition-colors hover:bg-slate-50/80'
+                        }
+                      >
                         <td className="px-5 py-4 align-middle">
                           <div className="font-semibold text-slate-950">{point.name}</div>
                           <div className="mt-1 text-xs text-slate-400">{point.listName}</div>
@@ -701,7 +754,20 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                               : pickup.isPicked
                                 ? <RotateCcw className="h-3.5 w-3.5" />
                                 : <CheckCircle2 className="h-3.5 w-3.5" />}
-                            {pickup.isPicked ? 'Вернуть' : 'Забрано'}
+                            {pickup.isPicked ? 'Отменить забрано' : 'Забрано'}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={removingPickupKey === `${operationMode}-${point.pointId || point.id}`}
+                            onClick={() => openRemovePickupPoint(point)}
+                            className="ml-2 inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 shadow-sm transition hover:bg-rose-100 disabled:cursor-wait disabled:opacity-60"
+                            title="Удалить точку из текущего списка сбора"
+                          >
+                            {removingPickupKey === `${operationMode}-${point.pointId || point.id}`
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Trash2 className="h-3.5 w-3.5" />}
+                            Удалить
                           </button>
                         </td>
                       </tr>
@@ -738,6 +804,43 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
         submitLabel="Сохранить изменения"
       />
       <AiTaskModal isOpen={showAiModal} onClose={() => setShowAiModal(false)} onSubmit={handleAiParse} isLoading={isParsingAi} />
+
+      <Modal
+        isOpen={Boolean(pickupToRemove)}
+        onClose={closeRemovePickupPoint}
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <h3 className="text-lg font-semibold text-slate-950">Удалить точку из текущего списка?</h3>
+        <p className="mt-2 text-sm text-slate-600">
+          Точка «{pickupToRemove?.name}» будет убрана только из списка сбора на выбранную дату. Справочник точек, архивирование и история сборов не изменятся.
+        </p>
+
+        {removePickupError && (
+          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800" role="alert">
+            {removePickupError}
+          </div>
+        )}
+
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={handleRemovePickupPoint}
+            disabled={Boolean(removingPickupKey)}
+            className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl bg-rose-600 px-5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+          >
+            {removingPickupKey ? 'Удаляем...' : 'Удалить'}
+          </button>
+
+          <button
+            type="button"
+            onClick={closeRemovePickupPoint}
+            disabled={Boolean(removingPickupKey)}
+            className="inline-flex h-11 flex-1 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+          >
+            Отмена
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
