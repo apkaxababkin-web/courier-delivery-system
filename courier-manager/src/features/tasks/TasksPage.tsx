@@ -707,7 +707,7 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
                         key={`${point.listName}-${point.id}`}
                         className={
                           pickup.isPicked
-                            ? 'bg-emerald-50/70 transition-colors hover:bg-emerald-100/60'
+                            ? 'bg-emerald-100 transition-colors hover:bg-emerald-200/70'
                             : 'transition-colors hover:bg-slate-50/80'
                         }
                       >
