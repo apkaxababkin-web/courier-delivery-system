@@ -416,7 +416,7 @@ async function wfRequest(path,data){const token=liveToken(),epoch=liveEpoch;cons
 async function wfRun(fn){if(wfSaving)return;wfSaving=true;document.querySelectorAll('[data-wfsave]').forEach(b=>b.disabled=true);try{await fn()}catch(e){wfError(e.message||'Не удалось сохранить')}finally{wfSaving=false;document.querySelectorAll('[data-wfsave]').forEach(b=>b.disabled=false)}}
 function wfInput(label,key,type='text',draft=wfDraft){return field(label,'wf_'+key,draft?.[key]??'',type).replace('<input ',`<input oninput="${draft===wfDraft?'wfDraft':'wfManifestDraft'}.${key}=this.value" `)}
 function wfSelect(label,key,opts,target='wfDraft'){return selectField(label,'wf_'+key,opts).replace('<select ',`<select onchange="${target}.${key}=this.value" `)}
-function wfOwnerOptions(){const key=wfDraft.ownerType==='partner'?'partners':'clients';return options((liveData[key]||[]).filter(p=>p.isActive!==false),wfDraft.ownerId,'Выберите владельца')}
+function wfOwnerOptions(){const key=wfDraft.ownerType==='partner'?'partners':'clients';return options((liveData[key]||[]).filter(p=>p.isActive!==false&&p.isOwnCompany!==true),wfDraft.ownerId,'Выберите владельца')}
 function wfIntakeStart(s=null){
  closeModal();wfModal=false;
  if(s){wfDraft={...s,waybillNumber:s.waybillNumber,recipientName:s.recipientContact||'',recipientAddress:s.sourceRecipientAddress||s.deliveryAddress||'',destinationCityId:s.destinationCityId,cityInput:wfCityName(s.destinationCityId),parts:undefined,places:s.parts.map(p=>({...p})),editId:s.correspondenceId,version:s.version,keepOwner:true};}

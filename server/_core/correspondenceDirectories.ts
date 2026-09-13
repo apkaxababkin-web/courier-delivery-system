@@ -67,12 +67,22 @@ async function update(tx:any,table:string,key:string,id:number,data:Record<strin
   fields.push(sql`"updatedAt"=now()`);
   await tx.execute(sql`UPDATE ${sql.identifier(table)} SET ${sql.join(fields,sql`,`)} WHERE ${sql.identifier(key)}=${id}`);
 }
+// Correspondence only exposes external partners in its directories: rows flagged
+// as our own organisation (isOwnCompany) are hidden here but stay untouched in the
+// shared partners table, so the legacy mail / courier-call flows keep working.
+function scopedWhere(kind:string):ReturnType<typeof sql>|null {
+  return kind==='partners' ? sql`(b."isOwnCompany" IS NOT TRUE)` : null;
+}
 async function getRows(tx:any,kind:string,id?:number) {
   const s=specs[kind];
   const profile=s.profile ? sql`to_jsonb(p)` : sql`NULL::jsonb`;
   const join=s.profile ? sql`LEFT JOIN ${sql.identifier(s.profile)} p ON p.${sql.identifier(s.link!)}=b."id"` : sql``;
+  const scoped=kind==='partners' ? scopedWhere(kind) : null;
+  const where = id!==undefined
+    ? (scoped ? sql`WHERE b."id"=${id} AND ${scoped}` : sql`WHERE b."id"=${id}`)
+    : (scoped ? sql`WHERE ${scoped}` : sql``);
   return resultRows(await tx.execute(sql`SELECT b.*, ${profile} AS profile FROM ${sql.identifier(s.table)} b ${join}
-    ${id===undefined ? sql`` : sql`WHERE b."id"=${id}`} ORDER BY b."name",b."id"`));
+    ${where} ORDER BY b."name",b."id"`));
 }
 export function registerCorrespondenceDirectories(app:Express) {
   const root='/api/manager/correspondence';

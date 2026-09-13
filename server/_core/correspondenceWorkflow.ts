@@ -26,6 +26,15 @@ async function insert(tx:any,table:string,values:Record<string,any>){const keys=
 async function update(tx:any,table:string,rowId:number,values:Record<string,any>){await tx.execute(sql`UPDATE ${sql.identifier(table)} SET ${sql.join([...Object.entries(values).map(([k,v])=>sql`${sql.identifier(k)}=${v}`),sql`"updatedAt"=now()`],sql`, `)} WHERE id=${rowId}`);}
 async function audit(tx:any,manager:number,action:string,entity:string,rowId:number,before:any,after:any){await tx.execute(sql`INSERT INTO "correspondenceAuditLog" ("managerId",action,"entityType","entityId","beforeData","afterData") VALUES (${manager},${action},${entity},${rowId},${before?JSON.stringify(before):null}::jsonb,${after?JSON.stringify(after):null}::jsonb)`);}
 async function active(tx:any,table:string,rowId:number,label:string){const r=rows(await tx.execute(sql`SELECT * FROM ${sql.identifier(table)} WHERE id=${rowId} AND "isActive"=true FOR SHARE`))[0];if(!r)throw new InputError(`${label} не найден или неактивен`);return r;}
+// Shipment owner. Our own organisation lives in the shared partners table for
+// legacy compatibility, but it can never be the owner of a Correspondence shipment.
+async function activeOwner(tx:any,ownerType:string,ownerId:number){
+  if(ownerType!=='partner')return active(tx,'correspondenceClients',ownerId,'Владелец');
+  const r=rows(await tx.execute(sql`SELECT * FROM "partners" WHERE id=${ownerId} AND "isActive"=true FOR SHARE`))[0];
+  if(!r)throw new InputError('Владелец не найден или неактивен');
+  if(r.isOwnCompany===true)throw new InputError('Наша организация не может быть владельцем отправления');
+  return r;
+}
 function placeData(input:any){
   if(!Array.isArray(input)||!input.length||input.length>200)throw new InputError('Укажите от 1 до 200 мест');
   let grams=0n,volumeNumerator=0n;
@@ -135,7 +144,7 @@ export function registerCorrespondenceWorkflow(app:Express){
    const result=await transaction(async tx=>{
      const prior=rows(await tx.execute(sql`SELECT id,"intakePayloadHash" FROM "correspondenceShipments" WHERE "intakeKey"=${key}`))[0];
      if(prior){if(prior.intakePayloadHash!==hash)throw new HttpError(409,'Этот ключ уже использован для других данных');return {shipment:await getShipment(tx,prior.id),repeated:true};}
-     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await active(tx,d.ownerType==='client'?'correspondenceClients':'partners',d.ownerId,'Владелец');
+     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);
      await checkWaybill(tx,d.waybillNumber);
      const {places,...fields}=d;
      const s=await insert(tx,'correspondenceShipments',{...fields,direction:'outgoing',recipientCityRaw:city.name,recipientCityNormalized:city.name,recipientRegion:city.region,acceptedAt:new Date(),acceptedByManagerId:manager,intakeKey:key,intakePayloadHash:hash});
@@ -148,7 +157,7 @@ export function registerCorrespondenceWorkflow(app:Express){
      const before=await getShipment(tx,rowId);keyVersion(b,before);
      if(!before.standalone||before.archivedAt)throw new InputError('Полное редактирование доступно для исходящих, внесённых на приёмке');
      if(before.outgoingManifestId)throw new InputError('Сначала исключите отправление из исходящего манифеста');
-     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await active(tx,d.ownerType==='client'?'correspondenceClients':'partners',d.ownerId,'Владелец');
+     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);
      await checkWaybill(tx,d.waybillNumber,rowId);const {places,...fields}=d;
      await update(tx,'correspondenceShipments',rowId,{...fields,recipientCityRaw:city.name,recipientCityNormalized:city.name,recipientRegion:city.region});await replacePlaces(tx,rowId,places);
      const after=await getShipment(tx,rowId);await audit(tx,manager,'update','shipment',rowId,before,after);return after;

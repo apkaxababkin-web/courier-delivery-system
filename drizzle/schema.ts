@@ -515,6 +515,14 @@ export const partners = pgTable("partners", {
   phone: varchar("phone", { length: 50 }),
   comment: text("comment"),
   isActive: boolean("isActive").default(true).notNull(),
+  /**
+   * System flag: the record is our own organisation, not an external partner.
+   * Own-company rows stay in the shared partners directory for legacy mail /
+   * courier-call compatibility, but are never offered or accepted as an
+   * external partner for a Correspondence shipment owner.
+   * Managed only by migrations / operations, not by the partner form.
+   */
+  isOwnCompany: boolean("isOwnCompany").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
