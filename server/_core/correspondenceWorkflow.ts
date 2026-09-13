@@ -44,6 +44,20 @@ async function activeHandlingPartner(tx:any,partnerId:number){
   if(r.isOwnCompany===true)throw new InputError('Наша организация не может быть партнёром обработки');
   return r;
 }
+// Adding a shipment to an outgoing manifest hands it to that manifest's partner,
+// so the shipment handling partner must match the manifest partner. A shipment
+// without a handling partner inherits the manifest partner; an existing
+// different partner is a conflict and is never silently overwritten.
+// Also enforces that the manifest partner is a usable external partner
+// (active, and never our own organisation) wherever it is copied onto a shipment.
+async function manifestPartnerAssignment(tx:any,shipment:any,manifestPartnerId:number):Promise<number>{
+  const target=Number(manifestPartnerId);
+  await activeHandlingPartner(tx,target);
+  const current=shipment.partnerId===null||shipment.partnerId===undefined?null:Number(shipment.partnerId);
+  if(current===null)return target;
+  if(current!==target)throw new InputError('У отправления выбран другой партнёр обработки');
+  return current;
+}
 // Optional handling partner: absent / null / '' means "выполняем сами".
 function optionalPartnerId(v:any):number|null{
   if(v===undefined||v===null||String(v).trim()==='')return null;
@@ -184,7 +198,7 @@ export function registerCorrespondenceWorkflow(app:Express){
    const result=await transaction(async tx=>{
      const before=await getShipment(tx,rowId);keyVersion(b,before);
      if(!before.standalone||before.archivedAt)throw new InputError('Полное редактирование доступно для исходящих, внесённых на приёмке');
-     if(before.outgoingManifestId)throw new InputError('Сначала исключите отправление из исходящего манифеста');
+     if(before.outgoingManifestId){const om=rows(await tx.execute(sql`SELECT "partnerId" FROM "correspondenceManifests" WHERE id=${before.outgoingManifestId}`))[0];if(!om||d.partnerId===null||Number(d.partnerId)!==Number(om.partnerId))throw new InputError('Отправление передано в манифест. Партнёр обработки должен совпадать с партнёром манифеста');}
      const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);if(d.partnerId!==null)await activeHandlingPartner(tx,d.partnerId);
      await checkWaybill(tx,d.waybillNumber,rowId);const {places,...fields}=d;
      await update(tx,'correspondenceShipments',rowId,{...fields,recipientCityRaw:city.name,recipientCityNormalized:city.name,recipientRegion:city.region});await replacePlaces(tx,rowId,places);
@@ -202,7 +216,7 @@ export function registerCorrespondenceWorkflow(app:Express){
      if(prior){if(prior.creationPayloadHash!==hash)throw new HttpError(409,'Этот ключ уже использован для других данных');return {manifest:await getManifest(tx,prior.id),repeated:true};}
      await manifestReferences(tx,d);await checkMembers(tx,ids,d.destinationCityId);
      const m=await insert(tx,'correspondenceManifests',{...d,direction:'outgoing',createdByManagerId:manager,creationKey:key,creationPayloadHash:hash});
-     for(const rowId of ids){const before=await getShipment(tx,rowId);await update(tx,'correspondenceShipments',rowId,{outgoingManifestId:m.id});await audit(tx,manager,'update','shipment',rowId,before,await getShipment(tx,rowId));}
+     for(const rowId of ids){const before=await getShipment(tx,rowId);await update(tx,'correspondenceShipments',rowId,{outgoingManifestId:m.id,partnerId:await manifestPartnerAssignment(tx,before,Number(d.partnerId))});await audit(tx,manager,'update','shipment',rowId,before,await getShipment(tx,rowId));}
      const after=await getManifest(tx,m.id);await audit(tx,manager,'create','manifest',m.id,null,after);return {manifest:after,repeated:false};
    });res.status(result.repeated?200:201).json(result);
  }));
@@ -223,7 +237,7 @@ export function registerCorrespondenceWorkflow(app:Express){
      if(remove&&before.handedOverAt)throw new InputError('Сначала отмените отметку передачи партнёру');
      if(remove){if(ids.some(n=>!before.shipmentIds.includes(n)))throw new InputError('Отправление отсутствует в манифесте');if(ids.length===before.shipmentIds.length)throw new InputError('В манифесте должно остаться хотя бы одно отправление');}
      else await checkMembers(tx,ids,Number(before.destinationCityId),rowId);
-     for(const n of ids){const old=await getShipment(tx,n);await update(tx,'correspondenceShipments',n,{outgoingManifestId:remove?null:rowId});await audit(tx,manager,'update','shipment',n,old,await getShipment(tx,n));}
+     for(const n of ids){const old=await getShipment(tx,n);await update(tx,'correspondenceShipments',n,remove?{outgoingManifestId:null}:{outgoingManifestId:rowId,partnerId:await manifestPartnerAssignment(tx,old,Number(before.partnerId))});await audit(tx,manager,'update','shipment',n,old,await getShipment(tx,n));}
      await update(tx,'correspondenceManifests',rowId,{});const after=await getManifest(tx,rowId);await audit(tx,manager,'update','manifest',rowId,before,after);return after;
    }));
  }));

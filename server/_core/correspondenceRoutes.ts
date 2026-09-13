@@ -133,12 +133,12 @@ export function registerCorrespondenceRoutes(app: Express) {
             ("mailId","manifestId","direction","ownerType","ownerId","waybillDate","senderCity","senderName","senderCompany","senderPhone","senderPostalCode","senderAddress",
              "recipientRegion","recipientCityRaw","recipientName","recipientCompany","recipientPhone","recipientPostalCode","recipientAddress","declaredValue",
              "manifestWeight","volumetricWeight","measuredWeight","placesCount","contents","senderNotes","paymentMethod","payer","specialConditions",
-             "partnerId","billableWeight")
+             "billableWeight")
             VALUES (${mailId},${manifestId},'incoming','partner',${partnerId},${item.waybillDate},${item.senderCity},${item.senderName},${item.senderCompany},${item.senderPhone},
              ${item.senderPostalCode},${item.senderAddress},${item.recipientRegion},${item.recipientCityRaw},${item.recipientName},${item.recipientCompany},
              ${item.recipientPhone},${item.recipientPostalCode},${item.recipientAddress},${item.declaredValue},${item.manifestWeight},${item.volumetricWeight},
              ${item.measuredWeight},${item.placesCount},${item.contents},${item.senderNotes},${item.paymentMethod},${item.payer},${item.specialConditions},
-             ${partnerId},${calculateBillableWeight(item.measuredWeight,item.manifestWeight,item.volumetricWeight)})`);
+             ${calculateBillableWeight(item.measuredWeight,item.manifestWeight,item.volumetricWeight)})`);
         }
         const mapping = req.body?.mapping && typeof req.body.mapping === "object" ? req.body.mapping : {};
         await tx.execute(sql`INSERT INTO "correspondenceManifestTemplates" ("partnerId","sheetName","startRow","mapping")
