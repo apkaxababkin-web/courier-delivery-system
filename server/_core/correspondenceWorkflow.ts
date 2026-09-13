@@ -35,6 +35,29 @@ async function activeOwner(tx:any,ownerType:string,ownerId:number){
   if(r.isOwnCompany===true)throw new InputError('Наша организация не может быть владельцем отправления');
   return r;
 }
+// Handling partner: the external partner who actually carries / delivers the
+// shipment. Optional and independent from the owner; our own organisation is
+// never a valid handling partner.
+async function activeHandlingPartner(tx:any,partnerId:number){
+  const r=rows(await tx.execute(sql`SELECT * FROM "partners" WHERE id=${partnerId} AND "isActive"=true FOR SHARE`))[0];
+  if(!r)throw new InputError('Партнёр обработки не найден или неактивен');
+  if(r.isOwnCompany===true)throw new InputError('Наша организация не может быть партнёром обработки');
+  return r;
+}
+// Optional handling partner: absent / null / '' means "выполняем сами".
+function optionalPartnerId(v:any):number|null{
+  if(v===undefined||v===null||String(v).trim()==='')return null;
+  return id(v);
+}
+// Persisted snapshot, kilograms. Null / 0 count as "no value"; if nothing is
+// known the result stays null instead of an artificial 0.
+export function calculateBillableWeight(measuredWeight:any,manifestWeight:any,volumetricWeight:any):string|null{
+  const known=[measuredWeight,manifestWeight,volumetricWeight]
+    .map((v:any)=>Number(v))
+    .filter((n:number)=>Number.isFinite(n)&&n>0);
+  if(!known.length)return null;
+  return Math.ceil(Math.max(...known)).toFixed(3);
+}
 function placeData(input:any){
   if(!Array.isArray(input)||!input.length||input.length>200)throw new InputError('Укажите от 1 до 200 мест');
   let grams=0n,volumeNumerator=0n;
@@ -61,7 +84,10 @@ function intakeData(b:any){
   for(const k of ['senderName','senderCompany','senderCity','senderAddress','senderPhone','senderPostalCode','recipientPostalCode','contents','senderNotes','specialConditions'])fields[k]=text(b[k],k.endsWith('Phone')?50:5000);
   // Preserve hashes of pre-camera intake requests when this optional field was absent.
   if(Object.prototype.hasOwnProperty.call(b,'manifestWeight'))fields.manifestWeight=decimal(b.manifestWeight,3,1000000,true);
-  return {...fields,...placeData(b.places)};
+  fields.partnerId=optionalPartnerId(b.partnerId);
+  const weights={...fields,...placeData(b.places)};
+  weights.billableWeight=calculateBillableWeight(weights.measuredWeight,weights.manifestWeight,weights.volumetricWeight);
+  return weights;
 }
 async function checkWaybill(tx:any,number:string,except?:number){const r=rows(await tx.execute(sql`
   SELECT 1 FROM "mails" WHERE lower(btrim("waybillNumber"))=lower(btrim(${number}))
@@ -70,12 +96,13 @@ async function checkWaybill(tx:any,number:string,except?:number){const r=rows(aw
 export async function workflowShipments(tx:any,only?:number){
  const data=rows(await tx.execute(sql`SELECT to_jsonb(m) AS legacy,to_jsonb(s) AS current,
    c.name AS "cityName",c.region AS "cityRegion",o."handedOverAt",p.name AS "partnerName",k.name AS "courierName",
+   hp.name AS "handlingPartnerName",
    mf."arrivedAt" AS "arrivalDate",COALESCE(z.parts,'[]'::jsonb) AS parts
    FROM "mails" m FULL JOIN "correspondenceShipments" s ON s."mailId"=m.id
    LEFT JOIN "correspondenceCities" c ON c.id=s."destinationCityId"
    LEFT JOIN "correspondenceManifests" o ON o.id=s."outgoingManifestId"
    LEFT JOIN "correspondenceManifests" mf ON mf.id=s."manifestId"
-   LEFT JOIN partners p ON p.id=m."partnerId" LEFT JOIN couriers k ON k.id=m."courierId"
+   LEFT JOIN partners p ON p.id=m."partnerId" LEFT JOIN partners hp ON hp.id=s."partnerId" LEFT JOIN couriers k ON k.id=m."courierId"
    LEFT JOIN LATERAL (SELECT jsonb_agg(to_jsonb(pl) ORDER BY pl.position) AS parts FROM "correspondenceShipmentPlaces" pl WHERE pl."shipmentId"=s.id) z ON true
    ${only===undefined?sql``:sql`WHERE s.id=${only}`} ORDER BY COALESCE(s."acceptedAt",s."createdAt",m."createdAt") DESC`));
  return data.map(r=>{
@@ -85,7 +112,8 @@ export async function workflowShipments(tx:any,only?:number){
      recipientContact:s.recipientName,recipientPhone:s.recipientPhone||m.recipientPhone,
      sourceRecipientPhone:s.recipientPhone,sourceRecipientAddress:s.recipientAddress,deliveryAddress:s.recipientAddress||m.deliveryAddress,
      weight:s.measuredWeight||s.manifestWeight||m.weight,recipientCityNormalized:r.cityName||s.recipientCityNormalized,
-     cityName:r.cityName,cityRegion:r.cityRegion,parts:r.parts,partnerName:r.partnerName,courierName:r.courierName,
+     cityName:r.cityName,cityRegion:r.cityRegion,parts:r.parts,partnerName:r.partnerName,
+     partnerId:s.partnerId??null,handlingPartnerName:r.handlingPartnerName??null,courierName:r.courierName,
      arrivalDate:s.acceptedAt||r.arrivalDate,handedOverAt:r.handedOverAt,
      status:r.handedOverAt&&m.status!=='delivered'?'handed_over':standalone?'received':m.status,
      version:digest({s:r.current,parts:r.parts,delivery:m.status,handedOverAt:r.handedOverAt}),standalone};
@@ -144,7 +172,7 @@ export function registerCorrespondenceWorkflow(app:Express){
    const result=await transaction(async tx=>{
      const prior=rows(await tx.execute(sql`SELECT id,"intakePayloadHash" FROM "correspondenceShipments" WHERE "intakeKey"=${key}`))[0];
      if(prior){if(prior.intakePayloadHash!==hash)throw new HttpError(409,'Этот ключ уже использован для других данных');return {shipment:await getShipment(tx,prior.id),repeated:true};}
-     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);
+     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);if(d.partnerId!==null)await activeHandlingPartner(tx,d.partnerId);
      await checkWaybill(tx,d.waybillNumber);
      const {places,...fields}=d;
      const s=await insert(tx,'correspondenceShipments',{...fields,direction:'outgoing',recipientCityRaw:city.name,recipientCityNormalized:city.name,recipientRegion:city.region,acceptedAt:new Date(),acceptedByManagerId:manager,intakeKey:key,intakePayloadHash:hash});
@@ -157,7 +185,7 @@ export function registerCorrespondenceWorkflow(app:Express){
      const before=await getShipment(tx,rowId);keyVersion(b,before);
      if(!before.standalone||before.archivedAt)throw new InputError('Полное редактирование доступно для исходящих, внесённых на приёмке');
      if(before.outgoingManifestId)throw new InputError('Сначала исключите отправление из исходящего манифеста');
-     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);
+     const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);if(d.partnerId!==null)await activeHandlingPartner(tx,d.partnerId);
      await checkWaybill(tx,d.waybillNumber,rowId);const {places,...fields}=d;
      await update(tx,'correspondenceShipments',rowId,{...fields,recipientCityRaw:city.name,recipientCityNormalized:city.name,recipientRegion:city.region});await replacePlaces(tx,rowId,places);
      const after=await getShipment(tx,rowId);await audit(tx,manager,'update','shipment',rowId,before,after);return after;

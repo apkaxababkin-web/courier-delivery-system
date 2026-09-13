@@ -1,5 +1,5 @@
 import { registerCorrespondenceCamera } from './correspondenceCamera';
-import { registerCorrespondenceWorkflow, workflowShipments, workflowManifests } from './correspondenceWorkflow';
+import { registerCorrespondenceWorkflow, workflowShipments, workflowManifests, calculateBillableWeight } from './correspondenceWorkflow';
 import { guardLegacyWaybills } from './correspondenceWaybills';
 import { registerCorrespondenceDirectories } from './correspondenceDirectories';
 import type { Express, Request, Response } from "express";
@@ -132,11 +132,13 @@ export function registerCorrespondenceRoutes(app: Express) {
           await tx.execute(sql`INSERT INTO "correspondenceShipments"
             ("mailId","manifestId","direction","ownerType","ownerId","waybillDate","senderCity","senderName","senderCompany","senderPhone","senderPostalCode","senderAddress",
              "recipientRegion","recipientCityRaw","recipientName","recipientCompany","recipientPhone","recipientPostalCode","recipientAddress","declaredValue",
-             "manifestWeight","volumetricWeight","measuredWeight","placesCount","contents","senderNotes","paymentMethod","payer","specialConditions")
+             "manifestWeight","volumetricWeight","measuredWeight","placesCount","contents","senderNotes","paymentMethod","payer","specialConditions",
+             "partnerId","billableWeight")
             VALUES (${mailId},${manifestId},'incoming','partner',${partnerId},${item.waybillDate},${item.senderCity},${item.senderName},${item.senderCompany},${item.senderPhone},
              ${item.senderPostalCode},${item.senderAddress},${item.recipientRegion},${item.recipientCityRaw},${item.recipientName},${item.recipientCompany},
              ${item.recipientPhone},${item.recipientPostalCode},${item.recipientAddress},${item.declaredValue},${item.manifestWeight},${item.volumetricWeight},
-             ${item.measuredWeight},${item.placesCount},${item.contents},${item.senderNotes},${item.paymentMethod},${item.payer},${item.specialConditions})`);
+             ${item.measuredWeight},${item.placesCount},${item.contents},${item.senderNotes},${item.paymentMethod},${item.payer},${item.specialConditions},
+             ${partnerId},${calculateBillableWeight(item.measuredWeight,item.manifestWeight,item.volumetricWeight)})`);
         }
         const mapping = req.body?.mapping && typeof req.body.mapping === "object" ? req.body.mapping : {};
         await tx.execute(sql`INSERT INTO "correspondenceManifestTemplates" ("partnerId","sheetName","startRow","mapping")
