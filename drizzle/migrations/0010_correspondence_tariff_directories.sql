@@ -52,12 +52,21 @@ CREATE TABLE IF NOT EXISTS "correspondenceClientTariffPlans" (
 CREATE INDEX IF NOT EXISTS "correspondenceClientTariffPlans_owner_idx"
   ON "correspondenceClientTariffPlans" ("ownerType","ownerId");
 
+-- Reference protection rules:
+--   plan -> its own items          : ON DELETE CASCADE (intentional: a tariff
+--                                    plan is deleted explicitly together with
+--                                    its rows)
+--   partner / service / city -> item: ON DELETE RESTRICT (a directory entry
+--                                    must never silently destroy financial
+--                                    tariff data; remove or reassign the
+--                                    tariff rows explicitly first)
+
 CREATE TABLE IF NOT EXISTS "correspondenceClientTariffItems" (
   "id" serial PRIMARY KEY,
   "planId" integer NOT NULL REFERENCES "correspondenceClientTariffPlans"("id") ON DELETE CASCADE,
-  "serviceCode" varchar(20) NOT NULL REFERENCES "correspondenceServices"("code"),
-  "cityFromId" integer REFERENCES "correspondenceCities"("id"),
-  "cityToId" integer REFERENCES "correspondenceCities"("id"),
+  "serviceCode" varchar(20) NOT NULL REFERENCES "correspondenceServices"("code") ON DELETE RESTRICT,
+  "cityFromId" integer REFERENCES "correspondenceCities"("id") ON DELETE RESTRICT,
+  "cityToId" integer REFERENCES "correspondenceCities"("id") ON DELETE RESTRICT,
   "weightFromKg" numeric(12,3),
   "weightToKg" numeric(12,3),
   "pricingModel" varchar(20) NOT NULL,
@@ -76,7 +85,7 @@ CREATE INDEX IF NOT EXISTS "correspondenceClientTariffItems_plan_idx"
 -- ─── Partner tariffs (money WE owe an external partner) ─────────────────────
 CREATE TABLE IF NOT EXISTS "correspondencePartnerTariffPlans" (
   "id" serial PRIMARY KEY,
-  "partnerId" integer NOT NULL REFERENCES "partners"("id") ON DELETE CASCADE,
+  "partnerId" integer NOT NULL REFERENCES "partners"("id") ON DELETE RESTRICT,
   "name" varchar(255) NOT NULL,
   "currency" varchar(3) NOT NULL DEFAULT 'RUB',
   "validFrom" date,
@@ -91,9 +100,9 @@ CREATE INDEX IF NOT EXISTS "correspondencePartnerTariffPlans_partner_idx"
 CREATE TABLE IF NOT EXISTS "correspondencePartnerTariffItems" (
   "id" serial PRIMARY KEY,
   "planId" integer NOT NULL REFERENCES "correspondencePartnerTariffPlans"("id") ON DELETE CASCADE,
-  "serviceCode" varchar(20) NOT NULL REFERENCES "correspondenceServices"("code"),
-  "cityFromId" integer REFERENCES "correspondenceCities"("id"),
-  "cityToId" integer REFERENCES "correspondenceCities"("id"),
+  "serviceCode" varchar(20) NOT NULL REFERENCES "correspondenceServices"("code") ON DELETE RESTRICT,
+  "cityFromId" integer REFERENCES "correspondenceCities"("id") ON DELETE RESTRICT,
+  "cityToId" integer REFERENCES "correspondenceCities"("id") ON DELETE RESTRICT,
   "weightFromKg" numeric(12,3),
   "weightToKg" numeric(12,3),
   "pricingModel" varchar(20) NOT NULL,
