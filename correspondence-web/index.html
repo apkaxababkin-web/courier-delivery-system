@@ -5,19 +5,38 @@
 /* ── Приёмка: компактная компоновка рабочей области (только layout) ── */
 .ic-workspace{width:100%;max-width:1220px;margin:0 auto;min-width:0}
 .ic-sec{border:1px solid var(--line);border-radius:8px;background:#fbfcfe;padding:12px 14px;margin:0 0 12px}
-.ic-sec>h3{margin:0 0 10px}
+.ic-sec>h3,.ic-form>h3,.wf-card-wf>h3{margin:0 0 10px}
 .ic-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;position:relative}
-.ic-pair>.ic-sec{margin:0}
+.ic-pair>.ic-sec,.ic-pair>.ic-sec.ic-places{margin:0}
 .ic-pair::before{content:'↓';position:absolute;left:50%;top:-14px;transform:translateX(-50%);width:22px;height:22px;border:1px solid var(--line);border-radius:50%;background:#fff;color:var(--muted);font-size:12px;line-height:20px;text-align:center;z-index:1}
 @media(min-width:951px){.ic-pair::before{content:'→'}}
 .ic-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
 .ic-party-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 10px}
 .ic-dest-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 10px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
 .ic-dest-grid>.ic-wide{grid-column:1 / -1}
-.ic-form label{font-size:12px;gap:4px}
-.ic-form input,.ic-form select{font-size:13px;padding:7px 9px;width:100%;max-width:none}
+.ic-form label,.wf-grid label{font-size:12px;gap:4px}
+.ic-form input,.ic-form select,.wf-grid input,.wf-grid select{font-size:13px;padding:7px 9px;width:100%;max-width:none}
 .ic-wide{grid-column:1 / -1}
 .ic-lock{margin:10px 0 0}
+/* live workflow intake: те же секции, что в demo-приёмке */
+.wf-card-wf{border:1px solid var(--line);border-radius:8px;background:#fbfcfe;padding:12px 14px;margin:0 0 12px}
+.wf-grid{display:grid;gap:10px 14px}
+.wf-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.wf-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.wf-city-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#6a7d90}
+.wf-city-field>input{width:100%;max-width:none}
+.wf-city-field>datalist{display:none}
+.wf-lock{display:flex;flex-direction:row;align-items:center;gap:6px;margin:10px 0 0;font-size:12px;color:#6a7d90}
+.wf-lock input{width:auto!important;min-width:0}
+.wf-places-wrap{margin:0 0 10px}
+.wf-places-wrap .tablebox{max-height:none}
+.wf-places-wrap table{width:100%;table-layout:fixed}
+.wf-places-wrap th{padding:8px 10px}
+.wf-places-wrap td{padding:6px 10px}
+.wf-places-wrap td:first-child,.wf-places-wrap th:first-child{width:64px;text-align:center}
+.wf-places-wrap th:nth-child(2),.wf-places-wrap td:nth-child(2){width:150px}
+.wf-places-wrap th:nth-child(3),.wf-places-wrap td:nth-child(3),.wf-places-wrap th:nth-child(4),.wf-places-wrap td:nth-child(4),.wf-places-wrap th:nth-child(5),.wf-places-wrap td:nth-child(5){width:120px}
+.wf-places-wrap td input[type=number]{width:100%;max-width:none;text-align:right}
 .ic-places .tablebox{max-height:none}
 .ic-places table{width:100%;table-layout:fixed}
 .ic-places th{padding:8px 10px}
@@ -33,15 +52,15 @@
   .ic-workspace{max-width:none}
 }
 @media(max-width:980px){
-  .ic-grid,.ic-dest-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .ic-places table{table-layout:auto}
+  .ic-grid,.ic-dest-grid,.wf-grid-3,.wf-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ic-places table,.wf-places-wrap table{table-layout:auto}
 }
 @media(max-width:950px){
   .ic-pair{grid-template-columns:minmax(0,1fr);gap:22px}
   .ic-pair::before{top:-16px}
 }
 @media(max-width:700px){
-  .ic-grid,.ic-dest-grid{grid-template-columns:minmax(0,1fr)}
+  .ic-grid,.ic-dest-grid,.wf-grid-3,.wf-grid-2{grid-template-columns:minmax(0,1fr)}
 }
 </style><style>.wf-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 16px;margin:12px 0 18px}.wf-summary>div{border-bottom:1px solid #edf2f7;padding-bottom:7px;overflow-wrap:anywhere}.wf-summary span{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}.wf-summary strong{font-size:12px;font-weight:400}.wf-form h3{font-size:15px;font-weight:500;margin:18px 0 8px}.wf-form .formgrid{gap:10px 14px}.wf-form input,.wf-form select{font-size:12px}.wf-form .tablebox input{width:100px}.wf-top-scroll{height:17px;overflow-x:auto;overflow-y:hidden;border:1px solid var(--line);border-bottom:0}.wf-top-scroll>div{height:1px}.wf-divider{background:#f4f9fd;color:#52718d;font-weight:500}.modalfoot{flex-wrap:wrap}.wf-form datalist{display:none}</style></head><body><header><div class="brand">МИГ<span> · Корреспонденция</span><small>ДЕМО</small></div><nav id="nav"></nav><div class="account"><span class="avatar">АС</span>Рабочее место менеджера<strong>Анна Соколова</strong></div></header><div class="context"><span id="crumb">Рабочее пространство / Отправления</span><div class="contextinfo">Тестовые данные · <span id="today"></span> · <button onclick="help()">Как пользоваться</button><button onclick="resetDemo()">Сбросить демо</button></div></div><main id="app"></main><footer><span>МИГ · Управление корреспонденцией</span><span id="storageNote">Автономный макет · изменения сохраняются в этом браузере</span></footer><dialog id="modal"><div class="modalhead"><h2 id="modalTitle"></h2><button aria-label="Закрыть" onclick="closeModal()">×</button></div><div class="modalbody" id="modalBody"></div><div class="modalfoot" id="modalFoot"></div></dialog><div class="toast" id="toast" role="status"></div><script src="./xlsx.full.min.js"></script><script>
 'use strict';
@@ -407,17 +426,25 @@ function wfIntakeStart(s=null){
 function renderWorkflowIntake(){
  if(!wfDraft)wfDraft={intakeKey:crypto.randomUUID(),ownerType:'client',ownerId:'',cityInput:'',waybillNumber:'',waybillDate:liveToday(),payer:'sender',places:[wfBlankPlace()],keepOwner:true};
  const d=wfDraft;
- return heading(d.editId?'Редактирование отправления':'Приёмка','Исходящие отправления клиента или партнёра',btn('Камера / фото','caOpen()','primary')+btn('К отправлениям',"liveGo('shipments')"))+`<div class="wf-form"><div class="note">Черновик сохраняется при переходах между разделами, пока открыта эта страница. Введите вес каждого места; размеры нужны для посылок.</div><div class="formgrid">
+ return heading(d.editId?'Редактирование отправления':'Приёмка','Исходящие отправления клиента или партнёра',btn('Камера / фото','caOpen()','primary')+btn('К отправлениям',"liveGo('shipments')"))+`<div class="wf-form">
+ <section class="wf-card-wf"><h3>ЧЬЁ ОТПРАВЛЕНИЕ</h3><div class="wf-grid wf-grid-3">
  ${wfSelect('Чьё отправление','ownerType',opt('client','Наш клиент',d.ownerType)+opt('partner','Партнёр',d.ownerType)).replace('wfDraft.ownerType=this.value','wfDraft.ownerType=this.value;wfDraft.ownerId=\'\';document.getElementById(\'wf_ownerId\').innerHTML=wfOwnerOptions()')}
  ${wfSelect('Клиент / партнёр *','ownerId',wfOwnerOptions())}
  ${wfInput('Номер накладной *','waybillNumber')}${wfInput('Дата накладной','waybillDate','date')}
- <label>Населённый пункт назначения *<input id="wf_cityInput" list="wfCityList" value="${esc(d.cityInput||'')}" placeholder="Начните вводить название" oninput="wfDraft.cityInput=this.value;wfDraft.destinationCityId=wfCityId(this.value)"></label>${wfCityOptions()}
  ${wfSelect('Кто оплачивает *','payer',opt('sender','Отправитель',d.payer)+opt('recipient','Получатель',d.payer))}
- </div><h3>Отправитель</h3><div class="formgrid">${wfInput('Организация','senderCompany')}${wfInput('Контактное лицо','senderName')}${wfInput('Город отправителя','senderCity')}${wfInput('Адрес отправителя','senderAddress')}${wfInput('Телефон','senderPhone')}${wfInput('Почтовый индекс','senderPostalCode')}</div>
- <h3>Получатель</h3><div class="formgrid">${wfInput('Организация получателя','recipientCompany')}${wfInput('ФИО получателя','recipientName')}${wfInput('Адрес получателя *','recipientAddress')}${wfInput('Телефон получателя','recipientPhone')}${wfInput('Почтовый индекс','recipientPostalCode')}${wfInput('Объявленная стоимость, ₽','declaredValue','number')}</div>
- <h3>Места отправления</h3><div class="formgrid">${wfInput('Вес из накладной, кг (отдельно от измеренного)','manifestWeight','number')}</div><div id="wfPlaces">${wfPlacesTable()}</div><div class="toolbar">${btn('＋ Добавить место','wfAddPlace()','small')}<span id="wfTotals"></span></div>
- <div class="formgrid">${wfInput('Содержимое','contents')}${wfInput('Способ оплаты','paymentMethod')}${wfInput('Примечание отправителя','senderNotes')}${wfInput('Особые условия','specialConditions')}</div>
- <div class="toolbar"><label style="display:flex;gap:6px"><input type="checkbox" ${d.keepOwner?'checked':''} onchange="wfDraft.keepOwner=this.checked">Оставить владельца для следующего отправления</label><span class="right"></span><span id="wfError" class="error" role="alert"></span><button data-wfsave class="primary" onclick="wfSaveIntake()">${d.editId?'Сохранить изменения':'Принять отправление'}</button>${btn('Очистить форму','wfDiscardIntake()')}</div></div>`;
+ ${wfInput('Способ оплаты','paymentMethod')}
+ </div>
+ <label class="wf-lock"><input type="checkbox" ${d.keepOwner?'checked':''} onchange="wfDraft.keepOwner=this.checked">Оставить владельца для следующего отправления</label></section>
+
+ <div class="ic-pair">
+ <section class="wf-card-wf"><h3>ОТКУДА</h3><div class="sub">Отправитель</div><div class="wf-grid wf-grid-2">${wfInput('Организация','senderCompany')}${wfInput('Контактное лицо','senderName')}${wfInput('Телефон','senderPhone')}${wfInput('Город отправителя','senderCity')}${wfInput('Адрес отправителя','senderAddress','text',wfDraft).replace('class="','class="ic-wide ')}${wfInput('Почтовый индекс','senderPostalCode')}</div></section>
+ <section class="wf-card-wf"><h3>КУДА</h3><div class="sub">Получатель</div><div class="wf-grid wf-grid-2">${wfInput('Организация получателя','recipientCompany')}${wfInput('ФИО получателя','recipientName')}${wfInput('Телефон получателя','recipientPhone')}${wfInput('Объявленная стоимость, ₽','declaredValue','number')}${wfInput('Адрес получателя *','recipientAddress','text',wfDraft).replace('class="','class="ic-wide ')}${wfInput('Почтовый индекс','recipientPostalCode')}</div><div class="wf-grid wf-grid-2" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)"><label class="wf-city-field ic-wide">Населённый пункт назначения *<input id="wf_cityInput" list="wfCityList" value="${esc(d.cityInput||'')}" placeholder="Начните вводить название" oninput="wfDraft.cityInput=this.value;wfDraft.destinationCityId=wfCityId(this.value)"></label>${wfCityOptions()}</div></section>
+ </div>
+
+ <section class="wf-card-wf ic-places"><h3>ОТПРАВЛЕНИЕ · МЕСТА</h3><div class="wf-grid wf-grid-3">${wfInput('Вес из накладной, кг (отдельно от измеренного)','manifestWeight','number')}${wfInput('Содержимое','contents')}${wfInput('Примечание отправителя','senderNotes')}${wfInput('Особые условия','specialConditions','text',wfDraft).replace('class="','class="ic-wide ')}</div>
+ <h3 style="margin-top:12px">Места отправления</h3><div class="wf-places-wrap" id="wfPlaces">${wfPlacesTable()}</div><div class="toolbar">${btn('＋ Добавить место','wfAddPlace()','small')}<span id="wfTotals">${''}</span></div>
+ <div class="toolbar"><span class="right"></span><span id="wfError" class="error" role="alert"></span><button data-wfsave class="primary" onclick="wfSaveIntake()">${d.editId?'Сохранить изменения':'Принять отправление'}</button>${btn('Очистить форму','wfDiscardIntake()')}</div></section>
+ <div class="note">Черновик сохраняется при переходах между разделами, пока открыта эта страница. Введите вес каждого места; размеры нужны для посылок.</div></div>`;
 }
 function wfPlacesTable(){return wfTable(['Место','Вес, кг *','Длина, см','Ширина, см','Высота, см','Объёмный, кг',''],wfDraft.places.map((p,i)=>`<tr>${td(i+1)}${['measuredWeight','lengthCm','widthCm','heightCm'].map(k=>td(`<input aria-label="${k} места ${i+1}" type="number" min="0" step="${k==='measuredWeight'?'0.001':'0.01'}" value="${esc(p[k]??'')}" oninput="wfDraft.places[${i}].${k}=this.value;wfTotals()">`)).join('')}${td(`<span id="wfVol${i}"></span>`)}${td(wfDraft.places.length>1?btn('×',`wfRemovePlace(${i})`,'small'):'')}</tr>`).join(''),'places')}
 function wfTotals(){if(!wfDraft||!$('wfTotals'))return;let actual=0,volume=0;wfDraft.places.forEach((p,i)=>{actual+=Number(p.measuredWeight)||0;const v=(Number(p.lengthCm)||0)*(Number(p.widthCm)||0)*(Number(p.heightCm)||0)/5000;volume+=v;if($('wfVol'+i))$('wfVol'+i).textContent=num(v)});$('wfTotals').textContent=`Мест: ${wfDraft.places.length} · Вес: ${num(actual)} кг · Объёмный: ${num(volume)} кг · Платный: ${Math.ceil(Math.max(Math.round(actual*1e6)/1e6,Math.round(volume*1e6)/1e6))} кг`}
