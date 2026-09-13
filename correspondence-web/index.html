@@ -88,7 +88,7 @@ function terminalShare(s){const m=db.manifests.find(m=>m.id===s.manifest);return
 function terminalBilled(s,owner,side){const m=db.manifests.find(m=>m.id===s.manifest);return side==='income'&&s.owner===owner&&m?.terminalRequired&&m.terminalPaidBy!==owner?(terminalShare(s)||0):0}
 
 function charge(s,owner,side='income'){const key=s.id+'|'+owner+'|'+side,c=db.charges[key]||{manual:null,extras:[0,0,0],notes:['','',''],checked:false,include:s.status==='Доставлено'};const w=weights(s).bill,t=db.tariffs.find(t=>t.owner===owner&&t.city===s.city);const auto=w&&t?t.first+Math.max(0,w-1)*t.next:null;const base=c.manual??auto;return {...c,key,auto,base,total:base==null?null:base+c.extras.reduce((a,b)=>a+b,0)+terminalBilled(s,owner,side),terminal:terminalBilled(s,owner,side),problem:w==null?'Вес не указан':base==null?'Тариф не задан':''}}function setCharge(s,owner,side,changes){let c=charge(s,owner,side);db.charges[c.key]={manual:c.manual,extras:c.extras,notes:c.notes,checked:c.checked,include:c.include,...changes}}
-const sections=[['shipments','Отправления'],['intake','Приёмка'],['manifests','Манифесты'],['routes','Листы развозов'],['clients','Клиенты'],['partners','Партнёры'],['recon','Сверки'],['documents','Документы'],['payments','Оплаты'],['directories','Справочники'],['archive','Архив']];function go(s){section=s;tab=s==='manifests'?'out':s==='directories'?'tariffs':'all';selected.clear();filters={q:'',city:'',owner:'',from:'',to:'',dateType:'accepted',archive:false};render()}
+const sections=[['shipments','Отправления'],['intake','Приёмка'],['manifests','Манифесты'],['routes','Листы развозов'],['clients','Клиенты'],['partners','Партнёры'],['tariffs','Тарифы'],['recon','Сверки'],['documents','Документы'],['payments','Оплаты'],['directories','Справочники'],['archive','Архив']];function go(s){section=s;tab=s==='manifests'?'out':s==='directories'?'tariffs':'all';selected.clear();filters={q:'',city:'',owner:'',from:'',to:'',dateType:'accepted',archive:false};render()}
 function render(){document.title=(sections.find(x=>x[0]===section)?.[1]||'МИГ')+' · МИГ';$('nav').innerHTML=sections.map(([id,name])=>btn(name,`go('${id}')`,section===id?'active':'')).join('');$('crumb').textContent='Рабочее пространство / '+sections.find(x=>x[0]===section)[1];if($('today'))$('today').textContent=date(db.day);const views={shipments:renderShips,archive:renderShips,intake:renderIntake,manifests:renderManifests,routes:renderRoutes,clients:renderParties,partners:renderParties,recon:renderRecon,documents:renderDocs,payments:renderPayments,directories:renderDirectories};$('app').innerHTML=views[section]();if(section==='intake')intakeTotals()}
 function filterShips(){return db.shipments.filter(s=>(section==='archive'?s.archive:filters.archive||!s.archive)&&(tab==='all'||s.status===tab)&&(!filters.city||s.city===filters.city)&&(!filters.owner||s.owner===filters.owner)&&(!filters.from||(s[filters.dateType]&&s[filters.dateType]>=filters.from))&&(!filters.to||(s[filters.dateType]&&s[filters.dateType]<=filters.to))&&(!filters.q||[s.awb,s.recipient,s.recipientContact,s.sender,s.address,s.city,s.actual,pn(s.owner)].join(' ').toLowerCase().includes(filters.q.toLowerCase()))).sort((a,b)=>filters.sort==='awb'?a.awb.localeCompare(b.awb):b.accepted.localeCompare(a.accepted))}
 function filterSet(key,value){filters[key]=value;render()}function searchInput(el){const pos=el.selectionStart;filters.q=el.value;render();const x=$('search');x.focus();x.setSelectionRange(pos,pos)}
@@ -175,18 +175,18 @@ render();save();
 // Read-only API adapter. Production records are held in memory, never in demo db.
 const liveBaseRender=render,liveBaseHelp=help;
 let liveMode=false,liveBusy=false,liveEpoch=0,liveUpdated='',liveError='',liveAuthRequired=false,liveTimer=null;
-let liveData={mails:null,partners:null,clients:null,couriers:null,manifests:null,templates:null,carriers:null,cities:null},liveErrors={};
+let liveData={mails:null,partners:null,clients:null,couriers:null,manifests:null,templates:null,carriers:null,cities:null,tariffs:null},liveErrors={};
 let liveFilters={view:'current',q:'',status:'all',partner:'',weight:'',from:'',to:'',dateField:'createdAt',sort:'date',page:1,pageSize:50},liveDirectory='couriers';
-const LIVE_ENDPOINTS={correspondence:'/api/manager/correspondence/bootstrap',couriers:'/api/trpc/manager.couriers?input='+encodeURIComponent(JSON.stringify({json:{}})),directories:'/api/manager/correspondence/directories'};
-const LIVE_NAMES={correspondence:'Данные корреспонденции',mails:'Отправления',partners:'Партнёры',clients:'Клиенты',couriers:'Курьеры',manifests:'Манифесты',directories:'Справочники'};
+const LIVE_ENDPOINTS={correspondence:'/api/manager/correspondence/bootstrap',couriers:'/api/trpc/manager.couriers?input='+encodeURIComponent(JSON.stringify({json:{}})),directories:'/api/manager/correspondence/directories',tariffs:'/api/manager/correspondence/tariff-directories'};
+const LIVE_NAMES={correspondence:'Данные корреспонденции',mails:'Отправления',partners:'Партнёры',clients:'Клиенты',couriers:'Курьеры',manifests:'Манифесты',directories:'Справочники',tariffs:'Тарифы'};
 function liveToken(){try{return localStorage.getItem('managerToken')||''}catch{return ''}}
 function liveOrigin(){return typeof location!=='undefined'&&['https:','http:'].includes(location.protocol)}
-function liveClear(){closeModal();incomingDraft=null;incomingFile=null;incomingBook=null;incomingRows=[];incomingHeaders=[];liveData={mails:null,partners:null,clients:null,couriers:null,manifests:null,templates:null,carriers:null,cities:null};liveErrors={};liveUpdated='';liveError='';}
+function liveClear(){closeModal();incomingDraft=null;incomingFile=null;incomingBook=null;incomingRows=[];incomingHeaders=[];liveData={mails:null,partners:null,clients:null,couriers:null,manifests:null,templates:null,carriers:null,cities:null,tariffs:null};liveErrors={};liveUpdated='';liveError='';}
 function liveArray(payload,key){let data=payload;if(Array.isArray(data)&&data.length===1&&data[0]&&('result' in data[0]||'error' in data[0]))data=data[0];if(data&&typeof data==='object'&&!Array.isArray(data)){if(data.error)throw new Error('API вернул ошибку '+LIVE_NAMES[key]);if(data.result){data=data.result.data;if(data&&typeof data==='object'&&!Array.isArray(data)&&Object.prototype.hasOwnProperty.call(data,'json'))data=data.json;}}
 if(data&&typeof data==='object'&&!Array.isArray(data)){for(const name of [key,'items','rows','data']){if(Array.isArray(data[name])){data=data[name];break}}}
 if(!Array.isArray(data)||data.some(r=>!r||typeof r!=='object'||Array.isArray(r)||!/^\d+$/.test(String(r.id))))throw new Error('Неожиданный формат ответа: '+LIVE_NAMES[key]);if(key==='mails'&&data.some(r=>typeof r.waybillNumber!=='string'))throw new Error('В ответе отправлений отсутствует номер накладной');return data;}
-async function liveFetch(key,token){const path=LIVE_ENDPOINTS[key];if(!path)throw new Error('Неизвестный источник данных');const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const response=await fetch(path,{method:'GET',credentials:'include',cache:'no-store',redirect:'error',headers:{Accept:'application/json',Authorization:'Bearer '+token},signal:controller.signal});if(response.status===401||response.status===403){const e=new Error('Нужен вход в существующий сайт менеджера');e.auth=true;throw e}if(!response.ok)throw new Error(LIVE_NAMES[key]+': HTTP '+response.status);let data;try{data=await response.json()}catch{throw new Error('Сервер вернул не JSON: '+LIVE_NAMES[key])}if(key==='directories'){if(!data||!['clients','partners','carriers','cities'].every(k=>Array.isArray(data[k])))throw new Error('Некорректный ответ справочников');return data}if(key==='correspondence'){if(!data||typeof data!=='object'||!['clients','manifests','shipments','templates'].every(name=>Array.isArray(data[name])))throw new Error('Неожиданный формат данных корреспонденции');return data}return liveArray(data,key)}catch(e){if(e.name==='AbortError')throw new Error('Сервер не ответил за 15 секунд: '+LIVE_NAMES[key]);throw e}finally{clearTimeout(timer)}}
-async function loadLive(){if(!liveMode||liveBusy||directorySaving)return;const token=liveToken();liveError='';liveAuthRequired=false;if(!liveOrigin()){liveClear();liveError='Рабочие данные доступны только на сервере. Откройте https://couriermig.ru/correspondence-test/';render();return}if(!token){liveEpoch++;liveClear();liveAuthRequired=true;render();return}const epoch=++liveEpoch;liveBusy=true;render();const keys=Object.keys(LIVE_ENDPOINTS);const results=await Promise.allSettled(keys.map(key=>liveFetch(key,token)));if(epoch!==liveEpoch||!liveMode)return;if(liveToken()!==token){liveBusy=false;liveClear();liveAuthRequired=true;render();return}liveBusy=false;if(results.some(r=>r.status==='rejected'&&r.reason.auth)){liveClear();liveAuthRequired=true;render();return}keys.forEach((key,i)=>{const r=results[i];if(r.status==='fulfilled'){if(key==='correspondence'){liveData.mails=r.value.shipments;liveData.clients=r.value.clients;liveData.manifests=r.value.manifests;liveData.templates=r.value.templates}else if(key==='directories')Object.assign(liveData,r.value);else liveData[key]=r.value;delete liveErrors[key]}else{if(key==='correspondence'){liveData.mails=liveData.clients=liveData.manifests=liveData.templates=null}else if(key==='directories'){liveData.clients=liveData.partners=liveData.carriers=liveData.cities=null}else liveData[key]=null;liveErrors[key]=r.reason.message||'Не удалось получить данные'}});liveUpdated=new Date().toISOString();render()}
+async function liveFetch(key,token){const path=LIVE_ENDPOINTS[key];if(!path)throw new Error('Неизвестный источник данных');const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const response=await fetch(path,{method:'GET',credentials:'include',cache:'no-store',redirect:'error',headers:{Accept:'application/json',Authorization:'Bearer '+token},signal:controller.signal});if(response.status===401||response.status===403){const e=new Error('Нужен вход в существующий сайт менеджера');e.auth=true;throw e}if(!response.ok)throw new Error(LIVE_NAMES[key]+': HTTP '+response.status);let data;try{data=await response.json()}catch{throw new Error('Сервер вернул не JSON: '+LIVE_NAMES[key])}if(key==='directories'){if(!data||!['clients','partners','carriers','cities'].every(k=>Array.isArray(data[k])))throw new Error('Некорректный ответ справочников');return data}if(key==='correspondence'){if(!data||typeof data!=='object'||!['clients','manifests','shipments','templates'].every(name=>Array.isArray(data[name])))throw new Error('Неожиданный формат данных корреспонденции');return data}if(key==='tariffs'){if(!data||typeof data!=='object'||!['services','clientPlans','partnerPlans'].every(name=>Array.isArray(data[name])))throw new Error('Неожиданный формат тарифов');return data}return liveArray(data,key)}catch(e){if(e.name==='AbortError')throw new Error('Сервер не ответил за 15 секунд: '+LIVE_NAMES[key]);throw e}finally{clearTimeout(timer)}}
+async function loadLive(){if(!liveMode||liveBusy||directorySaving)return;const token=liveToken();liveError='';liveAuthRequired=false;if(!liveOrigin()){liveClear();liveError='Рабочие данные доступны только на сервере. Откройте https://couriermig.ru/correspondence-test/';render();return}if(!token){liveEpoch++;liveClear();liveAuthRequired=true;render();return}const epoch=++liveEpoch;liveBusy=true;render();const keys=Object.keys(LIVE_ENDPOINTS);const results=await Promise.allSettled(keys.map(key=>liveFetch(key,token)));if(epoch!==liveEpoch||!liveMode)return;if(liveToken()!==token){liveBusy=false;liveClear();liveAuthRequired=true;render();return}liveBusy=false;if(results.some(r=>r.status==='rejected'&&r.reason.auth)){liveClear();liveAuthRequired=true;render();return}keys.forEach((key,i)=>{const r=results[i];if(r.status==='fulfilled'){if(key==='correspondence'){liveData.mails=r.value.shipments;liveData.clients=r.value.clients;liveData.manifests=r.value.manifests;liveData.templates=r.value.templates}else if(key==='directories')Object.assign(liveData,r.value);else if(key==='tariffs')liveData.tariffs=r.value;else liveData[key]=r.value;delete liveErrors[key]}else{if(key==='correspondence'){liveData.mails=liveData.clients=liveData.manifests=liveData.templates=null}else if(key==='directories'){liveData.clients=liveData.partners=liveData.carriers=liveData.cities=null}else if(key==='tariffs')liveData.tariffs=null;else liveData[key]=null;liveErrors[key]=r.reason.message||'Не удалось получить данные'}});liveUpdated=new Date().toISOString();render()}
 function useLive(){liveMode=true;section='shipments';selected.clear();closeModal();liveClear();liveBusy=false;render();loadLive()}
 function useDemo(){liveEpoch++;liveBusy=false;liveMode=false;liveClear();closeModal();section='shipments';tab='all';selected.clear();render();toast('Демонстрационный режим — используются только тестовые записи')}
 function liveGo(id){section=id;closeModal();liveFilters.q='';render()}
@@ -321,8 +321,158 @@ async function incomingSubmit(){
 async function incomingCommit(){if(incomingSaving||!incomingDraft)return;incomingSaving=true;const b=document.querySelector('.modalfoot .primary');if(b)b.disabled=true;try{const result=await livePost('/api/manager/correspondence/manifests/import',incomingDraft);closeModal();incomingDraft=null;incomingFile=null;incomingBook=null;incomingRows=[];await loadLive();toast(result.repeated?'Этот манифест уже был сохранён':('Сохранено '+result.total+' отправлений: новых '+result.created+', связанных '+result.linked))}catch(e){error(e.message||'Ошибка загрузки')}finally{incomingSaving=false;if(b)b.disabled=false}}
 function renderLiveManifests(){const data=liveData.manifests;return heading('Манифесты','Входящие загружаются здесь после фактического прибытия груза',btn('Загрузить входящий манифест','incomingOpen()','primary'))+liveLoadState('manifests')+(data===null?'':`<div class="tabs">${btn('Входящие','', 'active')}${btn('Исходящие','toast(\'Подключим следующим этапом\')')}</div>`+table(['Манифест','Дата','Партнёр','Файл','Отправлений'],data.filter(m=>m.direction==='incoming').map(m=>`<tr>${td(esc(m.manifestNumber||'Без номера'))}${td(liveTime(m.manifestDate||m.arrivedAt||m.createdAt))}${td(esc(m.partnerName||'Не указан'))}${td(esc(m.sourceFileName||'—'))}${td(Number(m.shipmentCount)||0)}</tr>`).join('')))}
 function renderLiveCouriers(){return heading('Курьеры','Рабочий справочник · без редактирования и без данных авторизации')+liveLoadState('couriers')+(liveData.couriers===null?'':table(['Курьер','Телефон','Выполненные доставки в полученном списке'],liveData.couriers.map(k=>`<tr>${td(esc(k.name||k.fullName||'Курьер #'+k.id))}${td(esc(k.phone||'—'))}${td(liveData.mails?liveData.mails.filter(s=>s.status==='delivered'&&String(s.courierId)===String(k.id)).length:'—')}</tr>`).join('')))}
+// Correspondence tariffs, stage 1: services + client/partner tariff plans and items.
+const VAT_RATES=[['','Без НДС'],['0','0%'],['5','5%'],['7','7%'],['10','10%'],['20','20%']];
+const PRICING_MODEL_LABELS=[['fixed','Фиксированная'],['per_kg','За килограмм'],['per_kg_over','За кг сверх первого'],['included','Включено в основную услугу']];
+let liveTariffTab='client',tariffPlanContext=null,tariffEditingItem=null,tariffSaving=false;
+function tariffModelLabel(m){return (PRICING_MODEL_LABELS.find(x=>x[0]===m)||[m,'—'])[1]}
+function tariffServiceLabel(code){const s=(liveData.tariffs?.services||[]).find(x=>x.code===code);return s?s.name:code}
+function tariffOwnerLabel(p){return p.ownerType==='client'?(liveData.clients||[]).find(c=>String(c.id)===String(p.ownerId))?.name||'Клиент #'+p.ownerId:livePartner(p.ownerId)}
+function tariffPlanLabel(p){return p.ownerType?(tariffOwnerLabel(p)+' · '+p.name):(livePartner(p.partnerId)+' · '+p.name)}
+function tariffCityName(id){if(id==null||id==='')return 'Любой';const c=(liveData.cities||[]).find(x=>String(x.id)===String(id));return c?c.name:'#'+id}
+function tariffWeightLabel(item){
+  const f=item.weightFromKg!=null&&item.weightFromKg!==''?Number(item.weightFromKg):null;
+  const t=item.weightToKg!=null&&item.weightToKg!==''?Number(item.weightToKg):null;
+  if(f===null&&t===null)return 'Любой';
+  if(f!==null&&t===null)return 'от '+num(f)+' кг';
+  if(f===null&&t!==null)return 'до '+num(t)+' кг';
+  return num(f)+'–'+num(t)+' кг';
+}
+function tariffVatLabel(rate){if(rate==null||rate==='')return 'Без НДС';const n=Number(rate);return (Number.isFinite(n)?n:rate)+'%'}
+function tariffRow(item){
+  return td(esc(tariffServiceLabel(item.serviceCode)))+td(esc(tariffCityName(item.cityFromId)))+td(esc(tariffCityName(item.cityToId)))+td(esc(tariffWeightLabel(item)))+
+    td(esc(tariffModelLabel(item.pricingModel)))+td(item.basePrice==null?'—':money(item.basePrice))+td(item.pricePerKg==null?'—':money(item.pricePerKg))+
+    td(esc(tariffVatLabel(item.vatRate)))+td(String(item.priority))+
+    td(btn('Изменить',`tariffItemForm(${item.id})`,'small')+' '+btn('Удалить',`tariffDeleteItem(${item.id})`,'small danger'));
+}
+function tariffPlanCard(plan,isPartner){
+  const items=plan.items||[];
+  const rows=items.length?items.map(it=>`<tr>${tariffRow(it)}</tr>`).join(''):'';
+  return `<div class="ic-sec"><div class="heading" style="margin-bottom:10px"><div><h3>${esc(isPartner?livePartner(plan.partnerId):tariffOwnerLabel(plan))} · ${esc(plan.name)}</h3>`+
+    `<div class="sub">${esc(plan.currency)}${plan.validFrom?' · с '+liveTime(plan.validFrom):''}${plan.validTo?' · по '+liveTime(plan.validTo):''}${plan.isActive===false?' · отключён':''}</div></div>`+
+    `<div class="actions">${btn('＋ Строка тарифа',`tariffItemForm(null,${plan.id})`,'small')}${btn('Изменить план',`tariffPlanForm(${plan.id})`,'small')}${btn('Удалить план',`tariffDeletePlan(${plan.id})`,'small danger')}</div></div>`+
+    wfTable(['Услуга','Откуда','Куда','Вес','Расчёт','Фикс. цена','Цена за кг','НДС','Приоритет',''],rows,'tariff-'+plan.id)+'</div>';
+}
+function renderLiveTariffs(){
+  const data=liveData.tariffs;
+  const tabs=`<div class="tabs">${[['client','Тарифы клиентов'],['partner','Тарифы партнёров']].map(([k,n])=>btn(n,`liveTariffTab='${k}';render()`,liveTariffTab===k?'active':'')).join('')}</div>`;
+  const isPartner=liveTariffTab==='partner';
+  const add=btn('＋ Новый тарифный план',`tariffPlanForm()`,'primary');
+  const hint=isPartner?'Сколько мы должны внешнему партнёру за выполненную им работу.':'Сколько причитается нам: от клиента или от партнёра-заказчика.';
+  const body=data===null?'':(()=>{const plans=isPartner?data.partnerPlans:data.clientPlans;
+    return plans.length?plans.map(p=>tariffPlanCard(p,isPartner)).join(''):'<div class="empty">Тарифных планов пока нет</div>';})();
+  return heading('Тарифы',hint,add)+liveLoadState('tariffs')+tabs+body;
+}
+function tariffDirectoryForm(){
+  if(!liveData.tariffs)return toast('Обновите данные');
+  return `<div class="formgrid">${field('Название плана *','tpName','')}${field('Валюта','tpCurrency','RUB')}${field('Действует с','tpFrom','','date')}${field('Действует по','tpTo','','date')}<label class="inline"><input type="checkbox" id="tpActive" checked> Активен</label></div>`;
+}
+function tariffPlanForm(id){
+  const isPartner=liveTariffTab==='partner';
+  const plan=id?((isPartner?liveData.tariffs.partnerPlans:liveData.tariffs.clientPlans)||[]).find(p=>String(p.id)===String(id)):null;
+  if(id&&!plan)return toast('Обновите список тарифов');
+  tariffPlanContext={id:id||null,isPartner,version:plan?.version||null};
+  const ownerControl=isPartner
+    ?selectField('Внешний партнёр *','tpPartner',options((liveData.partners||[]).filter(p=>p.isActive!==false&&p.isOwnCompany!==true),plan?plan.partnerId:'','Выберите партнёра'))
+    :`${selectField('Владелец','tpOwnerType',opt('client','Наш клиент',plan?plan.ownerType:'client')+opt('partner','Партнёр-заказчик',plan?plan.ownerType:'client'))}${selectField('Клиент / партнёр *','tpOwnerId',tariffOwnerOptions(plan))}`;
+  modal(id?'Тарифный план':'Новый тарифный план',
+    `<div class="formgrid">${ownerControl}${tariffDirectoryForm()}</div>`,
+    btn('Отмена','closeModal()')+btn(id?'Сохранить':'Создать',`tariffSavePlan()`,'primary'));
+  if($('tpOwnerType'))$('tpOwnerType').onchange=()=>{$('tpOwnerId').innerHTML=tariffOwnerOptions(null)};
+  if(plan){$('tpName').value=plan.name||'';$('tpCurrency').value=plan.currency||'RUB';$('tpFrom').value=String(plan.validFrom||'').slice(0,10);$('tpTo').value=String(plan.validTo||'').slice(0,10);$('tpActive').checked=plan.isActive!==false}
+}
+function tariffOwnerOptions(plan){
+  const type=plan?plan.ownerType:(document.getElementById('tpOwnerType')?.value||'client');
+  const list=type==='partner'
+    ?(liveData.partners||[]).filter(p=>p.isActive!==false&&p.isOwnCompany!==true)
+    :(liveData.clients||[]).filter(c=>c.isActive!==false);
+  return options(list,plan?plan.ownerId:'','Выберите владельца');
+}
+async function tariffSavePlan(){
+  if(tariffSaving)return;tariffSaving=true;
+  try{
+    const ctx=tariffPlanContext,isPartner=ctx.isPartner;
+    const payload=isPartner
+      ?{partnerId:Number($('tpPartner').value),name:$('tpName').value,currency:$('tpCurrency').value,validFrom:$('tpFrom').value,validTo:$('tpTo').value,isActive:$('tpActive').checked}
+      :{ownerType:$('tpOwnerType').value,ownerId:Number($('tpOwnerId').value),name:$('tpName').value,currency:$('tpCurrency').value,validFrom:$('tpFrom').value,validTo:$('tpTo').value,isActive:$('tpActive').checked};
+    if((isPartner&&!payload.partnerId)||(!isPartner&&!payload.ownerId))throw new Error('Выберите владельца тарифного плана');
+    if(ctx.version)payload.version=ctx.version;
+    const base='/api/manager/correspondence/'+(isPartner?'partner-tariff-plans':'client-tariff-plans');
+    await livePost(ctx.id?base+'/'+ctx.id:base,payload);
+    closeModal();await loadLive();toast(ctx.id?'Тарифный план сохранён':'Тарифный план создан');
+  }catch(e){error(e.message||'Не удалось сохранить тарифный план')}
+  finally{tariffSaving=false}
+}
+async function tariffDeletePlan(id){
+  const isPartner=liveTariffTab==='partner';
+  const plan=((isPartner?liveData.tariffs.partnerPlans:liveData.tariffs.clientPlans)||[]).find(p=>String(p.id)===String(id));
+  if(!plan)return;
+  confirmBox('Удалить тарифный план?','План «'+esc(plan.name)+'» и все его строки будут удалены.',async()=>{
+    try{
+      await livePost('/api/manager/correspondence/'+(isPartner?'partner-tariff-plans':'client-tariff-plans')+'/'+id+'/delete',{version:plan.version});
+      await loadLive();toast('Тарифный план удалён');
+    }catch(e){toast(e.message||'Не удалось удалить план')}
+  });
+}
+function tariffItemForm(itemId,planId){
+  const plan=(liveData.tariffs[liveTariffTab==='partner'?'partnerPlans':'clientPlans']||[]).find(p=>String(p.id)===String(planId));
+  if(!plan)return toast('Обновите список тарифов');
+  const item=itemId?(plan.items||[]).find(i=>String(i.id)===String(itemId)):null;
+  if(itemId&&!item)return toast('Обновите список тарифов');
+  tariffPlanContext={id:planId,isPartner:liveTariffTab==='partner',version:null};
+  tariffEditingItem={id:itemId||null,version:item?.version||null};
+  const serviceList=liveData.tariffs.services||[];
+  const cityList=(liveData.cities||[]).filter(c=>c.isActive!==false);
+  const service=item?item.serviceCode:'delivery';
+  const cityFrom=item?item.cityFromId:'';
+  const cityTo=item?item.cityToId:'';
+  const model=item?item.pricingModel:'fixed';
+  const vat=item&&item.vatRate!=null?String(Number(item.vatRate)):(item?'':'');
+  const body=`<div class="formgrid">`+
+    selectField('Услуга *','tiService',options(serviceList.map(s=>({id:s.code,name:s.name})),service))+
+    selectField('Откуда',  'tiCityFrom',options(cityList,cityFrom,'Любой'))+
+    selectField('Куда',    'tiCityTo',  options(cityList,cityTo,'Любой'))+
+    field('Вес от, кг','tiWeightFrom',item&&item.weightFromKg!=null?item.weightFromKg:'','number')+
+    field('Вес до, кг','tiWeightTo',item&&item.weightToKg!=null?item.weightToKg:'','number')+
+    selectField('Тип расчёта *','tiModel',PRICING_MODEL_LABELS.map(([v,n])=>opt(v,n,model)))+
+    field('Фиксированная цена','tiBase',item&&item.basePrice!=null?item.basePrice:'','number')+
+    field('Цена за кг','tiPerKg',item&&item.pricePerKg!=null?item.pricePerKg:'','number')+
+    selectField('НДС','tiVat',VAT_RATES.map(([v,n])=>opt(v,n,vat)))+
+    field('Приоритет','tiPriority',item&&item.priority!=null?item.priority:100,'number')+
+    field('Описание','tiDescription',item?.description||'','text','span3')+
+    `<label class="inline"><input type="checkbox" id="tiActive" ${!item||item.isActive!==false?'checked':''}> Активна</label></div>`;
+  modal(item?'Строка тарифа':'Новая строка тарифа',body,btn('Отмена','closeModal()')+btn(item?'Сохранить':'Добавить',`tariffSaveItem()`,'primary'),true);
+}
+async function tariffSaveItem(){
+  if(tariffSaving)return;tariffSaving=true;
+  try{
+    const ctx=tariffPlanContext,item=tariffEditingItem;
+    const payload={serviceCode:$('tiService').value,cityFromId:$('tiCityFrom').value,cityToId:$('tiCityTo').value,
+      weightFromKg:$('tiWeightFrom').value,weightToKg:$('tiWeightTo').value,pricingModel:$('tiModel').value,
+      basePrice:$('tiBase').value,pricePerKg:$('tiPerKg').value,vatRate:$('tiVat').value,priority:Number($('tiPriority').value||100),
+      description:$('tiDescription').value,isActive:$('tiActive').checked};
+    if(item.version)payload.version=item.version;
+    const base='/api/manager/correspondence/'+(ctx.isPartner?'partner-tariff-plans':'client-tariff-plans')+'/'+ctx.id+'/items';
+    await livePost(item.id?base+'/'+item.id:base,payload);
+    closeModal();await loadLive();toast(item.id?'Строка тарифа сохранена':'Строка тарифа добавлена');
+  }catch(e){error(e.message||'Не удалось сохранить строку тарифа')}
+  finally{tariffSaving=false}
+}
+async function tariffDeleteItem(itemId){
+  const isPartner=liveTariffTab==='partner';
+  const plans=(liveData.tariffs[isPartner?'partnerPlans':'clientPlans'])||[];
+  let ownerPlan=null,item=null;
+  for(const p of plans){const found=(p.items||[]).find(i=>String(i.id)===String(itemId));if(found){ownerPlan=p;item=found;break}}
+  if(!ownerPlan||!item)return toast('Обновите список тарифов');
+  confirmBox('Удалить строку тарифа?',esc(tariffServiceLabel(item.serviceCode))+' · '+esc(tariffCityName(item.cityFromId))+' → '+esc(tariffCityName(item.cityToId)),async()=>{
+    try{
+      await livePost('/api/manager/correspondence/'+(isPartner?'partner-tariff-plans':'client-tariff-plans')+'/'+ownerPlan.id+'/items/'+itemId+'/delete',{version:item.version});
+      await loadLive();toast('Строка тарифа удалена');
+    }catch(e){toast(e.message||'Не удалось удалить строку')}
+  });
+}
 function liveUnconnected(){const names={intake:'Приёмка',manifests:'Манифесты',routes:'Листы развозов',recon:'Сверки',documents:'Документы',payments:'Оплаты',archive:'Архив'};const detail=section==='archive'?'В подключённом API ещё нет признака финансового архива. Все рабочие отправления доступны в общем списке.':'Этот раздел пока работает только на тестовых данных. Серверное сохранение, новые расчёты и документы подключим отдельно.';return heading(names[section]||'Раздел','Подключение рабочих функций — следующий этап')+`<div class="note">${detail}</div><div class="actions">${btn('К рабочим отправлениям',"liveGo('shipments')",'primary')}${btn('Открыть тестовый макет','useDemo()')}</div>`}
-render=function(){if(!liveMode){liveBaseRender();const el=document.querySelector('.account');if(el)el.innerHTML='<span class="avatar">АС</span>Тестовое рабочее место<strong>Анна Соколова · демо</strong>';const badge=document.querySelector('.brand small');if(badge)badge.textContent='ДЕМО';const context=document.querySelector('.contextinfo');if(context)context.innerHTML=btn('Как пользоваться','help()','small')+btn('Сбросить демо','resetDemo()','small');$('storageNote').textContent='Тестовые записи · сохраняются только в браузере';$('app').insertAdjacentHTML('afterbegin',`<div class="selection" style="margin-bottom:18px"><span>Демонстрационный режим · только тестовые записи</span><span class="right"></span>${btn('Загрузить рабочие данные','useLive()','primary small')}</div>`);return}liveHeader();let content=liveAccessView();if(!content){if(section==='shipments')content=renderLiveMails();else if(section==='clients'||section==='partners')content=renderLiveParties(section);else if(section==='manifests')content=renderLiveManifests();else if(section==='intake')content=renderWorkflowIntake();else if(section==='directories')content=renderLiveCouriers();else content=liveUnconnected()}const issues=Object.entries(liveErrors).map(([key,msg])=>`<div class="sub">${esc(LIVE_NAMES[key])}: ${esc(msg)}</div>`).join('');$('app').innerHTML=liveBanner()+(issues?'<div class="note warn">Не все источники удалось загрузить.'+issues+'</div>':'')+content};
+render=function(){if(!liveMode){liveBaseRender();const el=document.querySelector('.account');if(el)el.innerHTML='<span class="avatar">АС</span>Тестовое рабочее место<strong>Анна Соколова · демо</strong>';const badge=document.querySelector('.brand small');if(badge)badge.textContent='ДЕМО';const context=document.querySelector('.contextinfo');if(context)context.innerHTML=btn('Как пользоваться','help()','small')+btn('Сбросить демо','resetDemo()','small');$('storageNote').textContent='Тестовые записи · сохраняются только в браузере';$('app').insertAdjacentHTML('afterbegin',`<div class="selection" style="margin-bottom:18px"><span>Демонстрационный режим · только тестовые записи</span><span class="right"></span>${btn('Загрузить рабочие данные','useLive()','primary small')}</div>`);return}liveHeader();let content=liveAccessView();if(!content){if(section==='shipments')content=renderLiveMails();else if(section==='clients'||section==='partners')content=renderLiveParties(section);else if(section==='manifests')content=renderLiveManifests();else if(section==='intake')content=renderWorkflowIntake();else if(section==='directories')content=renderLiveCouriers();else if(section==='tariffs')content=renderLiveTariffs();else content=liveUnconnected()}const issues=Object.entries(liveErrors).map(([key,msg])=>`<div class="sub">${esc(LIVE_NAMES[key])}: ${esc(msg)}</div>`).join('');$('app').innerHTML=liveBanner()+(issues?'<div class="note warn">Не все источники удалось загрузить.'+issues+'</div>':'')+content};
 help=function(){if(!liveMode)return liveBaseHelp();modal('Рабочие данные',`<p>Данные получаются через существующий API под вашей учётной записью менеджера. Доступны просмотр отправлений, поиск, фильтры, создание и редактирование клиентов, партнёров, перевозчиков и городов, история их изменений, загрузка входящих манифестов и выгрузка Excel.</p><p>Обновление выполняется кнопкой и раз в минуту, пока вкладка открыта. При выходе из учётной записи рабочие данные очищаются из этого окна.</p><p>Входящие манифесты и новые клиенты сохраняются на сервере после нажатия кнопки подтверждения. Рабочие сведения не копируются в тестовую базу браузера.</p><p>Для проверки приёмки, расчётов и документов переключитесь в «Тестовый макет». Его данные независимы.</p>`)};
 function exportLiveMails(){if(!liveData.mails)return;const rows=liveRows();xlsx('Рабочие-отправления-'+liveDay(new Date().toISOString()),[['Накладная','Дата внесения','Получатель','Адрес','Телефон','Партнёр','Вес, кг','Статус','Дата доставки','Фактически получил','Доставивший курьер'],...rows.map(s=>[s.waybillNumber,liveTime(s.createdAt,true),s.recipientName||'',s.deliveryAddress||'',s.recipientPhone||'',s.partnerId==null?'':livePartner(s.partnerId),liveWeight(s)??'',liveStatus(s),s.deliveredAt?liveTime(s.deliveredAt,true):'',s.recipientSignature||'',s.status==='delivered'?liveCourier(s):''])])}
 // Correspondence directories stage 2a. Real records never enter demo/localStorage.

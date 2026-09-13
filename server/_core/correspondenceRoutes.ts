@@ -2,6 +2,7 @@ import { registerCorrespondenceCamera } from './correspondenceCamera';
 import { registerCorrespondenceWorkflow, workflowShipments, workflowManifests, calculateBillableWeight } from './correspondenceWorkflow';
 import { guardLegacyWaybills } from './correspondenceWaybills';
 import { registerCorrespondenceDirectories } from './correspondenceDirectories';
+import { registerCorrespondenceTariffs } from './correspondenceTariffs';
 import type { Express, Request, Response } from "express";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
@@ -17,6 +18,7 @@ function rows(result: any) {
 
 export function registerCorrespondenceRoutes(app: Express) {
   registerCorrespondenceDirectories(app);
+  registerCorrespondenceTariffs(app);
   registerCorrespondenceWorkflow(app);
   registerCorrespondenceCamera(app);
   // managerApiAuthGate verifies the bearer token before this module is registered.
