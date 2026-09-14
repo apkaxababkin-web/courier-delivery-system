@@ -328,8 +328,22 @@ export interface Partner {
   phone?: string | null;
   comment?: string | null;
   isActive: boolean;
+  /** System flag: our own organisation, never an external counterparty. */
+  isOwnCompany?: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Requester ("Кто заказал вызов") — a partner or a correspondence client.
+ * Read-only union of the two directories; independent from sender/recipient.
+ */
+export interface Requester {
+  type: 'partner' | 'correspondenceClient';
+  id: number;
+  name: string;
+  contactPerson?: string | null;
+  phone?: string | null;
 }
 
 export interface TransportCompany {
@@ -452,6 +466,15 @@ export async function getHemotestReconciliation(): Promise<HemotestReconciliatio
 
 export async function getPartners(): Promise<Partner[]> {
   return await restJson<Partner[]>('/api/manager/partners');
+}
+
+/**
+ * Requester directory for "Кто заказал вызов": active external partners
+ * (own organisation excluded server-side) + active correspondence clients.
+ */
+export async function getRequesters(): Promise<Requester[]> {
+  const data = await restJson<{ items?: Requester[] }>('/api/manager/requesters');
+  return Array.isArray(data?.items) ? data.items : [];
 }
 
 export async function createPartner(partner: Omit<Partner, 'id' | 'createdAt' | 'updatedAt'>): Promise<Partner> {
@@ -835,6 +858,10 @@ export interface Request {
   senderPhone?: string;
   items?: string;
   callReason?: string;
+  /** Who ordered the courier call; null for legacy rows. */
+  requesterType?: 'partner' | 'correspondenceClient' | null;
+  requesterId?: number | null;
+  requesterNameSnapshot?: string | null;
   tcName?: string;
   tcAddress?: string;
   trackingNumber?: string;

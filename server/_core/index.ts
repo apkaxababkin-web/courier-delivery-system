@@ -18,6 +18,7 @@ import { managerApiAuthGate } from "./managerSecurity";
 import { toSafeCourier } from "./courierPublic";
 import { broadcastLive } from "./liveEvents";
 import { createContext } from "./context";
+import { resolveRequester, hasRequesterInput, RequesterInputError } from "./requester";
 import { mails, requests, tasks, taskStatusHistory } from "../../drizzle/schema";
 import * as db from "../db";
 
@@ -446,6 +447,21 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
         updateData.billingCheckedByManagerId = null;
       }
 
+      // Requester ("Кто заказал вызов"): resolved server-side with a name
+      // snapshot. An explicit null clears it; an absent key leaves it untouched.
+      if (hasRequesterInput(input)) {
+        const requester = await resolveRequester(input.requesterType, input.requesterId);
+        if (requester) {
+          updateData.requesterType = requester.requesterType;
+          updateData.requesterId = requester.requesterId;
+          updateData.requesterNameSnapshot = requester.requesterNameSnapshot;
+        } else {
+          updateData.requesterType = null;
+          updateData.requesterId = null;
+          updateData.requesterNameSnapshot = null;
+        }
+      }
+
       if (input.requestType) updateData.requestType = input.requestType;
       if (input.packageType) updateData.packageType = input.packageType;
       if (input.paymentMethod) updateData.paymentMethod = input.paymentMethod;
@@ -576,6 +592,11 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
 
       sendTrpcResponse(res, isBatch, { success: true, request });
     } catch (error) {
+      if (error instanceof RequesterInputError) {
+        console.warn("[requests.update] requester rejected", error.message);
+        res.status(400).json({ error: { message: error.message } });
+        return;
+      }
       console.error("[requests.update] failed", error);
       const message = error instanceof Error ? error.message : "Failed to update request";
       res.status(500).json({ error: { message } });

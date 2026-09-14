@@ -44,6 +44,13 @@ export interface TaskFormData {
   paymentAmount?: number;
   items?: string;
   callReason?: string;
+  /**
+   * Who ordered the courier call ("Кто заказал вызов"). Independent from
+   * sender/recipient; null for legacy requests.
+   */
+  requesterType?: 'partner' | 'correspondenceClient' | null;
+  requesterId?: number | null;
+  requesterNameSnapshot?: string | null;
   tcName?: string;
   tcAddress?: string;
   trackingNumber?: string;

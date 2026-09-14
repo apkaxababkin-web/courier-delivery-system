@@ -6,11 +6,11 @@ import { getLocalDateKey } from '../../../../lib/local-time';
 import {
   getClientPoints,
   getClientRegularClients,
-  getPartners,
+  getRequesters,
   getTransportCompanies,
   type ClientPoint,
   type ClientRegularClient,
-  type Partner,
+  type Requester,
   type TransportCompany,
 } from '../../../../lib/api';
 import type { TaskFormData, Client, NutsBox } from '../../model/types';
@@ -197,7 +197,7 @@ export function CreateTaskModal({
   const [formData, setFormData] = useState<LocalFormData>(makeInitialFormData);
   const [pickupClientPoints, setPickupClientPoints] = useState<ClientPoint[]>([]);
   const [transportCompanies, setTransportCompanies] = useState<TransportCompany[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [requesters, setRequesters] = useState<Requester[]>([]);
   const [nutsOwnerClient, setNutsOwnerClient] = useState<Client | null>(null);
   const [nutsOwnerClientId, setNutsOwnerClientId] = useState<number | undefined>(() => {
     if (typeof window === 'undefined') return undefined;
@@ -247,41 +247,21 @@ export function CreateTaskModal({
     });
   }, [clients]);
 
-  const sortedPartners = useMemo(() => {
-    const getUsageScore = (partner: Partner) => {
-      const record = partner as Partner & Record<string, unknown>;
-      const numericScore = Number(
-        record.usageCount
-        ?? record.requestsCount
-        ?? record.ordersCount
-        ?? record.callsCount
-        ?? 0
-      );
-      return Number.isFinite(numericScore) ? numericScore : 0;
-    };
+  // Requesters for courier call: partners first, then correspondence clients,
+  // alphabetically inside each group.
+  const sortedRequesters = useMemo(() => {
+    const groupOrder: Record<Requester['type'], number> = { partner: 0, correspondenceClient: 1 };
 
-    const getLastUsedTime = (partner: Partner) => {
-      const record = partner as Partner & Record<string, unknown>;
-      const value = typeof record.lastUsedAt === 'string'
-        ? record.lastUsedAt
-        : '';
-      const timestamp = value ? Date.parse(value) : 0;
-      return Number.isFinite(timestamp) ? timestamp : 0;
-    };
-
-    return [...partners].sort((a, b) => {
-      const scoreDelta = getUsageScore(b) - getUsageScore(a);
-      if (scoreDelta !== 0) return scoreDelta;
-
-      const lastUsedDelta = getLastUsedTime(b) - getLastUsedTime(a);
-      if (lastUsedDelta !== 0) return lastUsedDelta;
+    return [...requesters].sort((a, b) => {
+      const groupDelta = groupOrder[a.type] - groupOrder[b.type];
+      if (groupDelta !== 0) return groupDelta;
 
       const nameDelta = a.name.localeCompare(b.name, 'ru');
       if (nameDelta !== 0) return nameDelta;
 
       return a.id - b.id;
     });
-  }, [partners]);
+  }, [requesters]);
 
   const routePartyOptions = useMemo<RoutePartyOption[]>(() => {
     const client = formData.clientId
@@ -362,7 +342,9 @@ export function CreateTaskModal({
     )
       ? (
         requestType === 'courier_call'
-          ? (formData.senderCompany?.trim() || formData.senderName?.trim() || '')
+          // Customer name for the courier call. The requester is a separate
+          // participant now, so the title no longer borrows the sender.
+          ? (formData.requesterNameSnapshot?.trim() || '')
           : (formData.senderName?.trim() || '')
       )
       : (formData.packageDescription || '');
@@ -476,31 +458,29 @@ export function CreateTaskModal({
     };
   }, [isOpen]);
 
+  // Requester directory for "Кто заказал вызов": external partners (own
+  // organisation excluded server-side) + correspondence clients.
   useEffect(() => {
     if (!isOpen) {
-      setPartners([]);
+      setRequesters([]);
       return;
     }
 
     let cancelled = false;
 
-    async function loadPartnersForCourierCall() {
+    async function loadRequestersForCourierCall() {
       try {
-        const items = await getPartners();
+        const items = await getRequesters();
 
-        if (!cancelled) {
-          setPartners((items || []).filter((item) => item.isActive !== false));
-        }
+        if (!cancelled) setRequesters(items || []);
       } catch (error) {
-        console.error('Failed to load partners:', error);
+        console.error('Failed to load requesters:', error);
 
-        if (!cancelled) {
-          setPartners([]);
-        }
+        if (!cancelled) setRequesters([]);
       }
     }
 
-    void loadPartnersForCourierCall();
+    void loadRequestersForCourierCall();
 
     return () => {
       cancelled = true;
@@ -656,6 +636,13 @@ export function CreateTaskModal({
       specialInstructions: '',
       items: '',
       callReason: '',
+
+      // "Кто заказал вызов" is courier-call specific and must not leak into
+      // other scenarios.
+      requesterType: null,
+      requesterId: null,
+      requesterNameSnapshot: null,
+
       description: '',
       estimatedMinutes: undefined,
 
@@ -883,23 +870,32 @@ export function CreateTaskModal({
     }));
   };
 
-  const selectCourierCallPartner = (partnerId: number | undefined) => {
-    const partner = partners.find((item) => item.id === partnerId);
+  // "Кто заказал вызов" is independent from "Забрать у" and "Куда направляется":
+  // selecting a requester must never touch sender*/recipient* fields.
+  const selectCourierCallRequester = (requesterKey: string | undefined) => {
+    const [rawType, rawId] = String(requesterKey || '').split(':');
+    const type = rawType === 'partner' || rawType === 'correspondenceClient' ? rawType : null;
+    const id = Number(rawId);
+    const requester = type && Number.isFinite(id)
+      ? requesters.find((item) => item.type === type && item.id === id)
+      : undefined;
 
-    if (!partner) {
+    if (!requester) {
       setFormData((prev) => ({
         ...prev,
-        senderCompany: '',
+        requesterType: null,
+        requesterId: null,
+        requesterNameSnapshot: null,
       }));
       return;
     }
 
     setFormData((prev) => ({
       ...prev,
-      clientId: undefined,
-      senderName: '',
-      senderCompany: partner.name,
-      senderPhone: partner.phone || '',
+      requesterType: requester.type,
+      requesterId: requester.id,
+      // Display-only hint; the authoritative snapshot is written server-side.
+      requesterNameSnapshot: requester.name,
     }));
   };
 
@@ -1113,6 +1109,9 @@ export function CreateTaskModal({
       paymentAmount: requestType === 'nuts' ? nutsTotal : payload.paymentAmount,
       requestFiles,
       clientId: payload.clientId,
+      requesterType: payload.requesterType ?? null,
+      requesterId: payload.requesterId ?? null,
+      requesterNameSnapshot: payload.requesterNameSnapshot ?? null,
     });
     if (mode === 'create') {
       setFormData(makeInitialFormData());
@@ -1122,10 +1121,10 @@ export function CreateTaskModal({
     company.name === formData.tcName && company.address === formData.tcAddress
   ))?.id ?? null;
 
-  const selectedCourierCallPartnerId = partners.find((partner) => (
-    partner.name === formData.senderCompany
-    || partner.name === formData.senderName
-  ))?.id;
+  // Composite key partner:<id> / correspondenceClient:<id>; resolved by id, never by name.
+  const selectedCourierCallRequesterKey = formData.requesterType && formData.requesterId != null
+    ? `${formData.requesterType}:${formData.requesterId}`
+    : '';
 
   const routeTitle = requestType === 'delivery'
     ? 'Маршрут доставки'
@@ -1152,8 +1151,10 @@ export function CreateTaskModal({
         : 'Суть заявки';
 
   const footerClient = selectedBillingClient?.name
-    || formData.senderCompany
-    || formData.senderName
+    || (requestType === 'courier_call'
+      // The customer of a courier call is the requester, not the pickup org.
+      ? formData.requesterNameSnapshot
+      : formData.senderCompany || formData.senderName)
     || '';
 
   return (
@@ -1771,11 +1772,11 @@ export function CreateTaskModal({
 
               <div className="flex flex-col gap-[13px]">
                 <V11Section title="Клиент / заказчик">
-                  <PartnerSelect
+                  <RequesterSelect
                     label="Кто заказал вызов"
-                    value={selectedCourierCallPartnerId}
-                    partners={sortedPartners}
-                    onChange={selectCourierCallPartner}
+                    value={selectedCourierCallRequesterKey}
+                    requesters={sortedRequesters}
+                    onChange={selectCourierCallRequester}
                   />
                 </V11Section>
 
@@ -2561,17 +2562,28 @@ function RoutePartyField({
 }
 
 
-function PartnerSelect({
+const REQUESTER_GROUP_LABELS: Record<Requester['type'], string> = {
+  partner: 'Партнёр',
+  correspondenceClient: 'Клиент корреспонденции',
+};
+
+/**
+ * "Кто заказал вызов". Searchable union of external partners and
+ * correspondence clients; options carry a composite key `type:id` so ids from
+ * the two directories never collide. Selecting here never touches sender or
+ * recipient fields.
+ */
+function RequesterSelect({
   label,
   value,
-  partners,
+  requesters,
   onChange,
   className = '',
 }: {
   label: string;
-  value?: number;
-  partners: Partner[];
-  onChange: (value: number | undefined) => void;
+  value?: string;
+  requesters: Requester[];
+  onChange: (value: string | undefined) => void;
   className?: string;
 }) {
   return (
@@ -2581,23 +2593,22 @@ function PartnerSelect({
       </label>
 
       <AppSelect
-        value={value ?? null}
+        value={value || null}
         searchable
-        placeholder={partners.length === 0 ? 'Нет активных контрагентов' : 'Выберите контрагента'}
+        placeholder={requesters.length === 0 ? 'Нет доступных заказчиков' : 'Выберите заказчика'}
         options={[
           { value: null, label: 'Не выбрано' },
-          ...partners.map((partner) => ({
-            value: partner.id,
-            label: partner.name,
+          ...requesters.map((requester) => ({
+            value: `${requester.type}:${requester.id}`,
+            label: `${REQUESTER_GROUP_LABELS[requester.type]} · ${requester.name}`,
             description: [
-              partner.contactPerson,
-              partner.phone,
-              partner.email,
+              requester.contactPerson,
+              requester.phone,
             ].filter(Boolean).join(' • '),
           })),
         ]}
         onChange={(nextValue) => onChange(
-          typeof nextValue === 'number' ? nextValue : undefined,
+          typeof nextValue === 'string' && nextValue ? nextValue : undefined,
         )}
       />
     </div>

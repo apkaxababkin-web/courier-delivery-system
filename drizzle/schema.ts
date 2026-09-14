@@ -618,6 +618,20 @@ export const requests = pgTable("requests", {
   // Courier Call-specific fields
   /** Reason for courier call */
   callReason: text("callReason"),
+  /**
+   * Who ordered the courier call — a partner or a correspondence client.
+   * Independent from sender ("Забрать у") and recipient ("Куда направляется").
+   * 'partner' | 'correspondenceClient'; null for legacy rows.
+   */
+  requesterType: varchar("requesterType", { length: 20 }),
+  /**
+   * Polymorphic reference: partners.id for 'partner',
+   * correspondenceClients.id for 'correspondenceClient'. No FK by design;
+   * validated server-side.
+   */
+  requesterId: integer("requesterId"),
+  /** Requester organisation name captured at save time (server-side snapshot). */
+  requesterNameSnapshot: varchar("requesterNameSnapshot", { length: 255 }),
 
   // Pickup from TC-specific fields
   /** TC (Transport Company) name */

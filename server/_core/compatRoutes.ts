@@ -38,6 +38,7 @@ import * as db from "../db";
 import { verifyCourierToken } from "../routers";
 import { toSafeCourier } from "./courierPublic";
 import { getCourierAccess, saveCourierAccess } from "./courierAccess";
+import { resolveRequester, RequesterInputError } from "./requester";
 import { buildNewRequestPush, buildAssignedRequestPush } from "./requestPushPresentation";
 
 const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
@@ -584,6 +585,11 @@ async function courierSnapshot(courierId: number, dateKey = localDateKeyInIrkuts
 }
 
 function sendError(res: Response, error: unknown, fallback: string) {
+  if (error instanceof RequesterInputError) {
+    console.warn(fallback, error.message);
+    res.status(400).json({ error: { message: error.message } });
+    return;
+  }
   console.error(fallback, error);
   const message = error instanceof Error ? error.message : fallback;
   res.status(500).json({ error: { message } });
@@ -2491,6 +2497,53 @@ export function registerCompatRoutes(app: Express) {
   });
 
 
+  // ─── Requester directory (courier call) ────────────────────────────────────
+  // Who ordered the call. Read-only union of the two existing directories:
+  // external partners + correspondence clients. Our own organisation is never
+  // an external customer. Nothing is copied or synced.
+  app.get("/api/manager/requesters", async (_req, res) => {
+    try {
+      const conn = await db.getDb();
+      if (!conn) throw new Error("Database not available");
+
+      const [partnerRows, clientResult] = await Promise.all([
+        conn
+          .select({
+            id: partners.id,
+            name: partners.name,
+            contactPerson: partners.contactPerson,
+            phone: partners.phone,
+          })
+          .from(partners)
+          .where(sql`${partners.isActive} = true AND ${partners.isOwnCompany} IS NOT TRUE`)
+          .orderBy(partners.name, partners.id),
+        conn.execute(sql`SELECT "id","name","contactPerson","phone" FROM "correspondenceClients"
+          WHERE "isActive" = true ORDER BY "name","id"`),
+      ]);
+
+      const items = [
+        ...partnerRows.map((row: any) => ({
+          type: "partner",
+          id: Number(row.id),
+          name: row.name,
+          contactPerson: row.contactPerson ?? null,
+          phone: row.phone ?? null,
+        })),
+        ...sqlRows(clientResult).map((row: any) => ({
+          type: "correspondenceClient",
+          id: Number(row.id),
+          name: row.name,
+          contactPerson: row.contactPerson ?? null,
+          phone: row.phone ?? null,
+        })),
+      ];
+
+      res.json({ items });
+    } catch (error) {
+      sendError(res, error, "Failed to load requesters");
+    }
+  });
+
   // ─── Partners ──────────────────────────────────────────────────────────────
 
   app.get("/api/manager/partners", async (_req, res) => {
@@ -2819,6 +2872,10 @@ export function registerCompatRoutes(app: Express) {
       const isHistoricalCompleted = input.isHistoricalCompleted === true
         || input.isHistoricalCompleted === "true";
 
+      // Requester ("Кто заказал вызов") — validated server-side, name snapshot
+      // is taken from the database and never trusted from the client.
+      const requester = await resolveRequester(input.requesterType, input.requesterId);
+
       let scheduledAt: Date | null = null;
 
       if (rawScheduledAt) {
@@ -2877,6 +2934,12 @@ export function registerCompatRoutes(app: Express) {
         scheduledAt,
         completedAt,
       };
+
+      if (requester) {
+        payload.requesterType = requester.requesterType;
+        payload.requesterId = requester.requesterId;
+        payload.requesterNameSnapshot = requester.requesterNameSnapshot;
+      }
       const inserted = await conn.insert(requests).values(payload).returning();
       const request = inserted[0] as DeliveryRequest;
 
