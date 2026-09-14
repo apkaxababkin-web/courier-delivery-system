@@ -480,7 +480,7 @@ const directoryNames={clients:'Клиенты',partners:'Партнёры',carri
 const directoryLegal=[['legalName','Полное юридическое название'],['inn','ИНН'],['kpp','КПП'],['ogrn','ОГРН'],['legalAddress','Юридический адрес'],['postalAddress','Почтовый адрес'],['bankName','Банк'],['bik','БИК'],['bankAccount','Расчётный счёт'],['correspondentAccount','Корреспондентский счёт'],['contractNumber','Номер договора'],['contractDate','Дата договора','date'],['signerName','ФИО подписанта'],['signerPosition','Должность подписанта'],['signerAuthority','Основание полномочий']];
 let directoryDraft=null,directorySaving=false,directoryFilter='active';
 function directoryValue(p,k){return k==='contractDate'?String(p[k]||'').slice(0,10):p[k]??''}
-function directoryTabs(){return `<div class="tabs">${[['couriers','Курьеры'],['carriers','Перевозчики'],['cities','Города']].map(([k,n])=>btn(n,`liveDirectory='${k}';liveFilters.q='';render()`,liveDirectory===k?'active':'')).join('')}</div>`}
+function directoryTabs(){return `<div class="tabs">${[['couriers','Курьеры'],['carriers','Перевозчики'],['cities','Города']].map(([k,n])=>btn(n,`liveDirectory='${k}';liveFilters.q='';render()`,liveDirectory===k?'active':'')).join('')}${btn('Адресная книга',"abOpen()",liveDirectory==='addressBook'?'active':'')}</div>`}
 function renderDirectory(kind){
  const data=liveData[kind],city=kind==='cities';
  const rows=(data||[]).filter(p=>(directoryFilter==='all'||(directoryFilter==='active'?p.isActive!==false:p.isActive===false))&&[p.name,p.region,p.contactPerson,p.phone,p.email,p.inn,p.profile?.inn,...(p.aliases||[])].join(' ').toLowerCase().includes(liveFilters.q.toLowerCase()));
@@ -546,7 +546,191 @@ renderLiveParties=kind=>renderDirectory(kind);
 liveClientForm=()=>directoryForm('clients');
 livePartyDetail=(kind,id)=>directoryDetail(kind,id);
 const directoryCouriers=renderLiveCouriers;
-renderLiveCouriers=()=>liveDirectory==='couriers'?directoryTabs()+directoryCouriers():renderDirectory(liveDirectory);
+renderLiveCouriers=()=>liveDirectory==='couriers'?directoryTabs()+directoryCouriers():liveDirectory==='addressBook'?renderAddressBook():renderDirectory(liveDirectory);
+
+// ─── Address book (shared organisation / address / contact directory) ────────
+// One global directory for both sites. Live-only: it is never written to the
+// browser demo store. Editing here never changes existing requests or shipments.
+let abLoadedAt=null,abBusy=false,abItems=[],abTotal=0,abOffset=0,abQuery='',abFilter='active',abDetailId=null,abSave=false,abModal=null;
+const AB_PER_PAGE=100;
+function abArg(v){return String(v).replace(/[^\w.:-]/g,'')}
+function abEmptyLabel(text){return `<div class="empty">${text}</div>`}
+function abState(){if(liveErrors.addressBook)return `<div class="note warn">${esc(liveErrors.addressBook)}. ${btn('Повторить загрузку','abLoad()','small')}</div>`;if(abLoadedAt===null)return abEmptyLabel(abBusy?'Загружаем справочник…':'Справочник не загружен');return ''}
+async function abRoute(res){
+  if(res.status===401||res.status===403){liveEpoch++;liveBusy=false;liveClear();liveAuthRequired=true;render();throw new Error('Сеанс завершён. Войдите в сайт менеджера')}
+  let data=null;try{data=await res.json()}catch{throw new Error('Сервер вернул не JSON')}
+  if(!res.ok)throw new Error(data?.error?.message||'Ошибка сервера: HTTP '+res.status);
+  return data;
+}
+async function abLoad(){
+  if(!liveMode)return;
+  const token=liveToken();
+  if(!token){liveEpoch++;liveBusy=false;liveClear();liveAuthRequired=true;render();return}
+  const epoch=liveEpoch,offset=Number(abOffset)||0;abBusy=true;liveErrors.addressBook='';
+  if($('app'))render();
+  const params=new URLSearchParams({q:abQuery,limit:String(AB_PER_PAGE),offset:String(offset)});
+  if(abFilter==='all')params.set('includeInactive','true');
+  try{
+    const response=await fetch('/api/manager/address-book/search?'+params.toString(),{credentials:'include',cache:'no-store',redirect:'error',headers:{Accept:'application/json',Authorization:'Bearer '+token}});
+    const data=await abRoute(response);
+    if(epoch!==liveEpoch||!liveMode||liveToken()!==token)return;
+    if(!data||!Array.isArray(data.items))throw new Error('Неожиданный формат ответа справочника');
+    const page=data.items;
+    abItems=offset>0?abItems.concat(page.filter(o=>!abItems.some(x=>Number(x.id)===Number(o.id)))):page;
+    abOffset=offset;abTotal=Number(data.total)||0;
+    abLoadedAt=new Date().toISOString();abBusy=false;
+    delete liveErrors.addressBook;
+  }catch(error){
+    if(epoch!==liveEpoch||!liveMode)return;
+    abBusy=false;liveErrors.addressBook=error.message||'Не удалось загрузить справочник';
+  }
+  render();
+}
+function abOpen(){
+  liveDirectory='addressBook';abQuery='';abFilter='active';abItems=[];abTotal=0;abOffset=0;abLoadedAt=null;liveFilters.q='';render();abReload();
+}
+function abReload(){abItems=[];abTotal=0;abOffset=0;return abLoad()}
+function abPage(delta){
+  const next=(Number(abOffset)||0)+delta*AB_PER_PAGE;
+  if(next<0)return;
+  abItems=[];abOffset=next;abLoad();
+}
+function abSearch(el){
+  const pos=el.selectionStart;abQuery=el.value;render();
+  const next=$('liveSearch');if(next){next.focus();next.setSelectionRange(pos,pos)}
+  clearTimeout(window.abSearchTimer);window.abSearchTimer=setTimeout(()=>{abItems=[];abOffset=0;abLoad()},300);
+}
+function abCurrent(){return abDetailId==null?null:abItems.find(o=>Number(o.id)===Number(abDetailId))||null}
+function abOpenOrg(id){abDetailId=Number(id);const cached=abCurrent();if(cached)abDetail(cached);else abRefreshDetail(Number(id))}
+async function abRefreshDetail(id){
+  const token=liveToken();if(!token)return;
+  try{
+    const response=await fetch('/api/manager/address-book/organizations/'+abArg(id),{credentials:'include',cache:'no-store',redirect:'error',headers:{Accept:'application/json',Authorization:'Bearer '+token}});
+    const data=await abRoute(response);
+    if(!liveMode)return;
+    const index=abItems.findIndex(o=>Number(o.id)===Number(data.id));
+    if(index>=0)abItems[index]=data;else abItems.unshift(data);
+    abDetailId=Number(data.id);render();abDetail(data);
+  }catch(error){if(liveMode)toast(error.message||'Не удалось открыть организацию')}
+}
+function abRenderList(){
+  if(!abItems.length)return '';
+  return wfTable(['Организация','Адресов','Контактов','Состояние',''],abItems.map(o=>`<tr>${td(btn(esc(o.name),`abOpenOrg(${Number(o.id)})`,'link')+`<div class="sub">${esc(o.comment||'—')}</div>`,'wrap')}${td(Number(o.locationCount)||0)}${td(Number(o.contactCount)||0)}${td(`<span class="tag ${o.isActive===false?'gray':'ok'}">${o.isActive===false?'Отключена':'Активна'}</span>`)}${td(btn('Открыть',`abOpenOrg(${Number(o.id)})`,'small'))}</tr>`).join(''),'addressbook');
+}
+function renderAddressBook(){
+  const empty=abState();
+  const toolbar=`<div class="toolbar"><input id="liveSearch" class="search" aria-label="Поиск по адресной книге" placeholder="Организация, адрес, контакт, телефон…" value="${esc(abQuery)}" oninput="abSearch(this)"><select aria-label="Состояние" onchange="abFilter=this.value;abReload()">${opt('active','Активные',abFilter)+opt('all','Все, включая отключённые',abFilter)}</select>${btn('Сбросить',"abQuery='';abFilter='active';abReload()",'small')}</div>`;
+  return heading('Адресная книга','Общий справочник организаций, адресов и контактов — для заявок и отправлений',btn('＋ Добавить организацию',"abForm('organization')",'primary'))+
+    directoryTabs()+toolbar+empty+
+    (empty?'':abRenderList())+
+    (empty?'':`<div class="foot"><span>Показано ${abItems.length} из ${abTotal}${abTotal>AB_PER_PAGE?` · страница ${Math.floor((Number(abOffset)||0)/AB_PER_PAGE)+1}`:''}</span><span>${abTotal>AB_PER_PAGE?btn('← Назад',`abPage(-1)`,Number(abOffset)>0?'small':'small')+btn('Далее →',`abPage(1)`,abItems.length<abTotal?'small':'small'):''}${abLoadedAt?'Обновлено '+liveTime(abLoadedAt,true):''}</span></div>`);
+}
+function abDetail(org){
+  const locs=org.locations||[],contacts=org.contacts||[];
+  const statusTag=`<span class="tag ${org.isActive===false?'gray':'ok'}">${org.isActive===false?'Отключена':'Активна'}</span>`;
+  const main=table(['Поле','Значение'],[['Название',org.name],['Комментарий',org.comment],['Состояние',org.isActive===false?'Отключена':'Активна']].map(([k,v])=>`<tr>${td(esc(k))}${td(esc(v||'—'),'wrap')}</tr>`).join(''));
+  const locRows=locs.length?locs.map(l=>`<tr>${td(esc(l.label||'—'))}${td(esc(l.city||'—'))}${td(esc(l.address),'wrap')}${td(esc(l.postalCode||'—'))}${td(`<span class="tag ${l.isActive===false?'gray':'ok'}">${l.isActive===false?'Отключён':'Активен'}</span>`)}${td(btn('Изменить',`abForm('location',${Number(l.id)})`,'small')+' '+btn(l.isActive===false?'Включить':'Отключить',`abToggle('location',${Number(l.id)},${l.isActive===false})`,'small'))}</tr>`).join(''):'';
+  const contactRows=contacts.length?contacts.map(c=>`<tr>${td(esc(c.name||'—'))}${td(esc(c.position||'—'))}${td(esc(c.phone||'—'))}${td(esc(c.email||'—'))}${td(esc(abLocationLabel(locs,c.locationId)),'wrap')}${td(`<span class="tag ${c.isActive===false?'gray':'ok'}">${c.isActive===false?'Отключён':'Активен'}</span>`)}${td(btn('Изменить',`abForm('contact',${Number(c.id)})`,'small')+' '+btn(c.isActive===false?'Включить':'Отключить',`abToggle('contact',${Number(c.id)},${c.isActive===false})`,'small'))}</tr>`).join(''):'';
+  const body=`${main}
+    <h3 style="margin:16px 0 8px">Адреса ${statusTag}</h3>
+    ${wfTable(['Метка','Город','Адрес','Индекс','Состояние',''],locRows,'abLocations')}
+    <div class="actions" style="margin:8px 0 16px">${btn('＋ Добавить адрес',`abForm('location')`,'small')}</div>
+    <h3 style="margin:16px 0 8px">Контакты</h3>
+    ${wfTable(['Контакт','Должность','Телефон','Email','Адрес','Состояние',''],contactRows,'abContacts')}
+    <div class="actions" style="margin:8px 0 0">${btn('＋ Добавить контакт',`abForm('contact')`,'small')}</div>`;
+  abModal={kind:'organization',id:org.id,orgId:org.id,version:org.version};
+  modal(org.name,body,
+    btn('История',`abHistory(${Number(org.id)})`)+
+    btn('Обновить',`abRefreshDetail(${Number(org.id)})`)+
+    btn('Редактировать',"abForm('organization')",'primary')+
+    btn(org.isActive===false?'Включить организацию':'Отключить организацию',`abToggle('organization',${Number(org.id)},${org.isActive===false})`),
+    true);
+}
+function abLocationLabel(locs,locationId){
+  if(locationId==null)return 'Вся организация';
+  const found=locs.find(l=>Number(l.id)===Number(locationId));
+  return found?(found.label||found.address):'Адрес #'+locationId;
+}
+function abForm(kind,childId){
+  const org=abCurrent();
+  if(!org)return toast('Обновите справочник');
+  if(kind==='organization'){
+    abModal={kind,id:org.id,orgId:org.id,version:org.version};
+    return modal('Организация: '+org.name,`<div class="formgrid">${field('Название *','ab_name',org.name)}${field('Комментарий','ab_comment',org.comment||'','text','span2')}<label class="inline"><input type="checkbox" id="ab_active" ${org.isActive!==false?'checked':''}> Активна</label></div>`,
+      btn('Отмена','abCloseForm()')+`<button id="ab_save" class="primary" onclick="abSaveRecord()">Сохранить</button>`);
+  }
+  const item=(kind==='location'?(org.locations||[]):(org.contacts||[])).find(x=>Number(x.id)===Number(childId));
+  if(!item)return toast('Обновите справочник');
+  abModal={kind,id:item.id,orgId:org.id,version:item.version};
+  const locationOptions=opt('','Вся организация',item.locationId==null?'':String(item.locationId))+(org.locations||[]).filter(l=>l.isActive!==false||Number(l.id)===Number(item.locationId)).map(l=>opt(String(l.id),abLocationLabel(org.locations,l.id),item.locationId==null?'':String(item.locationId))).join('');
+  const body=kind==='location'
+    ?`<div class="formgrid">${field('Метка / уточнение','ab_label',item.label||'')}${field('Город','ab_city',item.city||'')}${field('Индекс','ab_postalCode',item.postalCode||'')}${field('Адрес *','ab_address',item.address,'text','span2')}<label class="inline"><input type="checkbox" id="ab_active" ${item.isActive!==false?'checked':''}> Активен</label></div>`
+    :`<div class="formgrid">${field('Контакт','ab_contactName',item.name||'')}${field('Должность','ab_position',item.position||'')}${field('Телефон','ab_phone',item.phone||'')}${field('Email','ab_email',item.email||'')}${selectField('Адрес','ab_locationId',locationOptions,'span2')}<label class="inline"><input type="checkbox" id="ab_active" ${item.isActive!==false?'checked':''}> Активен</label></div>`;
+  modal((kind==='location'?'Адрес: ':'Контакт: ')+org.name,body,btn('Отмена','abCloseForm()')+`<button id="ab_save" class="primary" onclick="abSaveRecord()">Сохранить</button>`);
+}
+function abCloseForm(){abModal=null;closeModal();const org=abCurrent();if(org)abDetail(org)}
+async function abSaveRecord(){
+  if(abSave||!abModal)return;
+  const draft={...abModal},get=k=>$('ab_'+k)?.value.trim()||'';
+  const isActive=$('ab_active')?.checked!==false;
+  let path,body;
+  if(draft.kind==='organization'){
+    if(!get('name'))return error('Укажите название организации');
+    path=draft.id?'/api/manager/address-book/organizations/'+draft.id:'/api/manager/address-book/organizations';
+    body={name:get('name'),comment:get('comment'),isActive};if(draft.id)body.version=draft.version;
+  }else if(draft.kind==='location'){
+    if(!get('address'))return error('Укажите адрес');
+    path=draft.id?'/api/manager/address-book/locations/'+draft.id:'/api/manager/address-book/organizations/'+draft.orgId+'/locations';
+    body={label:get('label'),city:get('city'),address:get('address'),postalCode:get('postalCode'),isActive};if(draft.id)body.version=draft.version;
+  }else{
+    if(!get('contactName')&&!get('phone')&&!get('email'))return error('Укажите имя, телефон или email контакта');
+    path=draft.id?'/api/manager/address-book/contacts/'+draft.id:'/api/manager/address-book/organizations/'+draft.orgId+'/contacts';
+    body={name:get('contactName'),position:get('position'),phone:get('phone'),email:get('email'),locationId:get('locationId'),isActive};if(draft.id)body.version=draft.version;
+  }
+  abSave=true;const button=$('ab_save');if(button){button.disabled=true;button.textContent='Сохранение…'}
+  const dialog=$('modal'),cancel=e=>e.preventDefault();dialog.addEventListener('cancel',cancel);
+  const controls=[...dialog.querySelectorAll('button,input,select')];controls.forEach(el=>el.disabled=true);
+  try{
+    const saved=await livePost(path,body);
+    const index=abItems.findIndex(o=>Number(o.id)===Number(saved.id));
+    if(index>=0)abItems[index]=saved;else abItems.unshift(saved);
+    abDetailId=Number(saved.id);abModal=null;render();abDetail(saved);
+    toast(draft.kind==='organization'?'Организация сохранена':draft.kind==='location'?'Адрес сохранён':'Контакт сохранён');
+  }catch(e){if(dialog.open)error(e.message||'Не удалось сохранить');else toast(e.message||'Не удалось сохранить')}
+  finally{abSave=false;dialog.removeEventListener('cancel',cancel);controls.forEach(el=>el.disabled=false);if(button){button.disabled=false;button.textContent='Сохранить'}}
+}
+async function abToggle(kind,id,activate){
+  const titles={organization:'организацию',location:'адрес',contact:'контакт'};
+  confirmBox((activate?'Включить ':'Отключить ')+titles[kind]+'?',activate?'Запись снова появится в подсказках при создании заявок и отправлений.':'Запись исчезнет из подсказок. Уже созданные заявки и отправления не изменятся.',async()=>{
+    try{
+      const saved=await livePost('/api/manager/address-book/'+kind+'s/'+id+'/'+(activate?'activate':'deactivate'),{});
+      const index=abItems.findIndex(o=>Number(o.id)===Number(saved.id));
+      if(index>=0)abItems[index]=saved;else abItems.unshift(saved);
+      abDetailId=Number(saved.id);render();abDetail(saved);
+      toast(activate?'Запись включена':'Запись отключена');
+    }catch(e){toast(e.message||'Не удалось изменить состояние')}
+  });
+}
+async function abHistory(id){
+  const token=liveToken();
+  try{
+    const response=await fetch('/api/manager/address-book/organizations/'+abArg(id)+'/history',{credentials:'include',cache:'no-store',redirect:'error',headers:{Accept:'application/json',Authorization:'Bearer '+token}});
+    const data=await abRoute(response);
+    if(!liveMode)return;
+    const entityNames={addressOrganizations:'Организация',addressOrgLocations:'Адрес',addressOrgContacts:'Контакт'};
+    const labels={name:'Название',normalizedName:'Ключ поиска',comment:'Комментарий',isActive:'Активность',label:'Метка',city:'Город',address:'Адрес',postalCode:'Индекс',position:'Должность',phone:'Телефон',email:'Email',locationId:'Адрес контакта'};
+    const items=(data.items||[]).map(e=>{
+      const before=e.beforeData||{},after=e.afterData||{};
+      const keys=[...new Set([...Object.keys(before),...Object.keys(after)])].filter(k=>k in labels);
+      const diff=keys.filter(k=>JSON.stringify(before[k]??null)!==JSON.stringify(after[k]??null)).map(k=>`${labels[k]}: ${String(before[k]??'—')} → ${String(after[k]??'—')}`).join('\n');
+      const action=e.action==='create'?'Создание':e.action==='activate'?'Включение':e.action==='deactivate'?'Отключение':'Изменение';
+      return `<tr>${td(liveTime(e.occurredAt,true))}${td(esc(entityNames[e.entityType]||e.entityType))}${td('Менеджер № '+Number(e.managerId))}${td(action)}${td(esc(diff||'Сохранение без изменения полей').replace(/\n/g,'<br>'),'wrap')}</tr>`;
+    }).join('');
+    const org=abCurrent();
+    modal('История изменений · последние 50',table(['Время','Объект','Кто','Действие','Изменения'],items),btn('Назад',org?`abDetailById(${Number(org.id)})`:'closeModal()')+btn('Закрыть','closeModal()'),true);
+  }catch(e){toast(e.message||'Не удалось загрузить историю')}
+}
+function abDetailById(id){const org=abItems.find(o=>Number(o.id)===Number(id));if(org)abDetail(org);else closeModal()}
 
 // Working intake and outgoing manifests. Drafts live only in memory.
 let wfDraft=null,wfManifestDraft=null,wfSaving=false,wfModal=false,wfManifestTab='outgoing',wfCandidateQuery='',wfCandidatePage=1,wfScroll={};

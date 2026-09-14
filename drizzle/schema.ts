@@ -1194,3 +1194,102 @@ export const clientTariffs = pgTable(
 
 export type ClientTariff = typeof clientTariffs.$inferSelect;
 export type InsertClientTariff = typeof clientTariffs.$inferInsert;
+
+// ─── Address Book (shared organisation / address / contact directory) ────────
+/**
+ * One global address book shared by the courier manager site and
+ * «МИГ · Корреспонденция». It answers "у кого забрать / кому доставить" and is
+ * deliberately independent of the requester role: a physical organisation is not
+ * owned by a partner, a correspondence client, a carrier or a single customer.
+ *
+ * Snapshots stay historical truth: editing the address book never rewrites the
+ * sender and recipient snapshot fields of requests, correspondenceShipments,
+ * mails or tasks, and no request or shipment references these tables (no
+ * reference IDs by design).
+ *
+ * These tables start EMPTY: there is no backfill from existing requests.
+ * Deactivation (isActive = false) is the normal way to retire a record; there is
+ * no physical delete API. Foreign keys live only in the SQL migration, matching
+ * the convention used by the other tables in this file.
+ */
+export const addressOrganizations = pgTable(
+  "addressOrganizations",
+  {
+    id: serial("id").primaryKey(),
+    /** Display name exactly as the manager typed it — never overwritten by the normalized form. */
+    name: varchar("name", { length: 255 }).notNull(),
+    /** Technical search/comparison key (trim + collapsed spaces + lowercase). Not unique. */
+    normalizedName: varchar("normalizedName", { length: 255 }).notNull(),
+    comment: text("comment"),
+    isActive: boolean("isActive").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("addressOrganizations_normalizedName_idx").on(table.normalizedName),
+    index("addressOrganizations_name_idx").on(table.name),
+  ],
+);
+
+export type AddressOrganization = typeof addressOrganizations.$inferSelect;
+export type InsertAddressOrganization = typeof addressOrganizations.$inferInsert;
+
+export const addressOrgLocations = pgTable(
+  "addressOrgLocations",
+  {
+    id: serial("id").primaryKey(),
+    /** FK -> addressOrganizations.id ON DELETE CASCADE (SQL migration). */
+    organizationId: integer("organizationId").notNull(),
+    /** Optional clarification such as "Склад 2" or "Офис 5". */
+    label: varchar("label", { length: 255 }),
+    city: varchar("city", { length: 100 }),
+    /** Display address exactly as typed. */
+    address: text("address").notNull(),
+    postalCode: varchar("postalCode", { length: 20 }),
+    /** Technical search key (trim + collapsed spaces + lowercase). Not unique. */
+    normalizedAddress: text("normalizedAddress").notNull(),
+    isActive: boolean("isActive").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("addressOrgLocations_organizationId_idx").on(table.organizationId),
+    index("addressOrgLocations_normalizedAddress_idx").on(table.normalizedAddress),
+  ],
+);
+
+export type AddressOrgLocation = typeof addressOrgLocations.$inferSelect;
+export type InsertAddressOrgLocation = typeof addressOrgLocations.$inferInsert;
+
+export const addressOrgContacts = pgTable(
+  "addressOrgContacts",
+  {
+    id: serial("id").primaryKey(),
+    /** FK -> addressOrganizations.id ON DELETE CASCADE (SQL migration). */
+    organizationId: integer("organizationId").notNull(),
+    /**
+     * Optional FK -> addressOrgLocations.id ON DELETE SET NULL (SQL migration).
+     * A contact may belong to the whole organisation or to one specific address.
+     */
+    locationId: integer("locationId"),
+    name: varchar("name", { length: 255 }),
+    position: varchar("position", { length: 255 }),
+    /** Display phone exactly as typed. */
+    phone: varchar("phone", { length: 50 }),
+    /** Digits only, 8XXXXXXXXXX normalised to 7XXXXXXXXXX. Search-only; never unique. */
+    phoneNormalized: varchar("phoneNormalized", { length: 20 }),
+    email: varchar("email", { length: 320 }),
+    isActive: boolean("isActive").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("addressOrgContacts_organizationId_idx").on(table.organizationId),
+    index("addressOrgContacts_locationId_idx").on(table.locationId),
+    index("addressOrgContacts_phoneNormalized_idx").on(table.phoneNormalized),
+    index("addressOrgContacts_name_idx").on(table.name),
+  ],
+);
+
+export type AddressOrgContact = typeof addressOrgContacts.$inferSelect;
+export type InsertAddressOrgContact = typeof addressOrgContacts.$inferInsert;
