@@ -189,7 +189,7 @@ export function registerCorrespondenceWorkflow(app:Express){
      const city=await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');await activeOwner(tx,d.ownerType,d.ownerId);if(d.partnerId!==null)await activeHandlingPartner(tx,d.partnerId);
      await checkWaybill(tx,d.waybillNumber);
      const {places,...fields}=d;
-     const s=await insert(tx,'correspondenceShipments',{...fields,direction:'outgoing',recipientCityRaw:city.name,recipientCityNormalized:city.name,recipientRegion:city.region,acceptedAt:new Date(),acceptedByManagerId:manager,intakeKey:key,intakePayloadHash:hash});
+     const s=await insert(tx,'correspondenceShipments',{...fields,direction:'outgoing',recipientCityRaw:city.name,recipientCityNormalized:city.name,recipientRegion:city.region,acceptedAt:new Date().toISOString(),acceptedByManagerId:manager,intakeKey:key,intakePayloadHash:hash});
      await replacePlaces(tx,s.id,places);const after=await getShipment(tx,s.id);await audit(tx,manager,'create','shipment',s.id,null,after);return {shipment:after,repeated:false};
    });res.status(result.repeated?200:201).json(result);
  }));
@@ -246,7 +246,7 @@ export function registerCorrespondenceWorkflow(app:Express){
    res.json(await transaction(async tx=>{
      const before=await getManifest(tx,rowId);keyVersion(b,before);
      if(b.handedOver){if(!before.shipmentIds.length||!before.departureDate||!before.carrierId||!before.transportWaybillNumber)throw new InputError('Для передачи укажите перевозчика, транспортную накладную и дату отправления');await checkMembers(tx,before.shipmentIds,Number(before.destinationCityId),rowId);}
-     await update(tx,'correspondenceManifests',rowId,{handedOverAt:b.handedOver?new Date():null,handedOverByManagerId:b.handedOver?manager:null});const after=await getManifest(tx,rowId);await audit(tx,manager,b.handedOver?'handover':'undo_handover','manifest',rowId,before,after);return after;
+     await update(tx,'correspondenceManifests',rowId,{handedOverAt:b.handedOver?new Date().toISOString():null,handedOverByManagerId:b.handedOver?manager:null});const after=await getManifest(tx,rowId);await audit(tx,manager,b.handedOver?'handover':'undo_handover','manifest',rowId,before,after);return after;
    }));
  }));
  app.get(ROOT+'/workflow/:kind/:id/history',handle(async(req,res)=>{
