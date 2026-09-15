@@ -1361,6 +1361,135 @@ export const appRouter = router({
 
   // ─── Billing ────────────────────────────────────────────────────────────────
   billing: router({
+    /**
+     * Review workspace for one client and period: requests, their quote state and
+     * why a document can or cannot be issued. This replaced the previous plain
+     * list, which required the browser to have filled the amounts in first.
+     */
+    overview: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }))
+      .query(async ({ input }) => {
+        if (input.dateFrom > input.dateTo) {
+          throw new Error("dateFrom must not be after dateTo");
+        }
+
+        const { buildBillingOverview, listClientBillingDocuments } = await import("./_core/billingDocuments");
+        const overview = await buildBillingOverview(input.clientId, input.dateFrom, input.dateTo);
+        const documents = await listClientBillingDocuments(input.clientId);
+
+        return {
+          requests: overview.rows.map((row) => ({
+            ...row.request,
+            quoteState: row.state,
+            quoteIssue: row.issue,
+            tariffCategory: row.category,
+          })),
+          counts: overview.counts,
+          checkedAmount: overview.readyAmount,
+          readyAmount: overview.allReadyAmount,
+          documents,
+        };
+      }),
+
+    /** Price every eligible completed request of the client again. */
+    recalcClient: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { quoteClientRequests } = await import("./_core/requestQuote");
+        const outcomes = await quoteClientRequests(input.clientId, {
+          from: input.dateFrom,
+          to: input.dateTo,
+        });
+
+        broadcastLive("requests_changed");
+
+        return {
+          calculated: outcomes.filter((o) => o.status === "calculated").length,
+          unresolved: outcomes.filter((o) => o.status === "unresolved").length,
+          skipped: outcomes.filter((o) => o.status === "skipped").length,
+          outcomes,
+        };
+      }),
+
+    /** Price a single request again (manager action). */
+    recalcRequest: managerProcedure
+      .input(z.object({ requestId: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const request = await db.getRequestById(input.requestId);
+        if (!request) throw new Error("Заявка не найдена");
+        if (request.status !== "completed") {
+          throw new Error("Рассчитать стоимость можно только у завершённой заявки");
+        }
+
+        const { applyQuoteForRequest } = await import("./_core/requestQuote");
+        const outcome = await applyQuoteForRequest(request as never, { force: true });
+
+        broadcastLive("requests_changed", { requestId: input.requestId });
+
+        return outcome;
+      }),
+
+    /** Issue the client document for one period. */
+    issueDocument: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (input.dateFrom > input.dateTo) {
+          throw new Error("dateFrom must not be after dateTo");
+        }
+
+        const { issueClientBillingDocument } = await import("./_core/billingDocuments");
+        const result = await issueClientBillingDocument(
+          input.clientId,
+          input.dateFrom,
+          input.dateTo,
+          ctx.managerId,
+        );
+
+        if (result.ok) broadcastLive("requests_changed");
+
+        return result;
+      }),
+
+    /**
+     * Read-only preview of the historical backfill: which old completed requests
+     * have no price yet and whether the current tariff can fill them in.
+     */
+    backfillPreview: managerProcedure
+      .query(async () => {
+        const { previewQuoteBackfill } = await import("./_core/requestQuote");
+        return await previewQuoteBackfill();
+      }),
+
+    /**
+     * Fill in prices for old completed client requests that never received one.
+     * Explicitly triggered by a manager; never touches verified, billed or
+     * manually priced requests, and never rewrites a non-null amount.
+     */
+    backfillHistorical: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive().optional(),
+      }).optional())
+      .mutation(async ({ input }) => {
+        const { runQuoteBackfill } = await import("./_core/requestQuote");
+        const result = await runQuoteBackfill({ clientId: input?.clientId });
+
+        broadcastLive("requests_changed");
+
+        return result;
+      }),
+
     reviewList: managerProcedure
       .input(z.object({
         clientId: z.number().int().positive(),
@@ -1428,6 +1557,13 @@ export const appRouter = router({
         };
 
         await db.updateRequest(input.requestId, updatePayload);
+
+        // A manager-edited amount is a manual price and must never be replaced by
+        // the automatic tariff calculation.
+        if (input.deliveryFee !== undefined) {
+          const { markManualPrice } = await import("./_core/requestQuote");
+          await markManualPrice(input.requestId);
+        }
 
         const changes: Record<string, unknown> = {};
 

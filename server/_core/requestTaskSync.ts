@@ -134,4 +134,15 @@ export async function updateRequestStatusFromTask(
   if (status === "completed") updateData.completedAt = new Date();
 
   await conn.update(requests).set(updateData).where(eq(requests.id, requestId));
+
+  // A completed request is priced automatically on the server. Quoting must never
+  // break the status flow, so failures are logged and swallowed here.
+  if (requestStatusFromTask(status) === "completed") {
+    try {
+      const { quoteCompletedRequest } = await import("./requestQuote");
+      await quoteCompletedRequest(requestId);
+    } catch (error) {
+      console.error("[requestQuote] automatic quote failed", { requestId, error });
+    }
+  }
 }

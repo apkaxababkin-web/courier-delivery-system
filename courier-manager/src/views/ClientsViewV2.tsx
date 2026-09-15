@@ -874,36 +874,13 @@ export default function ClientsViewV2() {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
 
-  function getTariffCategoryForRequest(request: Request): StandardTariffCategory {
-    if (request.requestType === 'movement') return 'movement';
+  // Tariff category mapping and per-place pricing now live on the server
+  // (server/_core/requestQuote.ts) and are applied automatically when a request is
+  // completed. This screen only displays the stored amount.
 
-    if (
-      request.requestType === 'pickup_from_tc' ||
-      Boolean(request.tcName) ||
-      Boolean(request.tcAddress) ||
-      Boolean(request.trackingNumber)
-    ) {
-      return 'transportCompany';
-    }
-
-    if (request.requestType === 'delivery') return 'delivery';
-
-    return 'other';
-  }
-
-  function calculateTariffByPlaces(rule: TariffRule, placesCount?: number): number {
-    const places = Math.max(1, Number(placesCount || 1));
-    const firstPlace = parseTariffAmount(rule.firstPlace);
-    const nextPlace = parseTariffAmount(rule.nextPlace);
-
-    return firstPlace + Math.max(0, places - 1) * nextPlace;
-  }
-
-  function getRequestTariff(request: Request): number {
-    const category = getTariffCategoryForRequest(request);
-    return calculateTariffByPlaces(clientTariffs[category], request.placesCount);
-  }
-
+  // The amount shown here is always the server-stored one. It used to fall back to
+  // a browser-side tariff calculation, which made the screen the real pricing
+  // engine; the server now quotes automatically when a request is completed.
   function getDeliveryFeeForRequest(request: Request): number {
     const editingValue = deliveryFeesByRequestId[request.id];
 
@@ -920,7 +897,7 @@ export default function ClientsViewV2() {
       return storedValue;
     }
 
-    return getRequestTariff(request);
+    return 0;
   }
 
   function handleDeliveryFeeChange(requestId: number, value: string) {
@@ -991,72 +968,10 @@ export default function ClientsViewV2() {
     }
   }
 
-  useEffect(() => {
-    if (!selected || selectedClientSection !== 'reconciliation') return;
-
-    const missingFees = requests
-      .filter((request) => request.status === 'completed')
-      .filter((request) => requestBelongsToClient(request, selected))
-      .filter(
-        (request) =>
-          request.deliveryFee === null
-          || request.deliveryFee === undefined
-          || request.deliveryFee === '',
-      )
-      .map((request) => ({
-        requestId: request.id,
-        deliveryFee: getDeliveryFeeForRequest(request),
-      }))
-      .filter(
-        (item) =>
-          Number.isFinite(item.deliveryFee)
-          && item.deliveryFee >= 0,
-      );
-
-    if (missingFees.length === 0) return;
-
-    void (async () => {
-      try {
-        const results = await Promise.all(
-          missingFees.map((item) =>
-            api.updateRequestDeliveryFee(
-              item.requestId,
-              item.deliveryFee,
-            ),
-          ),
-        );
-
-        const updatedById = new Map(
-          results.map((result) => [
-            result.request.id,
-            result.request.deliveryFee,
-          ]),
-        );
-
-        setRequests((current) =>
-          current.map((request) =>
-            updatedById.has(request.id)
-              ? {
-                  ...request,
-                  deliveryFee: updatedById.get(request.id),
-                }
-              : request,
-          ),
-        );
-      } catch (error) {
-        console.error(
-          'Не удалось автоматически сохранить стоимости доставки',
-          error,
-        );
-      }
-    })();
-  }, [
-    selected,
-    selectedClientSection,
-    requests,
-    clientTariffs,
-    deliveryFeesByRequestId,
-  ]);
+  // NOTE: opening a client card used to trigger a hidden "auto-save missing fees"
+  // effect here. That is exactly what made the client card the pricing engine and
+  // silently invalidated manager verification. Removed: pricing now happens on the
+  // server when a request is completed, and this screen only displays it.
 
   function escapeHtml(value: unknown): string {
     const text = value == null ? '' : String(value);
@@ -1801,7 +1716,6 @@ export default function ClientsViewV2() {
                               deliveryFeesByRequestId[request.id]
                               ?? (
                                 request.deliveryFee
-                                ?? getRequestTariff(request)
                                 ?? ''
                               )
                             }

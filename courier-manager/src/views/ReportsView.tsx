@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Search, Download, FileSpreadsheet, ArrowLeft, Pencil} from 'lucide-react';
+import { CalendarDays, Search, Download, FileSpreadsheet, ArrowLeft, Pencil, RefreshCw } from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
   getAllMails,
   getPartners,
-  getBillingReviewRequests,
+  getBillingOverview,
+  recalcClientQuotes,
+  recalcRequestQuote,
+  issueBillingDocument,
   setBillingChecked,
   setMailBillingChecked,
   updateBillingReviewFields,
   updateRequestClient,
+  type BillingDocumentRow,
+  type BillingQuoteState,
+  type BillingReviewRequest,
   type Client,
   type Request,
   type Mail,
@@ -664,8 +670,17 @@ export default function ReportsView() {
   const [activeTab, setActiveTab] = useState<'partners' | 'documents'>('documents');
 
   const [requests, setRequests] = useState<Request[]>([]);
-  const [billingRequests, setBillingRequests] = useState<Request[]>([]);
+  const [billingOverview, setBillingOverview] = useState<{
+    requests: BillingReviewRequest[];
+    counts: { total: number; ready: number; checked: number; billed: number; unpriced: number };
+    checkedAmount: number;
+    readyAmount: number;
+    documents: BillingDocumentRow[];
+  } | null>(null);
   const [isBillingLoading, setIsBillingLoading] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isIssuing, setIsIssuing] = useState(false);
+  const [billingNotice, setBillingNotice] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
   const [dateFrom, setDateFrom] = useState(initialRange.from);
   const [dateTo, setDateTo] = useState(initialRange.to);
@@ -748,19 +763,20 @@ export default function ReportsView() {
 
   useEffect(() => {
     if (typeof selectedClientId !== 'number') {
-      setBillingRequests([]);
+      setBillingOverview(null);
       setIsBillingLoading(false);
       return;
     }
 
     let cancelled = false;
 
-    setBillingRequests([]);
+    setBillingOverview(null);
     setIsBillingLoading(true);
+    setBillingNotice('');
 
-    void getBillingReviewRequests(selectedClientId, dateFrom, dateTo)
-      .then((rows) => {
-        if (!cancelled) setBillingRequests(rows);
+    void getBillingOverview(selectedClientId, dateFrom, dateTo)
+      .then((data) => {
+        if (!cancelled) setBillingOverview(data);
       })
       .catch((loadError) => {
         if (!cancelled) {
@@ -779,6 +795,79 @@ export default function ReportsView() {
       cancelled = true;
     };
   }, [selectedClientId, dateFrom, dateTo, billingRefreshVersion]);
+
+  /** Recalculate every eligible price of this client for the selected period. */
+  async function recalcClientPeriod() {
+    if (typeof selectedClientId !== 'number') return;
+
+    setIsRecalculating(true);
+    setError('');
+    setBillingNotice('');
+
+    try {
+      const result = await recalcClientQuotes(selectedClientId, dateFrom, dateTo);
+      setBillingNotice(
+        `Расчёт обновлён: рассчитано ${result.calculated}, без тарифа ${result.unresolved}, пропущено ${result.skipped}`,
+      );
+      setBillingRefreshVersion((version) => version + 1);
+      void loadData();
+    } catch (recalcError) {
+      setError(
+        recalcError instanceof Error ? recalcError.message : 'Не удалось пересчитать стоимости',
+      );
+    } finally {
+      setIsRecalculating(false);
+    }
+  }
+
+  /** Recalculate one request with the current tariff (problem rows). */
+  async function recalcSingleRequest(requestId: number) {
+    setError('');
+    setBillingNotice('');
+
+    try {
+      const outcome = await recalcRequestQuote(requestId);
+      if (outcome.status === 'calculated') {
+        setBillingNotice(`Заявка №${requestId}: стоимость рассчитана (${outcome.amount?.toFixed(2)} ₽)`);
+      } else if (outcome.status === 'unresolved') {
+        setBillingNotice(`Заявка №${requestId}: тариф не найден, укажите стоимость вручную`);
+      } else {
+        setBillingNotice(`Заявка №${requestId}: расчёт не требуется (${outcome.preserved ?? 'пропущено'})`);
+      }
+      setBillingRefreshVersion((version) => version + 1);
+    } catch (recalcError) {
+      setError(
+        recalcError instanceof Error ? recalcError.message : 'Не удалось рассчитать заявку',
+      );
+    }
+  }
+
+  /** Create the client document for the selected period. */
+  async function issueDocument() {
+    if (typeof selectedClientId !== 'number') return;
+
+    setIsIssuing(true);
+    setError('');
+    setBillingNotice('');
+
+    try {
+      const result = await issueBillingDocument(selectedClientId, dateFrom, dateTo);
+      if (result.ok && result.document) {
+        setBillingNotice(
+          `Документ №${result.document.number} сформирован: ${result.requestCount} заявок на ${Number(result.totalAmount ?? 0).toFixed(2)} ₽`,
+        );
+      } else {
+        setBillingNotice(result.reason ?? 'Счёт пока сформировать нельзя');
+      }
+      setBillingRefreshVersion((version) => version + 1);
+    } catch (issueError) {
+      setError(
+        issueError instanceof Error ? issueError.message : 'Не удалось сформировать счёт',
+      );
+    } finally {
+      setIsIssuing(false);
+    }
+  }
 
   const periodRequests = useMemo(() => {
     return requests.filter((request) => {
@@ -833,10 +922,10 @@ export default function ReportsView() {
 
   const visibleRequests = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('ru');
-    const sourceRequests =
+    const sourceRequests: BillingReviewRequest[] =
       typeof selectedClientId === 'number'
-        ? billingRequests
-        : periodRequests;
+        ? billingOverview?.requests ?? []
+        : (periodRequests as BillingReviewRequest[]);
 
     return sourceRequests
       .filter((request) => {
@@ -872,23 +961,46 @@ export default function ReportsView() {
 
         return b.id - a.id;
       });
-  }, [periodRequests, billingRequests, search, selectedClientId]);
+  }, [periodRequests, billingOverview, search, selectedClientId]);
+
+  /** Quote/verification state of one request, derived on the server. */
+  function quoteStateOf(request: BillingReviewRequest): BillingQuoteState {
+    if (request.quoteState) return request.quoteState;
+
+    const hasAmount = request.deliveryFee !== null && request.deliveryFee !== undefined && request.deliveryFee !== '';
+    if (!hasAmount) return 'unpriced';
+    return request.billingCheckedAt ? 'checked' : 'ready';
+  }
 
   const reviewSummary = useMemo(() => {
     let checked = 0;
-    let totalAmount = 0;
+    let ready = 0;
+    let unpriced = 0;
+    let billed = 0;
+    let checkedAmount = 0;
 
     for (const request of visibleRequests) {
-      if (request.billingCheckedAt) checked += 1;
-
-      const amount = Number(request.deliveryFee);
-      if (Number.isFinite(amount)) totalAmount += amount;
+      const state = quoteStateOf(request);
+      if (state === 'checked') {
+        checked += 1;
+        checkedAmount += Number(request.deliveryFee ?? 0);
+      } else if (state === 'ready') {
+        ready += 1;
+      } else if (state === 'unpriced') {
+        unpriced += 1;
+      } else {
+        billed += 1;
+      }
     }
 
     return {
       checked,
-      unchecked: visibleRequests.length - checked,
-      totalAmount,
+      ready,
+      unpriced,
+      billed,
+      unchecked: ready + unpriced,
+      checkedAmount,
+      totalAmount: checkedAmount,
     };
   }, [visibleRequests]);
 
@@ -961,18 +1073,21 @@ export default function ReportsView() {
         deliveryFee: nextValue,
       });
 
-      const updateRow = (row: Request): Request =>
+      const updateRow = (row: BillingReviewRequest): BillingReviewRequest =>
         row.id === request.id
           ? {
               ...row,
               deliveryFee: nextValue,
               billingCheckedAt: null,
               billingCheckedByManagerId: null,
+              ...(quoteStateOf(row) === 'billed' ? {} : { quoteState: 'ready' as BillingQuoteState }),
             }
           : row;
 
-      setRequests((rows) => rows.map(updateRow));
-      setBillingRequests((rows) => rows.map(updateRow));
+      setRequests((rows) => rows.map((row) => (row.id === request.id ? updateRow(row as BillingReviewRequest) : row)));
+      setBillingOverview((overview) => overview
+        ? { ...overview, requests: overview.requests.map(updateRow) }
+        : overview);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -997,18 +1112,21 @@ export default function ReportsView() {
 
       await updateBillingReviewFields(request.id, { comments });
 
-      const updateRow = (row: Request): Request =>
+      const updateRow = (row: BillingReviewRequest): BillingReviewRequest =>
         row.id === request.id
           ? {
               ...row,
               comments,
               billingCheckedAt: null,
               billingCheckedByManagerId: null,
+              ...(quoteStateOf(row) === 'billed' ? {} : { quoteState: 'ready' as BillingQuoteState }),
             }
           : row;
 
-      setRequests((rows) => rows.map(updateRow));
-      setBillingRequests((rows) => rows.map(updateRow));
+      setRequests((rows) => rows.map((row) => (row.id === request.id ? updateRow(row as BillingReviewRequest) : row)));
+      setBillingOverview((overview) => overview
+        ? { ...overview, requests: overview.requests.map(updateRow) }
+        : overview);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -1031,7 +1149,7 @@ export default function ReportsView() {
 
       const checkedAt = checked ? new Date().toISOString() : null;
 
-      const updateRow = (row: Request): Request =>
+      const updateRow = (row: BillingReviewRequest): BillingReviewRequest =>
         row.id === request.id
           ? {
               ...row,
@@ -1039,11 +1157,20 @@ export default function ReportsView() {
               billingCheckedByManagerId: checked
                 ? row.billingCheckedByManagerId
                 : null,
+              ...(
+                // Keep the review state machine in step with the toggle, unless
+                // the row is already part of a document.
+                quoteStateOf(row) === 'billed'
+                  ? {}
+                  : { quoteState: (checked ? 'checked' : (row.deliveryFee != null ? 'ready' : 'unpriced')) as BillingQuoteState }
+              ),
             }
           : row;
 
-      setRequests((rows) => rows.map(updateRow));
-      setBillingRequests((rows) => rows.map(updateRow));
+      setRequests((rows) => rows.map((row) => (row.id === request.id ? updateRow(row as BillingReviewRequest) : row)));
+      setBillingOverview((overview) => overview
+        ? { ...overview, requests: overview.requests.map(updateRow) }
+        : overview);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -1060,9 +1187,10 @@ export default function ReportsView() {
       ? clients.find((client) => client.id === selectedClientId) ?? null
       : null;
 
+  // Verified rows only: these are the ones a document may contain.
   const checkedBillingRequests = useMemo(
-    () => billingRequests.filter((request) => Boolean(request.billingCheckedAt)),
-    [billingRequests],
+    () => (billingOverview?.requests ?? []).filter((request) => quoteStateOf(request) === 'checked'),
+    [billingOverview],
   );
 
   const checkedBillingTotal = useMemo(
@@ -1073,6 +1201,21 @@ export default function ReportsView() {
       ),
     [checkedBillingRequests],
   );
+
+  /** Everything that prevents issuing a document right now. */
+  const issueBlockers = useMemo(() => {
+    const blockers: string[] = [];
+    if (reviewSummary.unpriced > 0) {
+      blockers.push(`Заявок без рассчитанной стоимости: ${reviewSummary.unpriced}`);
+    }
+    if (reviewSummary.ready > 0) {
+      blockers.push(`Заявок ожидает проверки: ${reviewSummary.ready}`);
+    }
+    if (reviewSummary.checked === 0) {
+      blockers.push('Нет проверенных заявок за выбранный период');
+    }
+    return blockers;
+  }, [reviewSummary]);
 
     return (
     <div className="w-full space-y-4">
@@ -1200,59 +1343,164 @@ export default function ReportsView() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  disabled={checkedBillingRequests.length === 0}
-                  onClick={() =>
-                    exportBillingXlsx(
-                      selectedClient,
-                      checkedBillingRequests,
-                      dateFrom,
-                      dateTo,
-                    )
-                  }
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Download className="h-4 w-4" />
-                  Скачать Excel
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isRecalculating}
+                    onClick={() => void recalcClientPeriod()}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
+                    title="Пересчитать автоматические стоимости заявок за выбранный период"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isRecalculating ? 'animate-spin' : ''}`} />
+                    Пересчитать стоимости
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={checkedBillingRequests.length === 0}
+                    onClick={() =>
+                      exportBillingXlsx(
+                        selectedClient,
+                        checkedBillingRequests,
+                        dateFrom,
+                        dateTo,
+                      )
+                    }
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Download className="h-4 w-4" />
+                    Скачать Excel
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isIssuing || issueBlockers.length > 0}
+                    onClick={() => void issueDocument()}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {isIssuing ? 'Формирование…' : 'Выставить счёт'}
+                  </button>
+                </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              {/* Why the document can or cannot be issued. */}
+              {issueBlockers.length > 0 ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <div className="font-semibold">Счёт пока сформировать нельзя:</div>
+                  <ul className="mt-1 list-disc pl-5">
+                    {issueBlockers.map((blocker) => (
+                      <li key={blocker}>{blocker}</li>
+                    ))}
+                  </ul>
+                  <div className="mt-1 text-xs text-amber-700">
+                    Проверьте заявки ниже: «Ожидает проверки» нужно подтвердить, «Без стоимости» — исправить тариф или указать цену вручную.
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  Все заявки периода проверены — счёт можно выставить ({reviewSummary.checked} заявок на {checkedBillingTotal.toFixed(2)} ₽).
+                </div>
+              )}
+
+              {billingNotice && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  {billingNotice}
+                </div>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="text-xs font-medium text-slate-500">
-                    Клиент
+                    Заявок за период
                   </div>
-                  <div className="mt-2 text-lg font-semibold text-slate-950">
-                    {selectedClient.name}
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {billingOverview?.counts.total ?? reviewSummary.checked + reviewSummary.ready + reviewSummary.unpriced + reviewSummary.billed}
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
                   <div className="text-xs font-medium text-emerald-700">
-                    Проверено заявок
+                    Проверено
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-emerald-800">
-                    {checkedBillingRequests.length}
+                    {reviewSummary.checked}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                  <div className="text-xs font-medium text-amber-700">
+                    Ожидает проверки
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-amber-800">
+                    {reviewSummary.ready}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+                  <div className="text-xs font-medium text-rose-700">
+                    Без стоимости
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-rose-800">
+                    {reviewSummary.unpriced}
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="text-xs font-medium text-slate-500">
-                    Сумма
+                    Уже в счетах
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {reviewSummary.billed}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-xs font-medium text-slate-500">
+                    Сумма готовых к выставлению (проверенные)
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-slate-950">
                     {checkedBillingTotal.toFixed(2)} ₽
                   </div>
                 </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-xs font-medium text-slate-500">
+                    Сумма проверенных и ожидающих проверки
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {(billingOverview?.readyAmount ?? reviewSummary.checkedAmount).toFixed(2)} ₽
+                  </div>
+                </div>
               </div>
+
+              {billingOverview && billingOverview.documents.length > 0 && (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 px-5 py-3 text-sm font-semibold text-slate-950">
+                    Счета этого клиента
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {billingOverview.documents.map((document) => (
+                      <div key={document.id} className="flex items-center justify-between px-5 py-3 text-sm">
+                        <span className="font-medium text-slate-800">
+                          №{document.number} · {formatDate(String(document.periodFrom))} — {formatDate(String(document.periodTo))}
+                        </span>
+                        <span className="text-slate-600">
+                          {document.requestsCount} заявок · {Number(document.totalAmount).toFixed(2)} ₽ · {document.status === 'paid' ? 'оплачен' : document.status === 'cancelled' ? 'отменён' : 'выставлен'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="font-semibold text-slate-950">
                   Сверка клиента
                 </div>
                 <div className="mt-1 text-sm text-slate-500">
-                  В Excel попадут заявки со статусом «Проверено» за выбранный период.
+                  Стоимость рассчитывается на сервере автоматически при завершении заявки. В Excel попадут заявки со статусом «Проверено» за выбранный период.
                 </div>
               </div>
             </>
@@ -1390,8 +1638,9 @@ export default function ReportsView() {
                 <th className="w-[190px] px-3 py-2.5 font-semibold">Отправитель</th>
                 <th className="w-[190px] px-3 py-2.5 font-semibold">Получатель</th>
                 <th className="w-[60px] px-2 py-2.5 text-center font-semibold">Мест</th>
-                <th className="w-[125px] px-3 py-2.5 font-semibold">Стоимость</th>
-                <th className="w-[370px] px-3 py-2.5 font-semibold">Комментарий</th>
+                <th className="w-[150px] px-3 py-2.5 font-semibold">Стоимость</th>
+                <th className="w-[130px] px-3 py-2.5 font-semibold">Состояние</th>
+                <th className="w-[330px] px-3 py-2.5 font-semibold">Комментарий</th>
                 <th className="w-[135px] px-3 py-2.5 font-semibold">Проверено</th>
               </tr>
             </thead>
@@ -1399,13 +1648,13 @@ export default function ReportsView() {
             <tbody className="divide-y divide-slate-100">
               {isLoading || isBillingLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                     Загрузка заявок…
                   </td>
                 </tr>
               ) : visibleRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                     За выбранный период заявок нет
                   </td>
                 </tr>
@@ -1414,9 +1663,13 @@ export default function ReportsView() {
                   <tr
                     key={request.id}
                     className={`align-middle ${
-                      request.billingCheckedAt
+                      quoteStateOf(request) === 'checked'
                         ? 'hover:bg-slate-50/70'
-                        : 'bg-amber-50/40 hover:bg-amber-50/70'
+                        : quoteStateOf(request) === 'unpriced'
+                          ? 'bg-rose-50/40 hover:bg-rose-50/70'
+                          : quoteStateOf(request) === 'billed'
+                            ? 'bg-slate-50/60 hover:bg-slate-50'
+                            : 'bg-amber-50/40 hover:bg-amber-50/70'
                     }`}
                   >
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">
@@ -1513,6 +1766,42 @@ export default function ReportsView() {
                     </td>
 
                     <td className="px-3 py-2">
+                      {quoteStateOf(request) === 'billed' ? (
+                        <span className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
+                          В счёте
+                        </span>
+                      ) : quoteStateOf(request) === 'checked' ? (
+                        <span className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                          Проверено
+                        </span>
+                      ) : quoteStateOf(request) === 'ready' ? (
+                        <span className="inline-flex rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                          Ожидает проверки
+                        </span>
+                      ) : (
+                        <div className="min-w-0">
+                          <span className="inline-flex rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
+                            Без стоимости
+                          </span>
+                          {request.quoteIssue && (
+                            <div className="mt-1 text-[11px] leading-4 text-rose-700" title={request.quoteIssue}>
+                              {request.quoteIssue}
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void recalcSingleRequest(request.id)}
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 underline decoration-dotted hover:text-slate-900"
+                            title="Повторить автоматический расчёт по текущему тарифу"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            Рассчитать
+                          </button>
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="px-3 py-2">
                       {editingCommentRequestId === request.id ? (
                         <textarea
                           autoFocus
@@ -1556,17 +1845,28 @@ export default function ReportsView() {
                     <td className="whitespace-nowrap px-3 py-2">
                       <button
                         type="button"
-                        disabled={savingRequestId === request.id}
+                        disabled={savingRequestId === request.id || quoteStateOf(request) === 'billed'}
+                        title={
+                          quoteStateOf(request) === 'billed'
+                            ? 'Заявка уже включена в счёт'
+                            : 'Отметить стоимость как проверенную'
+                        }
                         onClick={() => {
                           void toggleBillingChecked(request);
                         }}
-                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
-                          request.billingCheckedAt
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                            : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          quoteStateOf(request) === 'billed'
+                            ? 'border-slate-200 bg-slate-50 text-slate-500'
+                            : request.billingCheckedAt
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
                         }`}
                       >
-                        {request.billingCheckedAt ? 'Проверено' : 'Не проверено'}
+                        {quoteStateOf(request) === 'billed'
+                          ? 'В счёте'
+                          : request.billingCheckedAt
+                            ? 'Проверено'
+                            : 'Не проверено'}
                       </button>
                     </td>
 

@@ -871,6 +871,10 @@ export interface Request {
   paymentMethod?: 'paid' | 'transfer' | 'cash' | 'terminal' | 'qr';
   paymentAmount?: number;
   deliveryFee?: string | number | null;
+  /** When the amount was produced by the automatic server-side quote. */
+  quoteCalculatedAt?: string | null;
+  /** 'tariff' for an automatic amount, 'manual_fee' for a manager correction. */
+  quoteSource?: 'tariff' | 'manual_fee' | null;
   billingCheckedAt?: string | null;
   billingCheckedByManagerId?: number | null;
   deliveryTimeFrom?: string;
@@ -916,6 +920,108 @@ export async function updateRequestClient(id: number, clientId: number | null): 
 }
 
 // ─── Billing API ─────────────────────────────────────────────────────────────
+
+/** Quote state of one request inside the billing review. */
+export type BillingQuoteState = 'ready' | 'checked' | 'billed' | 'unpriced';
+
+export interface BillingReviewRequest extends Request {
+  quoteState: BillingQuoteState;
+  quoteIssue?: string | null;
+  tariffCategory?: string;
+}
+
+export interface BillingDocumentRow {
+  id: number;
+  number: string;
+  documentDate: string;
+  periodFrom: string;
+  periodTo: string;
+  requestsCount: number;
+  totalAmount: string | number;
+  status: 'issued' | 'paid' | 'cancelled';
+  createdAt: string;
+  paidAt?: string | null;
+}
+
+export interface BillingOverview {
+  requests: BillingReviewRequest[];
+  counts: { total: number; ready: number; checked: number; billed: number; unpriced: number };
+  checkedAmount: number;
+  readyAmount: number;
+  documents: BillingDocumentRow[];
+}
+
+export interface IssueDocumentResult {
+  ok: boolean;
+  reason?: string;
+  document?: BillingDocumentRow;
+  requestCount?: number;
+  totalAmount?: number;
+  blocked?: BillingReviewRequest[];
+}
+
+/**
+ * Review workspace for one client and period. Everything the screen needs comes
+ * from the server: amounts are already calculated there, and the response carries
+ * the reason a document can or cannot be issued.
+ */
+export async function getBillingOverview(
+  clientId: number,
+  dateFrom: string,
+  dateTo: string,
+): Promise<BillingOverview> {
+  return await trpcGet<BillingOverview>(
+    'billing.overview',
+    { clientId, dateFrom, dateTo },
+    {
+      requests: [],
+      counts: { total: 0, ready: 0, checked: 0, billed: 0, unpriced: 0 },
+      checkedAmount: 0,
+      readyAmount: 0,
+      documents: [],
+    },
+  );
+}
+
+/** Recalculate the automatic prices of one client (and optionally one period). */
+export async function recalcClientQuotes(
+  clientId: number,
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<{ calculated: number; unresolved: number; skipped: number }> {
+  return await trpcPost(
+    'billing.recalcClient',
+    { clientId, dateFrom, dateTo },
+    { calculated: 0, unresolved: 0, skipped: 0 },
+  );
+}
+
+/** Recalculate one request with the current tariff. */
+export async function recalcRequestQuote(requestId: number): Promise<{
+  status: 'calculated' | 'skipped' | 'unresolved';
+  amount?: number;
+  reason?: string;
+  preserved?: string;
+}> {
+  return await trpcPost(
+    'billing.recalcRequest',
+    { requestId },
+    { status: 'skipped' },
+  );
+}
+
+/** Issue the client document for the selected period. */
+export async function issueBillingDocument(
+  clientId: number,
+  dateFrom: string,
+  dateTo: string,
+): Promise<IssueDocumentResult> {
+  return await trpcPost(
+    'billing.issueDocument',
+    { clientId, dateFrom, dateTo },
+    { ok: false, reason: 'Сервер не ответил' },
+  );
+}
 
 export async function getBillingReviewRequests(
   clientId: number,

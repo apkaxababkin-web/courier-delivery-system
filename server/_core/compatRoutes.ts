@@ -40,6 +40,7 @@ import { toSafeCourier } from "./courierPublic";
 import { getCourierAccess, saveCourierAccess } from "./courierAccess";
 import { resolveRequester, RequesterInputError } from "./requester";
 import { buildNewRequestPush, buildAssignedRequestPush } from "./requestPushPresentation";
+import { quoteCompletedRequest } from "./requestQuote";
 
 const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
 const MAX_REQUEST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -527,13 +528,29 @@ async function updateRequestStatusFromTask(taskId: number, status: Task["status"
   if (!marker) return;
   const requestId = Number(marker);
   if (!requestId) return;
-  await conn.update(requests).set({
+  const updated = await conn.update(requests).set({
     status: requestStatusFromTask(status),
     courierId: courierId ?? task?.courierId ?? null,
     acceptedAt: status === "in_progress" ? new Date() : task?.acceptedAt ?? null,
     completedAt: status === "completed" ? new Date() : null,
     updatedAt: new Date(),
-  }).where(eq(requests.id, requestId));
+  }).where(eq(requests.id, requestId)).returning();
+
+  // A completed request gets its price from the tariff automatically, on the
+  // server, without waiting for anyone to open a manager screen.
+  if (updated[0] && requestStatusFromTask(status) === "completed") {
+    await quoteRequestSafely(requestId);
+  }
+}
+
+/** Automatic quote that must never break the request status flow. */
+async function quoteRequestSafely(requestId: number): Promise<void> {
+  try {
+    const outcome = await quoteCompletedRequest(requestId);
+    if (outcome.status !== "skipped") broadcastLive("requests_changed", { requestId });
+  } catch (error) {
+    console.error("[requestQuote] automatic quote failed", { requestId, error });
+  }
 }
 
 async function managerSnapshot() {
@@ -2316,6 +2333,10 @@ export function registerCompatRoutes(app: Express) {
         .update(requests)
         .set({
           deliveryFee,
+          // A hand-entered amount is a manual price: it must survive automatic
+          // recalculation and it invalidates the previous verification.
+          quoteSource: deliveryFee === null ? null : "manual_fee",
+          quoteCalculatedAt: null,
           billingCheckedAt: null,
           billingCheckedByManagerId: null,
           updatedAt: new Date(),
@@ -3033,6 +3054,11 @@ export function registerCompatRoutes(app: Express) {
 
       if (updated[0]) {
         await syncTaskForRequest(updated[0] as DeliveryRequest);
+
+        // Price the work automatically as soon as it is completed.
+        if (status === "completed") {
+          await quoteRequestSafely(id);
+        }
 
         if (before?.status !== status) {
           const action =

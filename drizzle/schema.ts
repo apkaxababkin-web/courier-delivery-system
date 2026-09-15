@@ -657,6 +657,18 @@ export const requests = pgTable("requests", {
   /** Final delivery fee approved by manager */
   deliveryFee: decimal("deliveryFee", { precision: 10, scale: 2 }),
 
+  // Price quote (server-side, automatic)
+  /**
+   * When deliveryFee was produced by the automatic server-side quote.
+   * NULL with a non-NULL deliveryFee means the amount was entered by hand.
+   */
+  quoteCalculatedAt: timestamp("quoteCalculatedAt"),
+  /**
+   * Where the current deliveryFee came from: 'tariff' (automatic) or
+   * 'manual_fee' (a manager corrected it). NULL for legacy rows.
+   */
+  quoteSource: varchar("quoteSource", { length: 20 }),
+
   // Billing review
   /** When this completed work was financially checked by a manager */
   billingCheckedAt: timestamp("billingCheckedAt"),

@@ -2511,12 +2511,34 @@ export async function updateRequest(
 }
 
 /**
- * Update request status
+ * Update request status.
+ *
+ * Also maintains completedAt (the billing period is derived from it) and triggers
+ * the automatic price quote, so a request completed through this legacy path
+ * behaves exactly like one completed through the manager compatibility route.
  */
 export async function updateRequestStatus(id: number, status: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(requests).set({ status: status as any }).where(eq(requests.id, id));
+
+  await db
+    .update(requests)
+    .set({
+      status: status as any,
+      ...(status === "completed" ? { completedAt: new Date() } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(requests.id, id));
+
+  // Keep the automatic price quote in step with a status change made here.
+  if (status === "completed") {
+    try {
+      const { quoteCompletedRequest } = await import("./_core/requestQuote");
+      await quoteCompletedRequest(id);
+    } catch (error) {
+      console.error("[requestQuote] automatic quote failed", { requestId: id, error });
+    }
+  }
 }
 
 /**
