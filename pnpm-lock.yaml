@@ -213,6 +213,9 @@ importers:
       '@types/node':
         specifier: ^20.14.14
         version: 20.19.39
+      '@types/pdfkit':
+        specifier: ^0.17.6
+        version: 0.17.6
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6
@@ -2449,6 +2452,9 @@ packages:
 
   '@types/node@20.19.39':
     resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
+
+  '@types/pdfkit@0.17.6':
+    resolution: {integrity: sha512-tIwzxk2uWKp0Cq9JIluQXJid77lYhF52EsIOwhsMF4iWLA6YneoBR1xVKYYdAysHuepUB0OX4tdwMiUDdGKmig==}
 
   '@types/qrcode@1.5.6':
     resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
@@ -8821,6 +8827,10 @@ snapshots:
   '@types/node@20.19.39':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/pdfkit@0.17.6':
+    dependencies:
+      '@types/node': 20.19.39
 
   '@types/qrcode@1.5.6':
     dependencies:
