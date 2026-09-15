@@ -10,13 +10,70 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { formatMoney, groupThousands } from "../../shared/billing-format";
 import type { DocumentSetData } from "./billingDocumentData";
 
-const FONT_DIR = path.join(__dirname, "..", "assets", "fonts");
+/**
+ * Fonts are shipped as a sibling directory of the running entry point.
+ *
+ * The backend is bundled by esbuild into a single ES module (`dist/index.js`) and
+ * runs as ESM, where `__dirname` does not exist. `import.meta.url` is the
+ * ESM-safe equivalent and esbuild keeps it untouched for `--format=esm`, so the
+ * resolved directory is the one holding the running bundle:
+ *
+ *   bundle   (repo)      : <repo>/dist/index.js     -> <repo>/dist/assets/fonts
+ *   bundle   (container) : /app/dist/index.js       -> /app/dist/assets/fonts
+ *   sources  (tsx/vitest) : <repo>/server/_core/*.ts -> <repo>/server/assets/fonts
+ *
+ * `pnpm run build:backend` copies server/assets into dist/assets so the bundled
+ * layout is identical in the repository and in the image.
+ */
+function fontsDirectory(): string {
+  const bundleDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    // Bundled: dist/assets/fonts (and the container equivalent).
+    path.join(bundleDir, "assets", "fonts"),
+    // Sources: this file sits in server/_core, fonts in the sibling server/assets.
+    path.join(bundleDir, "..", "..", "assets", "fonts"),
+    // Bundled with the bundle one level deeper than the assets root.
+    path.join(bundleDir, "..", "assets", "fonts"),
+  ];
+
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!found) {
+    throw new Error(
+      `Не найден каталог шрифтов для PDF. Проверены: ${candidates.join(", ")}. ` +
+        "Убедитесь, что server/assets скопирован в dist/assets (pnpm run build:assets).",
+    );
+  }
+  return found;
+}
+
+const FONT_DIR = fontsDirectory();
 const FONT_REGULAR = path.join(FONT_DIR, "LiberationSerif-Regular.ttf");
 const FONT_BOLD = path.join(FONT_DIR, "LiberationSerif-Bold.ttf");
+
+/**
+ * Diagnostic probe for the compiled bundle: `PDF_FONTS_PROBE=1 node dist/index.js`
+ * prints where the fonts were resolved from and how they were resolved, then stops
+ * before any server or database work. It exists so the compiled artifact can be
+ * asserted end-to-end (used by tests/compiled-bundle.test.ts) instead of trusting
+ * the sources. It never runs in normal operation.
+ */
+if (process.env.PDF_FONTS_PROBE === "1") {
+  console.log(JSON.stringify({
+    probe: "pdf-fonts",
+    moduleUrl: import.meta.url,
+    fontDir: FONT_DIR,
+    regular: FONT_REGULAR,
+    bold: FONT_BOLD,
+    regularExists: fs.existsSync(FONT_REGULAR),
+    boldExists: fs.existsSync(FONT_BOLD),
+  }));
+  process.exit(0);
+}
 
 /** Fonts used inside the generated PDFs. */
 export function pdfFontFiles(): { regular: string; bold: string } {

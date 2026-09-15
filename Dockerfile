@@ -84,9 +84,10 @@ COPY --from=backend-builder /app/dist ./dist
 
 # Шрифты с кириллицей для PDF-документов (счёт, акт).
 # Runtime-образ alpine не содержит системных шрифтов, поэтому они поставляются
-# вместе с приложением. Путь должен совпадать с тем, что вычисляет сервер:
-# dist/index.js -> __dirname = /app/dist -> <__dirname>/../assets/fonts = /app/assets/fonts.
-COPY server/assets ./assets
+# вместе с приложением. `pnpm run build:backend` кладёт их в dist/assets, так что
+# в образе они оказываются ровно там, где их ищет бандл:
+# /app/dist/index.js -> ../assets/fonts = /app/dist/assets/fonts.
+COPY --from=backend-builder /app/dist/assets ./dist/assets
 COPY --from=backend-builder /app/drizzle ./drizzle
 COPY --from=backend-builder /app/scripts ./scripts
 

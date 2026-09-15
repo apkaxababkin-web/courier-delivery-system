@@ -203,7 +203,7 @@ describe('pdf rendering', () => {
   it('ships the Cyrillic fonts the PDFs are rendered with', () => {
     const fonts = pdfFontFiles();
     // The directory is derived from the server file location, so it has the same
-    // shape in the repository and in the container (dist/index.js -> ../assets/fonts).
+    // shape in the repository and in the container (bundle -> dist/assets/fonts).
     expect(fonts.regular.endsWith(path.join('assets', 'fonts', 'LiberationSerif-Regular.ttf'))).toBe(true);
     expect(fonts.bold.endsWith(path.join('assets', 'fonts', 'LiberationSerif-Bold.ttf'))).toBe(true);
     expect(fs.existsSync(fonts.regular)).toBe(true);
