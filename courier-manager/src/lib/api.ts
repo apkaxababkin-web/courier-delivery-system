@@ -1313,6 +1313,53 @@ export function billingDocumentFileUrl(documentId: number, kind: 'invoice' | 'ac
   return `/api/manager/billing/documents/${documentId}/file/${kind}`;
 }
 
+/**
+ * Fetch a protected manager file (invoice / act / registry / attached proof) with
+ * the manager credentials.
+ *
+ * Documents stay manager-protected on the server, so a plain `window.open(url)` or
+ * `<a href>` cannot work: a direct navigation carries no Authorization header and
+ * the API answers 401 UNAUTHORIZED. The bytes must be requested through the same
+ * authenticated fetch the rest of the app uses, then handed to the browser as a
+ * blob URL by the caller.
+ */
+export async function fetchManagerBlob(url: string): Promise<{ blob: Blob; fileName: string | null }> {
+  const response = await managerFetch(url, { credentials: 'include', cache: 'no-store' });
+
+  if (!response.ok) {
+    let message = `Не удалось получить файл (${response.status})`;
+    try {
+      const payload = await readJson(response);
+      if (payload?.error?.message) message = payload.error.message;
+    } catch {
+      // keep the status-based message
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  if (blob.size === 0) throw new Error('Сервер вернул пустой файл');
+
+  return { blob, fileName: fileNameFromContentDisposition(response.headers.get('content-disposition')) };
+}
+
+/** Extract the file name from a Content-Disposition header (RFC 5987 aware). */
+export function fileNameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1].trim());
+    } catch {
+      return encoded[1].trim();
+    }
+  }
+
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1]?.trim() || null;
+}
+
 /** URL of an on-the-fly preview, which never reserves a number. */
 export function billingPreviewUrl(
   clientId: number,

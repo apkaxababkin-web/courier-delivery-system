@@ -443,4 +443,73 @@ export function isResolvedForDocuments(row: BillingRequestRow): boolean {
   return row.state === "checked" || row.state === "decided_not_billable" || row.state === "billed";
 }
 
+/**
+ * May a manager set a manual price on this request from the review screen?
+ *
+ * The amount belongs to the settlement of the period, so a request can only be
+ * priced once it is part of that settlement:
+ *
+ *   * `completed` — the normal case: the work was done and the amount is corrected;
+ *   * any explicit review decision (`billingReviewState` set) — the manager is
+ *     already working this request (e.g. it waits for clarification), and a price
+ *     is what makes its amount meaningful.
+ *
+ * A request that is still untouched (`cancelled` / `pending` / … with no review
+ * decision) is NOT editable: the manager must first decide what happened to it.
+ * Membership in an active document always wins — issued data is immutable, so
+ * callers must check `activeBillingMembership` as well.
+ */
+export function canSetManualFee(request: {
+  status?: string | null;
+  billingReviewState?: string | null;
+}): boolean {
+  if (request.status === "completed") return true;
+  return Boolean(request.billingReviewState);
+}
+
+/** Server-side rejection message for the manager manual price mutation. */
+export function manualFeeError(request: {
+  status?: string | null;
+  billingReviewState?: string | null;
+}): string | null {
+  if (canSetManualFee(request)) return null;
+  return "Цену можно указать только у выполненной заявки или после решения по отменённой/незавершённой заявке";
+}
+
+/** Rejection message when the request is already part of an active document. */
+export const MANUAL_FEE_BILLED_ERROR = "Заявка уже включена в выставленный документ, изменить цену нельзя";
+
+/**
+ * Set a manual price on one request and mark its origin as a manual entry.
+ *
+ * The single server implementation of "manager typed a price", reused by the
+ * manager mutation so tests exercise the same path:
+ *
+ *   * stores the amount exactly as typed (0 is a legitimate amount, not "missing");
+ *   * marks `quoteSource = 'manual_fee'`, which makes every later automatic tariff
+ *     quote skip the request (`applyQuoteForRequest` preserves it);
+ *   * clears the previous verification mark, because a changed amount must be
+ *     verified again before it can enter a document;
+ *   * never touches the client tariff card and never recalculates other requests;
+ *   * refuses issued documents — their amounts are immutable.
+ */
+export async function applyManualFee(requestId: number, amount: number): Promise<void> {
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error("Стоимость должна быть числом не меньше нуля");
+  }
+
+  const conn = await db.getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const membership = await activeBillingMembership([requestId]);
+  if (membership.has(requestId)) {
+    throw new Error(MANUAL_FEE_BILLED_ERROR);
+  }
+
+  await db.updateRequest(requestId, { deliveryFee: amount.toFixed(2) } as never);
+
+  const { markManualPrice } = await import("./requestQuote");
+  await markManualPrice(requestId);
+}
+
 export type { DocumentSettings };

@@ -20,6 +20,9 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// React 19 reads the act-environment flag from globalThis in this setup.
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 const CLIENT_ID = 7;
 
 // The client list only contains clients with completed requests inside the
@@ -46,37 +49,97 @@ vi.mock("../courier-manager/src/lib/api", () => {
     updatedAt: "2026-08-01T00:00:00.000Z",
   };
 
-  const request = {
-    id: 101,
+  const baseRequest = {
     clientId: CLIENT_ID,
     clientName: "Hello Korea",
-    status: "completed",
     requestType: "delivery",
     placesCount: 2,
-    deliveryFee: 800,
-    billingCheckedAt: "2026-09-01T10:00:00.000Z",
     billingReviewState: null,
     billingReviewNote: null,
-    billingState: "checked",
     billingIssue: null,
     billingBlocking: false,
-    statusLabel: "Выполнена",
     tariffCategory: "delivery",
     createdAt: midMonth.toISOString(),
+  };
+
+  // Completed and verified: the "normal" row.
+  const request = {
+    ...baseRequest,
+    id: 101,
+    status: "completed",
+    deliveryFee: 800,
+    billingCheckedAt: "2026-09-01T10:00:00.000Z",
+    billingState: "checked",
+    statusLabel: "Выполнена",
     completedAt: midMonthDone.toISOString(),
   };
 
+  // Completed without a price: the row that must offer "Указать цену".
+  const unpricedRequest = {
+    ...baseRequest,
+    id: 102,
+    status: "completed",
+    deliveryFee: null,
+    billingCheckedAt: null,
+    billingState: "ready",
+    statusLabel: "Выполнена",
+    completedAt: midMonthDone.toISOString(),
+  };
+
+  // Cancelled without completedAt: the row whose date must fall back to createdAt.
+  const cancelledRequest = {
+    ...baseRequest,
+    id: 103,
+    status: "cancelled",
+    deliveryFee: null,
+    billingCheckedAt: null,
+    billingState: "decision_needed",
+    statusLabel: "Отменена",
+    completedAt: null,
+    createdAt: "2026-09-07T01:55:28.940Z",
+  };
+
+  const requests = [request, unpricedRequest, cancelledRequest];
+
+  const issuedDocument = {
+    id: 1,
+    number: "1",
+    documentDate: "2026-09-01",
+    documentDateText: "01.09.2026",
+    clientId: CLIENT_ID,
+    clientName: "Hello Korea",
+    periodFrom: "2026-08-01",
+    periodTo: "2026-08-31",
+    requestsCount: 1,
+    totalAmount: 800,
+    status: "issued",
+    vatText: "Без НДС",
+    invoiceFile: "uploads/billing-documents/1/invoice-1.pdf",
+    actFile: "uploads/billing-documents/1/act-1.pdf",
+    registryFile: "uploads/billing-documents/1/registry-1.xlsx",
+    paidAt: null,
+    paidByManagerId: null,
+    paymentComment: null,
+    paymentProofs: [],
+    voidedAt: null,
+    voidReason: null,
+    replacesDocumentId: null,
+    requestsReleased: false,
+    activeRequestsCount: 1,
+    createdAt: "2026-09-01T10:00:00.000Z",
+  };
+
   const overview = {
-    requests: [request],
+    requests,
     counts: {
-      total: 1, completed: 1, unfinished: 0, cancelled: 0, checked: 1, ready: 0,
-      unpriced: 0, billed: 0, decisionNeeded: 0, clarification: 0, notBillable: 0,
+      total: 3, completed: 2, unfinished: 0, cancelled: 1, checked: 1, ready: 1,
+      unpriced: 0, billed: 0, decisionNeeded: 1, clarification: 0, notBillable: 0,
     },
     checkedAmount: 800,
     readyAmount: 800,
     billedAmount: 0,
-    readiness: { ready: true, blockers: [], executorGaps: [], clientGaps: [], unresolved: [] },
-    documents: [],
+    readiness: { ready: false, blockers: ["Отменённых или незавершённых заявок без решения: 1"], executorGaps: [], clientGaps: [], unresolved: [] },
+    documents: [issuedDocument],
   };
 
   const tariffs = {
@@ -89,7 +152,7 @@ vi.mock("../courier-manager/src/lib/api", () => {
 
   return {
     getAllClients: vi.fn(async () => [client]),
-    getAllRequests: vi.fn(async () => [request]),
+    getAllRequests: vi.fn(async () => requests),
     getAllMails: vi.fn(async () => []),
     getPartners: vi.fn(async () => []),
     getBillingOverview: vi.fn(async () => overview),
@@ -104,7 +167,7 @@ vi.mock("../courier-manager/src/lib/api", () => {
     updateClientTariffs: vi.fn(async () => tariffs),
     getDocumentPreview: vi.fn(async () => null),
     issueDocumentSet: vi.fn(async () => ({ ok: false, reason: "test" })),
-    getBillingDocuments: vi.fn(async () => []),
+    getBillingDocuments: vi.fn(async () => [issuedDocument]),
     setBillingDocumentPaid: vi.fn(async () => undefined),
     voidBillingDocument: vi.fn(async () => undefined),
     releaseBillingDocument: vi.fn(async () => ({ ok: true, releasedRequestIds: [] })),
@@ -114,13 +177,18 @@ vi.mock("../courier-manager/src/lib/api", () => {
     getDocumentSettings: vi.fn(async () => null),
     saveDocumentSettings: vi.fn(async () => null),
     uploadDocumentSettingsImage: vi.fn(async () => null),
-    billingDocumentFileUrl: (id: number, kind: string) => `/api/file/${id}/${kind}`,
+    fetchManagerBlob: vi.fn(async () => ({
+      blob: new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])], { type: 'application/pdf' }),
+      fileName: "Счет_1_2026-09-01.pdf",
+    })),
+    billingDocumentFileUrl: (id: number, kind: string) => `/api/manager/billing/documents/${id}/file/${kind}`,
     billingPreviewUrl: () => "/api/preview",
     billingDocumentProofUrl: (proof: { id: number }) => `/api/proof/${proof.id}`,
   };
 });
 
 const ReportsView = (await import("../courier-manager/src/views/ReportsView")).default;
+const api = await import("../courier-manager/src/lib/api");
 
 let container: HTMLDivElement | null = null;
 
@@ -194,6 +262,19 @@ function requireButton(name: string | RegExp): HTMLButtonElement {
   return found;
 }
 
+/**
+ * Type into a React-controlled input. React deduplicates input events through its
+ * own value tracker, so a plain `element.value = ...` is ignored; the native setter
+ * is what React listens to.
+ */
+async function typeInto(element: HTMLInputElement, value: string): Promise<void> {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    setter?.call(element, value);
+    element.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+}
+
 async function click(element: HTMLElement): Promise<void> {
   await act(async () => {
     element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
@@ -226,8 +307,26 @@ async function openClient(): Promise<void> {
   await waitFor(() => (pageText().includes("Сверка клиента") ? true : null), 3000, "заголовок клиента");
 }
 
+/** Blob-URL support that happy-dom may not provide. */
+const createdObjectUrls: string[] = [];
+let openedUrls: string[] = [];
+
 beforeEach(() => {
   document.body.innerHTML = "";
+  createdObjectUrls.length = 0;
+  openedUrls = [];
+
+  (URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = (blob: Blob) => {
+    const url = `blob:mock-${createdObjectUrls.length + 1}-${blob.size}`;
+    createdObjectUrls.push(url);
+    return url;
+  };
+  (URL as unknown as { revokeObjectURL: (url: string) => void }).revokeObjectURL = () => undefined;
+
+  window.open = ((url: string) => {
+    openedUrls.push(String(url));
+    return null;
+  }) as unknown as typeof window.open;
 });
 
 afterEach(() => {
@@ -309,5 +408,75 @@ describe("«Расчёты»: реальный DOM-рендер клиентск
     await click(requireSectionTab("Сверка"));
     await waitFor(() => (pageText().includes("Сверка клиента") ? true : null));
     expect(pageText()).not.toContain("Выберите клиента для сверки");
+  });
+
+  it("даёт указать цену заявки вручную из сверки и обновляет строку", async () => {
+    await renderReports();
+    await openClient();
+
+    // The request arrives without a price: an explicit action replaces the bare "—".
+    const unpricedAction = container!.querySelector('[data-testid="fee-edit-102"]')!;
+    expect(unpricedAction).toBeTruthy();
+    expect(unpricedAction.textContent).toContain("Указать цену");
+
+    await click(unpricedAction as HTMLElement);
+    expect(container!.querySelector('[data-testid="fee-input-102"]')).toBeTruthy();
+    expect(container!.querySelector('[data-testid="fee-save-102"]')).toBeTruthy();
+    expect(container!.querySelector('[data-testid="fee-cancel-102"]')).toBeTruthy();
+
+    // Cancel keeps the request untouched.
+    await click(container!.querySelector('[data-testid="fee-cancel-102"]') as HTMLElement);
+    expect(api.updateBillingReviewFields).not.toHaveBeenCalled();
+    expect(container!.querySelector('[data-testid="fee-input-102"]')).toBeNull();
+
+    // Now really set a price.
+    await click(container!.querySelector('[data-testid="fee-edit-102"]') as HTMLElement);
+    const editor = container!.querySelector('[data-testid="fee-input-102"]') as HTMLInputElement;
+    await typeInto(editor, "1234,56");
+    await click(container!.querySelector('[data-testid="fee-save-102"]') as HTMLElement);
+
+    await waitFor(() => ((api.updateBillingReviewFields as ReturnType<typeof vi.fn>).mock.calls.length > 0 ? true : null));
+    expect(api.updateBillingReviewFields).toHaveBeenCalledWith(102, { deliveryFee: 1234.56 });
+
+    // The row shows the new amount and no longer offers "Указать цену".
+    await waitFor(() => (pageText().includes("1 234,56") ? true : null));
+    const editButton = container!.querySelector('[data-testid="fee-edit-102"]') as HTMLButtonElement;
+    expect(editButton.textContent ?? "").not.toContain("Указать цену");
+  });
+
+  it("показывает дату создания у отменённой заявки без completedAt", async () => {
+    await renderReports();
+    await openClient();
+
+    const rows = Array.from(container!.querySelectorAll("tbody tr"));
+    const cancelledRow = rows.find((row) => (row.textContent ?? "").includes("Отменена"));
+    expect(cancelledRow).toBeTruthy();
+
+    const firstCell = (cancelledRow as HTMLElement).querySelector("td")!;
+    expect((firstCell.textContent ?? "").trim()).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
+    expect((firstCell.textContent ?? "").trim()).not.toBe("—");
+  });
+
+  it("L. скачивает документы авторизованным запросом, а не голым окном", async () => {
+    await renderReports();
+    await openClient();
+
+    await click(requireSectionTab("Счета и акты"));
+    await waitFor(() => (pageText().includes("Счета и акты клиента") ? true : null));
+
+    const invoiceButton = Array.from(container!.querySelectorAll("button")).find(
+      (item) => (item.textContent ?? "").trim() === "Счёт",
+    ) as HTMLButtonElement;
+    expect(invoiceButton).toBeTruthy();
+
+    await click(invoiceButton);
+    await waitFor(() => ((api.fetchManagerBlob as ReturnType<typeof vi.fn>).mock.calls.length > 0 ? true : null));
+
+    // The protected URL went through the authenticated blob fetch...
+    expect(api.fetchManagerBlob).toHaveBeenCalledWith("/api/manager/billing/documents/1/file/invoice");
+    // ...and never through a bare window.open / href navigation of the protected URL.
+    expect(openedUrls.every((url) => url.startsWith("blob:"))).toBe(true);
+    expect(openedUrls.some((url) => url.includes("/api/manager/"))).toBe(false);
+    expect(container!.querySelector('a[href*="/api/manager/billing/documents"]')).toBeNull();
   });
 });

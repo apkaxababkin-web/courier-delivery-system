@@ -1391,6 +1391,9 @@ export const appRouter = router({
         return {
           requests: overview.rows.map((row) => ({
             ...row.request,
+            // Explicit, so the review screen can always tell where the amount came
+            // from: tariff quote, manager correction, or nothing yet.
+            quoteSource: row.request.quoteSource ?? null,
             billingState: row.state,
             billingIssue: row.issue,
             billingBlocking: row.blocking,
@@ -1714,20 +1717,28 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const request = await db.getRequestById(input.requestId);
         if (!request) throw new Error("Заявка не найдена");
-        if (request.status !== "completed") {
+
+        // A manual price is allowed for a completed request or after an explicit
+        // review decision (see canSetManualFee); an untouched cancelled/unfinished
+        // request must be resolved first, and issued data is never editable.
+        const { canSetManualFee, manualFeeError, applyManualFee } = await import("./_core/billingReview");
+
+        if (input.deliveryFee !== undefined && !canSetManualFee(request)) {
+          throw new Error(manualFeeError(request) ?? "Изменить стоимость этой заявки нельзя");
+        }
+
+        if (input.comments !== undefined && request.status !== "completed") {
           throw new Error("Редактировать расчёт можно только у завершённой заявки");
         }
 
-        const updatePayload = {
-          ...(input.deliveryFee !== undefined ? { deliveryFee: input.deliveryFee.toFixed(2) } : {}),
-          ...(input.comments !== undefined ? { comments: input.comments } : {}),
-        };
-
-        await db.updateRequest(input.requestId, updatePayload);
-
         if (input.deliveryFee !== undefined) {
-          const { markManualPrice } = await import("./_core/requestQuote");
-          await markManualPrice(input.requestId);
+          // One implementation of "manager typed a price": validates the amount,
+          // refuses issued documents and marks the origin as manual_fee.
+          await applyManualFee(input.requestId, input.deliveryFee);
+        }
+
+        if (input.comments !== undefined) {
+          await db.updateRequest(input.requestId, { comments: input.comments });
         }
 
         const changes: Record<string, unknown> = {};

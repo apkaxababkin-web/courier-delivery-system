@@ -9,6 +9,7 @@
  * paths are stored in the database, matching the existing uploads convention.
  */
 import crypto from "node:crypto";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { eq, sql } from "drizzle-orm";
@@ -50,21 +51,40 @@ function allowedFileRoots(): string[] {
   return [path.resolve(BILLING_DOCUMENTS_DIR), path.resolve(process.cwd(), "uploads")];
 }
 
-/** Resolve a stored file URL, refusing anything outside the uploads roots. */
-function resolveStoredFile(fileUrl: string): string {
-  const relative = String(fileUrl).replace(/^\/+/, "");
+/**
+ * Resolve a stored file URL, refusing anything outside the uploads roots.
+ *
+ * This is the ONLY place that turns a stored `fileUrl` into an absolute path, so
+ * the writer (`issueDocumentSet`), the deleter and the download routes can never
+ * disagree when `BILLING_DOCUMENTS_DIR` points somewhere else than the default
+ * `<cwd>/uploads/billing-documents`.
+ */
+export function resolveStoredFilePath(fileUrl: string): string | null {
+  const relative = String(fileUrl ?? "").replace(/^\/+/, "");
+  if (!relative) return null;
+
+  const normalized = path.normalize(relative);
+  // Never follow a path that climbs out of the uploads tree.
+  if (normalized.startsWith("..") || path.isAbsolute(normalized)) return null;
+
   const relativeToUploads = relative.replace(/^uploads[/\\]billing-documents[/\\]?/, "");
+  const roots = allowedFileRoots();
+  // Both candidates are inside the uploads tree; prefer the one that exists, so an
+  // absolute path is produced correctly whether the stored URL was written
+  // relative to the process directory or relative to the configured directory.
   const candidates = [
-    // The logical path is authoritative: uploads/billing-documents/<id>/<file>.
     path.resolve(BILLING_DOCUMENTS_DIR, relativeToUploads),
     path.resolve(process.cwd(), relative),
-  ];
-  const roots = allowedFileRoots();
-  for (const candidate of candidates) {
-    const inside = roots.some((root) => candidate === root || candidate.startsWith(root + path.sep));
-    if (inside) return candidate;
-  }
-  throw new BillingDocumentError("Путь к файлу вне каталога загрузок", 400);
+  ].filter((candidate) => roots.some((root) => candidate === root || candidate.startsWith(root + path.sep)));
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? null;
+}
+
+/** Same as resolveStoredFilePath but throws the billing error for the service. */
+function resolveStoredFile(fileUrl: string): string {
+  const resolved = resolveStoredFilePath(fileUrl);
+  if (!resolved) throw new BillingDocumentError("Путь к файлу вне каталога загрузок", 400);
+  return resolved;
 }
 
 export class BillingDocumentError extends Error {

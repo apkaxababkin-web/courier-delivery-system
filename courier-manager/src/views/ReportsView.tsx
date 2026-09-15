@@ -27,6 +27,7 @@ import {
   billingDocumentFileUrl,
   billingPreviewUrl,
   billingDocumentProofUrl,
+  fetchManagerBlob,
   setBillingChecked,
   setMailBillingChecked,
   updateBillingReviewFields,
@@ -49,6 +50,11 @@ import {
 } from '../lib/api';
 import * as XLSX from 'xlsx';
 import { Modal } from '../components/Modal';
+import {
+  effectiveRequestDateKey,
+  formatDateRu,
+  toDateKey,
+} from '../lib/billing-dates';
 
 type ClientTab = {
   id: number | null;
@@ -56,21 +62,14 @@ type ClientTab = {
   count: number;
 };
 
-function toDateKey(value?: string | null) {
-  if (!value) return '';
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
-}
-
+/**
+ * Effective date of a request, shared with the server rule
+ * `COALESCE(completedAt, createdAt)`: a completed request is dated by its
+ * completion, a cancelled/unfinished one by its creation, so the review table
+ * never shows "—" for a request that exists.
+ */
 function getRequestDate(request: Request) {
-  return toDateKey(request.completedAt);
+  return effectiveRequestDateKey(request);
 }
 
 function getCurrentMonthRange() {
@@ -101,16 +100,9 @@ function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
+/** DD.MM.YYYY; accepts full ISO timestamps as well as YYYY-MM-DD. */
 function formatDate(value?: string | null) {
-  const key = value?.slice(0, 10) || '';
-
-  if (!key) return '—';
-
-  const [year, month, day] = key.split('-');
-
-  if (!year || !month || !day) return '—';
-
-  return `${day}.${month}.${year}`;
+  return formatDateRu(value);
 }
 
 function requestSender(request: Request) {
@@ -754,10 +746,14 @@ export default function ReportsView() {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [savingRequestId, setSavingRequestId] = useState<number | null>(null);
-  const [editingFeeRequestId, setEditingFeeRequestId] = useState<number | null>(null);
+  /** Manual price editor: which request is open and what has been typed. */
+  const [feeEditor, setFeeEditor] = useState<{ request: BillingReviewRequest; draft: string } | null>(null);
   const [editingCommentRequestId, setEditingCommentRequestId] = useState<number | null>(null);
   const [billingRefreshVersion, setBillingRefreshVersion] = useState(0);
   const [error, setError] = useState('');
+  /** Which protected file is currently being downloaded (key = url). */
+  const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState('');
 
   async function loadData() {
     try {
@@ -1072,6 +1068,52 @@ export default function ReportsView() {
     }
   }
 
+  /**
+   * Open or download a protected document through the authenticated API.
+   *
+   * The endpoints stay manager-protected: a plain link would navigate without the
+   * Authorization header and get 401 UNAUTHORIZED, so the bytes are fetched with
+   * the manager credentials and handed over as a blob URL. PDFs open in a new tab,
+   * XLSX downloads with the server-provided file name.
+   */
+  async function openProtectedFile(
+    url: string,
+    options: { mode: 'open' | 'download'; fallbackName: string },
+  ) {
+    setDownloadError('');
+    setError('');
+    setDownloadingFile(url);
+
+    try {
+      const { blob, fileName } = await fetchManagerBlob(url);
+      const objectUrl = URL.createObjectURL(blob);
+      const name = fileName || options.fallbackName;
+
+      if (options.mode === 'download') {
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        // Give the browser time to start the download before the URL is freed.
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } else {
+        const opened = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          setDownloadError('Браузер заблокировал новую вкладку. Разрешите всплывающие окна для этого сайта.');
+        }
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      }
+    } catch (downloadFailure) {
+      setDownloadError(
+        downloadFailure instanceof Error ? downloadFailure.message : 'Не удалось получить файл',
+      );
+    } finally {
+      setDownloadingFile(null);
+    }
+  }
+
   async function openHistory(document: BillingDocumentRow) {
     setError('');
     try {
@@ -1152,8 +1194,8 @@ export default function ReportsView() {
 
   const periodRequests = useMemo(() => {
     return requests.filter((request) => {
-      if (request.status !== 'completed') return false;
-
+      // Same period anchor as the server: completedAt, else createdAt. All statuses
+      // are kept so a cancelled request still belongs to its period.
       const date = getRequestDate(request);
 
       if (!date) return false;
@@ -1340,6 +1382,34 @@ export default function ReportsView() {
     } finally {
       setSavingRequestId(null);
     }
+  }
+
+  /** Start editing the manual price of one request. */
+  function startFeeEdit(request: BillingReviewRequest) {
+    const current = request.deliveryFee === null || request.deliveryFee === undefined
+      ? ''
+      : String(request.deliveryFee);
+    setFeeEditor({ request, draft: current });
+    setError('');
+  }
+
+  /** Leave the editor without saving anything. */
+  function cancelFeeEdit() {
+    setFeeEditor(null);
+  }
+
+  /**
+   * Save the typed price ('' means "no amount" and is not saved). The request is
+   * taken from the editor state, so the save does not depend on the row being
+   * hovered when the button is pressed.
+   */
+  async function submitFeeEdit() {
+    const editor = feeEditor;
+    if (!editor) return;
+    const raw = editor.draft.trim();
+    setFeeEditor(null);
+    if (!raw) return;
+    await saveReviewDeliveryFee(editor.request, raw);
   }
 
   async function saveReviewDeliveryFee(
@@ -1878,18 +1948,25 @@ export default function ReportsView() {
                         ['invoice', 'Счёт', FileText],
                         ['act', 'Акт', ScrollText],
                         ['registry', 'Реестр', Table2],
-                      ] as const).map(([kind, label, Icon]) => (
-                        <a
-                          key={kind}
-                          href={billingPreviewUrl(Number(selectedClientId), dateFrom, dateTo, kind, preview.documentDateIso)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                          {label}
-                        </a>
-                      ))}
+                      ] as const).map(([kind, label, Icon]) => {
+                        const url = billingPreviewUrl(Number(selectedClientId), dateFrom, dateTo, kind, preview.documentDateIso);
+                        const isPdf = kind !== 'registry';
+                        return (
+                          <button
+                            key={kind}
+                            type="button"
+                            disabled={downloadingFile === url}
+                            onClick={() => void openProtectedFile(url, {
+                              mode: isPdf ? 'open' : 'download',
+                              fallbackName: `${label}_${preview.number}.${isPdf ? 'pdf' : 'xlsx'}`,
+                            })}
+                            className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-50"
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            {downloadingFile === url ? 'Загрузка…' : label}
+                          </button>
+                        );
+                      })}
                       <button
                         type="button"
                         onClick={() => setPreview(null)}
@@ -2141,6 +2218,13 @@ export default function ReportsView() {
         </div>
       )}
 
+      {/* A protected document could not be fetched (401, network, empty body). */}
+      {downloadError && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {downloadError}
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1280px] table-fixed text-sm">
@@ -2234,32 +2318,48 @@ export default function ReportsView() {
                     </td>
 
                     <td className="px-3 py-2">
-                      {editingFeeRequestId === request.id ? (
-                        <input
-                          autoFocus
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          defaultValue={request.deliveryFee ?? ''}
-                          disabled={savingRequestId === request.id}
-                          onBlur={(event) => {
-                            void saveReviewDeliveryFee(
-                              request,
-                              event.currentTarget.value,
-                            );
-                            setEditingFeeRequestId(null);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Escape') {
-                              setEditingFeeRequestId(null);
-                            }
-                          }}
-                          className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-right text-sm text-slate-900 outline-none focus:border-slate-500 disabled:cursor-wait disabled:opacity-60"
-                        />
+                      {feeEditor?.request.id === request.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            autoFocus
+                            data-testid={`fee-input-${request.id}`}
+                            type="text"
+                            inputMode="decimal"
+                            value={feeEditor?.draft ?? ''}
+                            disabled={savingRequestId === request.id}
+                            placeholder="0"
+                            onChange={(event) => setFeeEditor((current) => current
+                              ? { ...current, draft: event.target.value }
+                              : current)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') void submitFeeEdit();
+                              if (event.key === 'Escape') cancelFeeEdit();
+                            }}
+                            className="h-8 w-24 rounded-lg border border-slate-300 bg-white px-2 text-right text-sm text-slate-900 outline-none focus:border-slate-500 disabled:cursor-wait disabled:opacity-60"
+                          />
+                          <button
+                            type="button"
+                            data-testid={`fee-save-${request.id}`}
+                            disabled={savingRequestId === request.id}
+                            onClick={() => void submitFeeEdit()}
+                            className="inline-flex h-8 items-center rounded-lg bg-slate-950 px-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-50"
+                          >
+                            {savingRequestId === request.id ? 'Сохраняю…' : 'Сохранить'}
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`fee-cancel-${request.id}`}
+                            disabled={savingRequestId === request.id}
+                            onClick={cancelFeeEdit}
+                            className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Отмена
+                          </button>
+                        </div>
                       ) : (
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate font-medium text-slate-800">
-                            {request.deliveryFee != null
+                            {request.deliveryFee != null && request.deliveryFee !== ''
                               ? `${Number(request.deliveryFee).toLocaleString('ru-RU', {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
@@ -2269,11 +2369,17 @@ export default function ReportsView() {
 
                           <button
                             type="button"
-                            onClick={() => setEditingFeeRequestId(request.id)}
-                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                            title="Изменить стоимость"
+                            data-testid={`fee-edit-${request.id}`}
+                            onClick={() => startFeeEdit(request)}
+                            className={
+                              request.deliveryFee == null || request.deliveryFee === ''
+                                ? 'inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-100'
+                                : 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700'
+                            }
+                            title="Указать стоимость вручную: тариф клиента не меняется, авто-расчёт больше не перетирает эту сумму"
                           >
                             <Pencil className="h-3.5 w-3.5" />
+                            {request.deliveryFee == null || request.deliveryFee === '' ? 'Указать цену' : ''}
                           </button>
                         </div>
                       )}
@@ -2581,18 +2687,25 @@ export default function ReportsView() {
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-wrap gap-2">
-                                  {([['invoice', 'Счёт', FileText], ['act', 'Акт', ScrollText], ['registry', 'Реестр', Table2]] as const).map(([kind, label, Icon]) => (
-                                    <a
-                                      key={kind}
-                                      href={billingDocumentFileUrl(document.id, kind)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    >
-                                      <Icon className="h-3.5 w-3.5" />
-                                      {label}
-                                    </a>
-                                  ))}
+                                  {([['invoice', 'Счёт', FileText], ['act', 'Акт', ScrollText], ['registry', 'Реестр', Table2]] as const).map(([kind, label, Icon]) => {
+                                    const url = billingDocumentFileUrl(document.id, kind);
+                                    const isPdf = kind !== 'registry';
+                                    return (
+                                      <button
+                                        key={kind}
+                                        type="button"
+                                        disabled={downloadingFile === url}
+                                        onClick={() => void openProtectedFile(url, {
+                                          mode: isPdf ? 'open' : 'download',
+                                          fallbackName: `${label}_${document.number}.${isPdf ? 'pdf' : 'xlsx'}`,
+                                        })}
+                                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
+                                      >
+                                        <Icon className="h-3.5 w-3.5" />
+                                        {downloadingFile === url ? 'Загрузка…' : label}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </td>
                               <td className="px-3 py-2">
@@ -2697,14 +2810,17 @@ export default function ReportsView() {
                                     <div className="flex flex-col gap-1">
                                       {(document.paymentProofs ?? []).map((proof) => (
                                         <div key={proof.id} className="flex items-center gap-1 text-[11px] text-slate-600">
-                                          <a
-                                            href={billingDocumentProofUrl(proof)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="underline decoration-dotted hover:text-slate-900"
+                                          <button
+                                            type="button"
+                                            disabled={downloadingFile === billingDocumentProofUrl(proof)}
+                                            onClick={() => void openProtectedFile(billingDocumentProofUrl(proof), {
+                                              mode: 'open',
+                                              fallbackName: proof.originalName,
+                                            })}
+                                            className="underline decoration-dotted hover:text-slate-900 disabled:opacity-50"
                                           >
-                                            {proof.originalName}
-                                          </a>
+                                            {downloadingFile === billingDocumentProofUrl(proof) ? 'Загрузка…' : proof.originalName}
+                                          </button>
                                           <button
                                             type="button"
                                             onClick={() => void removePaymentProof(proof.id)}

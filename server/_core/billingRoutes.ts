@@ -23,6 +23,7 @@ import {
   getDocument,
   releaseDocumentRequests,
   renderPreviewFile,
+  resolveStoredFilePath,
   type PreviewKind,
 } from "./billingDocumentService";
 import { loadDocumentSettings, saveDocumentSettings, DocumentSettingsError } from "./documentSettings";
@@ -80,11 +81,14 @@ function safePreviewKind(value: unknown): PreviewKind | null {
 }
 
 /** Generated document paths are resolved strictly inside uploads/. */
+/**
+ * Files are located through the billing service, which owns the storage root
+ * (`BILLING_DOCUMENTS_DIR`, default `<cwd>/uploads/billing-documents`). Resolving
+ * here independently would break as soon as the directory is configured
+ * differently from the process directory.
+ */
 function resolveStoredPath(relativePath: string): string | null {
-  const absolute = path.resolve(process.cwd(), relativePath);
-  const uploadsRoot = path.resolve(process.cwd(), "uploads");
-  if (!absolute.startsWith(uploadsRoot + path.sep)) return null;
-  return absolute;
+  return resolveStoredFilePath(relativePath);
 }
 
 export function registerBillingRoutes(app: Express) {
