@@ -1528,7 +1528,10 @@ export default function ReportsView() {
         </p>
       </div>
 
-      <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+      <div
+        data-testid="reports-tabs"
+        className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"
+      >
         <button
           type="button"
           onClick={() => setActiveTab('partners')}
@@ -1554,7 +1557,7 @@ export default function ReportsView() {
         </button>
       </div>
 
-      {activeTab === 'documents' && selectedClientId === 'all' ? (
+      {activeTab === 'documents' ? (
         // The ref lives on the whole section so switching tabs always brings the
         // (always visible) tab strip and the section header back into view.
         <div ref={clientSectionsRef} className="space-y-4">
@@ -1564,6 +1567,7 @@ export default function ReportsView() {
               exist at all. The two client-specific sections open once a client
               is selected. */}
           <div
+            data-testid="client-sections"
             className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"
           >
             <button
@@ -1607,7 +1611,10 @@ export default function ReportsView() {
 
           {/* Client list, shown while no client is chosen. */}
           {!selectedClient && (
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div
+              data-testid="client-picker"
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
               <div className="border-b border-slate-200 px-5 py-4">
                 <div className="text-sm font-semibold text-slate-950">
                   Клиенты
@@ -1641,7 +1648,10 @@ export default function ReportsView() {
           {selectedClient && (
             <>
               {(clientSection === 'review' || clientSection === 'documents') && (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div
+                  data-testid="client-period"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <label className="block">
                       <span className="mb-1 block text-xs font-medium text-slate-500">
@@ -1676,7 +1686,10 @@ export default function ReportsView() {
                 </div>
               )}
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div
+                data-testid="client-header"
+                className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   <button
                     type="button"
@@ -2008,21 +2021,7 @@ export default function ReportsView() {
                 </div>
               )}
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="font-semibold text-slate-950">
-                  Сверка клиента
-                </div>
-                <div className="mt-1 text-sm text-slate-500">
-                  Стоимость рассчитывается на сервере автоматически при завершении заявки. В Excel попадут заявки со статусом «Проверено» за выбранный период.
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      ) : activeTab === 'partners' ? (
-        <PartnerReconciliation />
-      ) : (
-        <>
+              {/* Requests of the period with their state and manual price. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
           <label className="block">
@@ -2728,7 +2727,20 @@ export default function ReportsView() {
                   )}
                 </div>
               )}
-        </>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="font-semibold text-slate-950">
+                  Сверка клиента
+                </div>
+                <div className="mt-1 text-sm text-slate-500">
+                  Стоимость рассчитывается на сервере автоматически при завершении заявки. В Excel попадут заявки со статусом «Проверено» за выбранный период.
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <PartnerReconciliation />
       )}
 
       {/* Manager decision about a cancelled / unfinished request. */}
