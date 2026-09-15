@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Search, Download, FileSpreadsheet, ArrowLeft, Pencil, RefreshCw } from 'lucide-react';
+import {
+  CalendarDays, Search, Download, FileSpreadsheet, ArrowLeft, Pencil, RefreshCw,
+  FileText, ScrollText, Table2, Wallet, Ban, Paperclip, CheckCircle2, AlertTriangle, Settings2,
+} from 'lucide-react';
 import {
   getAllClients,
   getAllRequests,
@@ -8,20 +11,41 @@ import {
   getBillingOverview,
   recalcClientQuotes,
   recalcRequestQuote,
-  issueBillingDocument,
+  setBillingReviewDecision,
+  getDocumentPreview,
+  issueDocumentSet,
+  getBillingDocuments,
+  setBillingDocumentPaid,
+  voidBillingDocument,
+  uploadPaymentProof,
+  removeBillingDocumentFile,
+  getDocumentSettings,
+  saveDocumentSettings,
+  uploadDocumentSettingsImage,
+  billingDocumentFileUrl,
+  billingPreviewUrl,
+  billingDocumentProofUrl,
   setBillingChecked,
   setMailBillingChecked,
   updateBillingReviewFields,
   updateRequestClient,
+  getClientTariffs,
+  updateClientTariffs,
   type BillingDocumentRow,
-  type BillingQuoteState,
+  type BillingPaymentProof,
+  type BillingRequestState,
+  type BillingReviewAction,
   type BillingReviewRequest,
+  type DocumentPreview,
+  type DocumentSettingsDto,
+  type ClientTariffsDto,
   type Client,
   type Request,
   type Mail,
   type Partner,
 } from '../lib/api';
 import * as XLSX from 'xlsx';
+import { Modal } from '../components/Modal';
 
 type ClientTab = {
   id: number | null;
@@ -659,6 +683,7 @@ function PartnerReconciliation() {
               </div>
             )}
           </div>
+
         </>
       )}
     </div>
@@ -670,13 +695,29 @@ export default function ReportsView() {
   const [activeTab, setActiveTab] = useState<'partners' | 'documents'>('documents');
 
   const [requests, setRequests] = useState<Request[]>([]);
-  const [billingOverview, setBillingOverview] = useState<{
-    requests: BillingReviewRequest[];
-    counts: { total: number; ready: number; checked: number; billed: number; unpriced: number };
-    checkedAmount: number;
-    readyAmount: number;
-    documents: BillingDocumentRow[];
+  const [billingOverview, setBillingOverview] = useState<Awaited<ReturnType<typeof getBillingOverview>> | null>(null);
+  /** Client section: reconciliation, tariffs or issued documents. */
+  const [clientSection, setClientSection] = useState<'review' | 'tariffs' | 'documents'>('review');
+  /** Preview of the set about to be issued: number, date and totals are confirmed here. */
+  const [preview, setPreview] = useState<DocumentPreview | null>(null);
+  const [previewDate, setPreviewDate] = useState('');
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [tariffs, setTariffs] = useState<ClientTariffsDto | null>(null);
+  const [tariffsSaving, setTariffsSaving] = useState(false);
+  const [documents, setDocuments] = useState<BillingDocumentRow[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentSettings, setDocumentSettings] = useState<DocumentSettingsDto | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [paymentDraft, setPaymentDraft] = useState<{ id: number; paid: boolean; comment: string } | null>(null);
+  /** Manager decision dialog for a cancelled/unfinished request. */
+  const [decisionDraft, setDecisionDraft] = useState<{
+    requestId: number;
+    status: string;
+    statusLabel: string;
+    reviewNote: string;
   } | null>(null);
+  const [voidDraft, setVoidDraft] = useState<{ id: number; number: string; reason: string } | null>(null);
   const [isBillingLoading, setIsBillingLoading] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [isIssuing, setIsIssuing] = useState(false);
@@ -774,6 +815,9 @@ export default function ReportsView() {
     setIsBillingLoading(true);
     setBillingNotice('');
 
+    if (clientSection === 'tariffs') void loadTariffs(selectedClientId);
+    if (clientSection === 'documents') void loadDocuments();
+
     void getBillingOverview(selectedClientId, dateFrom, dateTo)
       .then((data) => {
         if (!cancelled) setBillingOverview(data);
@@ -794,7 +838,8 @@ export default function ReportsView() {
     return () => {
       cancelled = true;
     };
-  }, [selectedClientId, dateFrom, dateTo, billingRefreshVersion]);
+  }, [selectedClientId, dateFrom, dateTo, billingRefreshVersion, clientSection]);
+
 
   /** Recalculate every eligible price of this client for the selected period. */
   async function recalcClientPeriod() {
@@ -842,30 +887,179 @@ export default function ReportsView() {
     }
   }
 
-  /** Create the client document for the selected period. */
-  async function issueDocument() {
-    if (typeof selectedClientId !== 'number') return;
+  /** Manager decision about a cancelled or unfinished request. */
+  async function submitReviewDecision(requestId: number, action: BillingReviewAction, note: string) {
+    setError('');
+    setBillingNotice('');
+    try {
+      await setBillingReviewDecision(requestId, action, note || undefined);
+      setBillingNotice(`Заявка №${requestId}: решение сохранено`);
+      setBillingRefreshVersion((version) => version + 1);
+    } catch (decisionError) {
+      setError(decisionError instanceof Error ? decisionError.message : 'Не удалось сохранить решение');
+    }
+  }
 
+  /** Build the preview: number, date, client, period, count, total and blockers. */
+  async function loadPreview() {
+    if (typeof selectedClientId !== 'number') return;
+    setIsPreviewing(true);
+    setError('');
+    setBillingNotice('');
+    try {
+      const data = await getDocumentPreview(selectedClientId, dateFrom, dateTo, previewDate || undefined);
+      setPreview(data);
+      if (data?.documentDateIso && !previewDate) setPreviewDate(data.documentDateIso);
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : 'Не удалось построить предпросмотр');
+    } finally {
+      setIsPreviewing(false);
+    }
+  }
+
+  /**
+   * Issue the set after the manager confirmed the preview. The date shown in the
+   * preview is the one used for both the invoice and the act.
+   */
+  async function confirmIssue() {
+    if (typeof selectedClientId !== 'number') return;
     setIsIssuing(true);
     setError('');
     setBillingNotice('');
-
     try {
-      const result = await issueBillingDocument(selectedClientId, dateFrom, dateTo);
+      const result = await issueDocumentSet(selectedClientId, dateFrom, dateTo, preview?.documentDateIso);
       if (result.ok && result.document) {
         setBillingNotice(
-          `Документ №${result.document.number} сформирован: ${result.requestCount} заявок на ${Number(result.totalAmount ?? 0).toFixed(2)} ₽`,
+          `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован: `
+          + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`,
         );
+        setPreview(null);
+        setClientSection('documents');
       } else {
-        setBillingNotice(result.reason ?? 'Счёт пока сформировать нельзя');
+        setBillingNotice(result.reason ?? 'Комплект пока сформировать нельзя');
       }
       setBillingRefreshVersion((version) => version + 1);
+      void loadDocuments();
     } catch (issueError) {
-      setError(
-        issueError instanceof Error ? issueError.message : 'Не удалось сформировать счёт',
-      );
+      setError(issueError instanceof Error ? issueError.message : 'Не удалось сформировать комплект');
     } finally {
       setIsIssuing(false);
+    }
+  }
+
+  async function loadDocuments() {
+    setDocumentsLoading(true);
+    try {
+      setDocuments(await getBillingDocuments(typeof selectedClientId === 'number' ? selectedClientId : undefined));
+    } catch (documentsError) {
+      setError(documentsError instanceof Error ? documentsError.message : 'Не удалось загрузить документы');
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }
+
+  async function loadTariffs(clientId: number) {
+    try {
+      setTariffs(await getClientTariffs(clientId));
+    } catch (tariffsError) {
+      setError(tariffsError instanceof Error ? tariffsError.message : 'Не удалось загрузить тарифы');
+    }
+  }
+
+  async function saveTariffs() {
+    if (!tariffs || typeof selectedClientId !== 'number') return;
+    setTariffsSaving(true);
+    setError('');
+    try {
+      const saved = await updateClientTariffs(selectedClientId, tariffs);
+      setTariffs(saved);
+      setBillingNotice('Тарифы сохранены');
+      setBillingRefreshVersion((version) => version + 1);
+    } catch (tariffsError) {
+      setError(tariffsError instanceof Error ? tariffsError.message : 'Не удалось сохранить тарифы');
+    } finally {
+      setTariffsSaving(false);
+    }
+  }
+
+  async function markPayment(document: BillingDocumentRow, paid: boolean, comment: string) {
+    setError('');
+    try {
+      await setBillingDocumentPaid(document.id, paid, comment || undefined);
+      setPaymentDraft(null);
+      setBillingNotice(paid ? `Документ №${document.number} отмечен как оплаченный` : `Оплата по №${document.number} снята`);
+      void loadDocuments();
+    } catch (paymentError) {
+      setError(paymentError instanceof Error ? paymentError.message : 'Не удалось изменить статус оплаты');
+    }
+  }
+
+  async function annulDocument(document: BillingDocumentRow, reason: string) {
+    setError('');
+    try {
+      await voidBillingDocument(document.id, reason);
+      setBillingNotice(`Документ №${document.number} аннулирован`);
+      void loadDocuments();
+      setBillingRefreshVersion((version) => version + 1);
+    } catch (voidError) {
+      setError(voidError instanceof Error ? voidError.message : 'Не удалось аннулировать документ');
+    }
+  }
+
+  async function attachPaymentProof(document: BillingDocumentRow, file: File) {
+    setError('');
+    try {
+      await uploadPaymentProof(document.id, file);
+      setBillingNotice(`Подтверждение оплаты прикреплено к №${document.number}`);
+      void loadDocuments();
+    } catch (proofError) {
+      setError(proofError instanceof Error ? proofError.message : 'Не удалось прикрепить подтверждение оплаты');
+    }
+  }
+
+  async function removePaymentProof(fileId: number) {
+    setError('');
+    try {
+      await removeBillingDocumentFile(fileId);
+      void loadDocuments();
+    } catch (proofError) {
+      setError(proofError instanceof Error ? proofError.message : 'Не удалось удалить файл');
+    }
+  }
+
+  async function openSettings() {
+    setSettingsOpen(true);
+    setError('');
+    try {
+      setDocumentSettings(await getDocumentSettings());
+    } catch (settingsError) {
+      setError(settingsError instanceof Error ? settingsError.message : 'Не удалось загрузить настройки');
+    }
+  }
+
+  async function persistSettings(patch: Partial<DocumentSettingsDto>) {
+    setSettingsSaving(true);
+    setError('');
+    try {
+      setDocumentSettings(await saveDocumentSettings(patch));
+      setBillingNotice('Реквизиты сохранены');
+    } catch (settingsError) {
+      setError(settingsError instanceof Error ? settingsError.message : 'Не удалось сохранить реквизиты');
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function uploadSettingsImage(kind: 'signature' | 'stamp', file: File) {
+    setSettingsSaving(true);
+    setError('');
+    try {
+      setDocumentSettings(await uploadDocumentSettingsImage(kind, file));
+      setBillingNotice(kind === 'signature' ? 'Подпись загружена' : 'Печать загружена');
+    } catch (settingsError) {
+      setError(settingsError instanceof Error ? settingsError.message : 'Не удалось загрузить изображение');
+    } finally {
+      setSettingsSaving(false);
     }
   }
 
@@ -963,11 +1157,15 @@ export default function ReportsView() {
       });
   }, [periodRequests, billingOverview, search, selectedClientId]);
 
-  /** Quote/verification state of one request, derived on the server. */
-  function quoteStateOf(request: BillingReviewRequest): BillingQuoteState {
-    if (request.quoteState) return request.quoteState;
+  /**
+   * Review state of one request. The server is the source of truth; older payloads
+   * without it fall back to a local derivation.
+   */
+  function billingStateOf(request: BillingReviewRequest): BillingRequestState {
+    if (request.billingState) return request.billingState;
 
     const hasAmount = request.deliveryFee !== null && request.deliveryFee !== undefined && request.deliveryFee !== '';
+    if (request.status !== 'completed') return 'decision_needed';
     if (!hasAmount) return 'unpriced';
     return request.billingCheckedAt ? 'checked' : 'ready';
   }
@@ -977,20 +1175,27 @@ export default function ReportsView() {
     let ready = 0;
     let unpriced = 0;
     let billed = 0;
+    let decisionNeeded = 0;
+    let clarification = 0;
+    let notBillable = 0;
+    let unfinished = 0;
+    let cancelled = 0;
     let checkedAmount = 0;
 
     for (const request of visibleRequests) {
-      const state = quoteStateOf(request);
+      const state = billingStateOf(request);
+      if (request.status === 'cancelled') cancelled += 1;
+      else if (request.status !== 'completed') unfinished += 1;
+
       if (state === 'checked') {
         checked += 1;
         checkedAmount += Number(request.deliveryFee ?? 0);
-      } else if (state === 'ready') {
-        ready += 1;
-      } else if (state === 'unpriced') {
-        unpriced += 1;
-      } else {
-        billed += 1;
-      }
+      } else if (state === 'ready') ready += 1;
+      else if (state === 'unpriced') unpriced += 1;
+      else if (state === 'billed') billed += 1;
+      else if (state === 'decision_needed') decisionNeeded += 1;
+      else if (state === 'clarification') clarification += 1;
+      else if (state === 'decided_not_billable') notBillable += 1;
     }
 
     return {
@@ -998,7 +1203,12 @@ export default function ReportsView() {
       ready,
       unpriced,
       billed,
-      unchecked: ready + unpriced,
+      decisionNeeded,
+      clarification,
+      notBillable,
+      unfinished,
+      cancelled,
+      unchecked: ready + unpriced + decisionNeeded + clarification,
       checkedAmount,
       totalAmount: checkedAmount,
     };
@@ -1080,7 +1290,7 @@ export default function ReportsView() {
               deliveryFee: nextValue,
               billingCheckedAt: null,
               billingCheckedByManagerId: null,
-              ...(quoteStateOf(row) === 'billed' ? {} : { quoteState: 'ready' as BillingQuoteState }),
+              ...(billingStateOf(row) === 'billed' ? {} : { quoteState: 'ready' as BillingRequestState }),
             }
           : row;
 
@@ -1119,7 +1329,7 @@ export default function ReportsView() {
               comments,
               billingCheckedAt: null,
               billingCheckedByManagerId: null,
-              ...(quoteStateOf(row) === 'billed' ? {} : { quoteState: 'ready' as BillingQuoteState }),
+              ...(billingStateOf(row) === 'billed' ? {} : { quoteState: 'ready' as BillingRequestState }),
             }
           : row;
 
@@ -1160,9 +1370,9 @@ export default function ReportsView() {
               ...(
                 // Keep the review state machine in step with the toggle, unless
                 // the row is already part of a document.
-                quoteStateOf(row) === 'billed'
+                billingStateOf(row) === 'billed'
                   ? {}
-                  : { quoteState: (checked ? 'checked' : (row.deliveryFee != null ? 'ready' : 'unpriced')) as BillingQuoteState }
+                  : { quoteState: (checked ? 'checked' : (row.deliveryFee != null ? 'ready' : 'unpriced')) as BillingRequestState }
               ),
             }
           : row;
@@ -1189,7 +1399,7 @@ export default function ReportsView() {
 
   // Verified rows only: these are the ones a document may contain.
   const checkedBillingRequests = useMemo(
-    () => (billingOverview?.requests ?? []).filter((request) => quoteStateOf(request) === 'checked'),
+    () => (billingOverview?.requests ?? []).filter((request) => billingStateOf(request) === 'checked'),
     [billingOverview],
   );
 
@@ -1202,20 +1412,23 @@ export default function ReportsView() {
     [checkedBillingRequests],
   );
 
-  /** Everything that prevents issuing a document right now. */
+  /**
+   * Everything that prevents issuing the set right now. The server owns the final
+   * decision; the preview carries the authoritative reason list.
+   */
   const issueBlockers = useMemo(() => {
-    const blockers: string[] = [];
-    if (reviewSummary.unpriced > 0) {
-      blockers.push(`Заявок без рассчитанной стоимости: ${reviewSummary.unpriced}`);
-    }
-    if (reviewSummary.ready > 0) {
-      blockers.push(`Заявок ожидает проверки: ${reviewSummary.ready}`);
-    }
-    if (reviewSummary.checked === 0) {
+    const serverBlockers = billingOverview?.readiness.blockers ?? [];
+    const blockers = [...serverBlockers];
+    if (reviewSummary.checked === 0 && blockers.length === 0) {
       blockers.push('Нет проверенных заявок за выбранный период');
     }
-    return blockers;
-  }, [reviewSummary]);
+    return [...new Set(blockers)];
+  }, [billingOverview, reviewSummary.checked]);
+
+  const activePeriod = useMemo(
+    () => ({ clientId: selectedClientId, from: dateFrom, to: dateTo }),
+    [selectedClientId, dateFrom, dateTo],
+  );
 
     return (
     <div className="w-full space-y-4">
@@ -1335,7 +1548,9 @@ export default function ReportsView() {
 
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-slate-500">
-                      Сверка клиента
+                      {clientSection === 'review' ? 'Сверка клиента'
+                        : clientSection === 'tariffs' ? 'Тарифы клиента'
+                          : 'Счета и акты клиента'}
                     </div>
                     <div className="truncate text-lg font-semibold text-slate-950">
                       {selectedClient.name}
@@ -1346,6 +1561,17 @@ export default function ReportsView() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => void openSettings()}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    title="Реквизиты организации для счетов и актов"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                    Реквизиты
+                  </button>
+
+                  {clientSection === 'review' && (
+                  <button
+                    type="button"
                     disabled={isRecalculating}
                     onClick={() => void recalcClientPeriod()}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
@@ -1354,7 +1580,9 @@ export default function ReportsView() {
                     <RefreshCw className={`h-4 w-4 ${isRecalculating ? 'animate-spin' : ''}`} />
                     Пересчитать стоимости
                   </button>
+                  )}
 
+                  {clientSection === 'review' && (
                   <button
                     type="button"
                     disabled={checkedBillingRequests.length === 0}
@@ -1371,17 +1599,141 @@ export default function ReportsView() {
                     <Download className="h-4 w-4" />
                     Скачать Excel
                   </button>
+                  )}
 
+                  {clientSection === 'review' && (
                   <button
                     type="button"
-                    disabled={isIssuing || issueBlockers.length > 0}
-                    onClick={() => void issueDocument()}
+                    disabled={isIssuing || isPreviewing || issueBlockers.length > 0}
+                    onClick={() => void (preview ? confirmIssue() : loadPreview())}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {isIssuing ? 'Формирование…' : 'Выставить счёт'}
+                    <FileText className="h-4 w-4" />
+                    {isIssuing ? 'Формирование…' : preview ? 'Выставить' : 'Предпросмотр и выставление'}
                   </button>
+                  )}
+
+                  {clientSection === 'tariffs' && (
+                  <button
+                    type="button"
+                    disabled={tariffsSaving || !tariffs}
+                    onClick={() => void saveTariffs()}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {tariffsSaving ? 'Сохранение…' : 'Сохранить тарифы'}
+                  </button>
+                  )}
+
+                  {clientSection === 'documents' && (
+                  <button
+                    type="button"
+                    onClick={() => void loadDocuments()}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${documentsLoading ? 'animate-spin' : ''}`} />
+                    Обновить
+                  </button>
+                  )}
                 </div>
               </div>
+
+              {/* Section switch: reconciliation, tariffs, issued documents. */}
+              <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+                {([
+                  ['review', 'Сверка'],
+                  ['tariffs', 'Тарифы'],
+                  ['documents', 'Счета и акты'],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setClientSection(id)}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                      clientSection === id ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Preview of the set: number, date, client, period, count, total. */}
+              {clientSection === 'review' && preview && (
+                <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-slate-950">
+                      Предпросмотр комплекта
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-xs text-slate-500">
+                        Дата документов
+                        <input
+                          type="date"
+                          value={preview.documentDateIso}
+                          onChange={(event) => setPreviewDate(event.target.value)}
+                          className="ml-2 h-9 rounded-lg border border-slate-200 px-2 text-sm"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void loadPreview()}
+                        className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Обновить
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <div><div className="text-xs text-slate-500">Счёт №</div><div className="text-lg font-semibold text-slate-950">{preview.number}</div></div>
+                    <div><div className="text-xs text-slate-500">Дата</div><div className="text-lg font-semibold text-slate-950">{preview.documentDateText}</div></div>
+                    <div><div className="text-xs text-slate-500">Клиент</div><div className="truncate text-sm font-medium text-slate-900">{preview.clientName}</div></div>
+                    <div><div className="text-xs text-slate-500">Период</div><div className="text-sm font-medium text-slate-900">{preview.periodText}</div></div>
+                    <div><div className="text-xs text-slate-500">Заявок</div><div className="text-lg font-semibold text-slate-950">{preview.requestsCount}</div></div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3">
+                    <div>
+                      <div className="text-xs text-slate-500">Сумма к оплате</div>
+                      <div className="text-xl font-semibold text-slate-950">{preview.totalAmountText} ₽</div>
+                      <div className="text-xs text-slate-500">{preview.amountInWords}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {([
+                        ['invoice', 'Счёт', FileText],
+                        ['act', 'Акт', ScrollText],
+                        ['registry', 'Реестр', Table2],
+                      ] as const).map(([kind, label, Icon]) => (
+                        <a
+                          key={kind}
+                          href={billingPreviewUrl(Number(selectedClientId), dateFrom, dateTo, kind, preview.documentDateIso)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {label}
+                        </a>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setPreview(null)}
+                        className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                      >
+                        Отменить
+                      </button>
+                    </div>
+                  </div>
+
+                  {preview.warnings.length > 0 && (
+                    <div className="mt-2 text-xs text-amber-700">{preview.warnings.join('; ')}</div>
+                  )}
+                  <div className="mt-2 text-xs text-slate-500">
+                    Проверьте номер, дату и сумму. Нажмите «Выставить» — номер и дата будут зафиксированы за комплектом.
+                  </div>
+                </div>
+              )}
 
               {/* Why the document can or cannot be issued. */}
               {issueBlockers.length > 0 ? (
@@ -1563,6 +1915,8 @@ export default function ReportsView() {
         </div>
       </div>
 
+      {clientSection === 'review' && (
+      <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="text-xs font-medium text-slate-500">Заявок</div>
@@ -1663,11 +2017,11 @@ export default function ReportsView() {
                   <tr
                     key={request.id}
                     className={`align-middle ${
-                      quoteStateOf(request) === 'checked'
+                      billingStateOf(request) === 'checked'
                         ? 'hover:bg-slate-50/70'
-                        : quoteStateOf(request) === 'unpriced'
+                        : billingStateOf(request) === 'unpriced'
                           ? 'bg-rose-50/40 hover:bg-rose-50/70'
-                          : quoteStateOf(request) === 'billed'
+                          : billingStateOf(request) === 'billed'
                             ? 'bg-slate-50/60 hover:bg-slate-50'
                             : 'bg-amber-50/40 hover:bg-amber-50/70'
                     }`}
@@ -1766,26 +2120,62 @@ export default function ReportsView() {
                     </td>
 
                     <td className="px-3 py-2">
-                      {quoteStateOf(request) === 'billed' ? (
+                      {billingStateOf(request) === 'billed' ? (
                         <span className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
                           В счёте
                         </span>
-                      ) : quoteStateOf(request) === 'checked' ? (
+                      ) : billingStateOf(request) === 'checked' ? (
                         <span className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
                           Проверено
                         </span>
-                      ) : quoteStateOf(request) === 'ready' ? (
+                      ) : billingStateOf(request) === 'ready' ? (
                         <span className="inline-flex rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
                           Ожидает проверки
                         </span>
+                      ) : billingStateOf(request) === 'decided_not_billable' ? (
+                        <span className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
+                          {request.reviewStateLabel ?? 'Разобрана'}
+                        </span>
+                      ) : billingStateOf(request) === 'decided_completed' || billingStateOf(request) === 'decision_needed' || billingStateOf(request) === 'clarification' ? (
+                        <div className="min-w-0">
+                          <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${
+                            billingStateOf(request) === 'clarification'
+                              ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
+                              : 'border-sky-200 bg-sky-50 text-sky-700'
+                          }`}>
+                            {billingStateOf(request) === 'clarification'
+                              ? 'Требует уточнения'
+                              : billingStateOf(request) === 'decided_completed'
+                                ? 'Отмечена выполненной'
+                                : request.status === 'cancelled' ? 'Отменена — нет решения' : 'Не завершена — нет решения'}
+                          </span>
+                          {request.billingIssue && (
+                            <div className="mt-1 text-[11px] leading-4 text-slate-600">{request.billingIssue}</div>
+                          )}
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setDecisionDraft({
+                                requestId: request.id,
+                                status: request.status ?? '',
+                                statusLabel: request.statusLabel ?? '',
+                                reviewNote: request.reviewNote ?? '',
+                              })}
+                              className="rounded border border-sky-200 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 hover:bg-sky-50"
+                              title="Разобрать заявку: подтвердить отмену, отметить выполненной, запросить уточнение"
+                            >
+                              Разобрать
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         <div className="min-w-0">
                           <span className="inline-flex rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
                             Без стоимости
                           </span>
-                          {request.quoteIssue && (
-                            <div className="mt-1 text-[11px] leading-4 text-rose-700" title={request.quoteIssue}>
-                              {request.quoteIssue}
+                          {request.billingIssue && (
+                            <div className="mt-1 text-[11px] leading-4 text-rose-700" title={request.billingIssue}>
+                              {request.billingIssue}
                             </div>
                           )}
                           <button
@@ -1845,9 +2235,9 @@ export default function ReportsView() {
                     <td className="whitespace-nowrap px-3 py-2">
                       <button
                         type="button"
-                        disabled={savingRequestId === request.id || quoteStateOf(request) === 'billed'}
+                        disabled={savingRequestId === request.id || billingStateOf(request) === 'billed'}
                         title={
-                          quoteStateOf(request) === 'billed'
+                          billingStateOf(request) === 'billed'
                             ? 'Заявка уже включена в счёт'
                             : 'Отметить стоимость как проверенную'
                         }
@@ -1855,14 +2245,14 @@ export default function ReportsView() {
                           void toggleBillingChecked(request);
                         }}
                         className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                          quoteStateOf(request) === 'billed'
+                          billingStateOf(request) === 'billed'
                             ? 'border-slate-200 bg-slate-50 text-slate-500'
                             : request.billingCheckedAt
                               ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                               : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
                         }`}
                       >
-                        {quoteStateOf(request) === 'billed'
+                        {billingStateOf(request) === 'billed'
                           ? 'В счёте'
                           : request.billingCheckedAt
                             ? 'Проверено'
@@ -1878,8 +2268,482 @@ export default function ReportsView() {
           </table>
         </div>
       </div>
+      </>
+      )}
+
+              {clientSection === 'tariffs' && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-sm font-semibold text-slate-950">Тарифы клиента</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Первое место + каждое следующее место × количество дополнительных мест.
+                    Пустая ставка означает «цена не настроена»: такие заявки попадут в «Без стоимости».
+                  </div>
+
+                  {!tariffs ? (
+                    <div className="mt-4 text-sm text-slate-500">Загрузка тарифов…</div>
+                  ) : (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full min-w-[760px] text-sm">
+                        <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.06em] text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2 font-semibold">Категория</th>
+                            <th className="px-3 py-2 font-semibold">Первое место, ₽</th>
+                            <th className="px-3 py-2 font-semibold">Следующее место, ₽</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {([
+                            ['deliveryFirstPlace', 'deliveryNextPlace', 'Доставка'],
+                            ['transportCompanyFirstPlace', 'transportCompanyNextPlace', 'Транспортная компания'],
+                            ['movementFirstPlace', 'movementNextPlace', 'Перемещение'],
+                            ['otherFirstPlace', 'otherNextPlace', 'Прочее (вызов курьера, орехи, простая)'],
+                          ] as const).map(([firstKey, nextKey, label]) => (
+                            <tr key={firstKey}>
+                              <td className="px-3 py-2 font-medium text-slate-800">{label}</td>
+                              {[firstKey, nextKey].map((key) => (
+                                <td key={key} className="px-3 py-2">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={String(tariffs[key] ?? 0)}
+                                    onChange={(event) => setTariffs({
+                                      ...tariffs,
+                                      [key]: Number(event.target.value || 0),
+                                    })}
+                                    className="h-9 w-32 rounded-lg border border-slate-200 px-2 text-right text-sm"
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                          <tr>
+                            <td className="px-3 py-2 font-medium text-slate-800">Гемотест: точка / воскресенье</td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number" min="0" step="1"
+                                value={String(tariffs.hemotestPointPrice ?? 0)}
+                                onChange={(event) => setTariffs({ ...tariffs, hemotestPointPrice: Number(event.target.value || 0) })}
+                                className="h-9 w-32 rounded-lg border border-slate-200 px-2 text-right text-sm"
+                              />
+                            </td>
+                            <td className="px-3 py-2 flex gap-2">
+                              <input
+                                type="number" min="0" step="1"
+                                value={String(tariffs.hemotestSundayFirstPointPrice ?? 0)}
+                                onChange={(event) => setTariffs({ ...tariffs, hemotestSundayFirstPointPrice: Number(event.target.value || 0) })}
+                                className="h-9 w-32 rounded-lg border border-slate-200 px-2 text-right text-sm"
+                              />
+                              <input
+                                type="number" min="0" step="1"
+                                value={String(tariffs.hemotestSundayNextPointPrice ?? 0)}
+                                onChange={(event) => setTariffs({ ...tariffs, hemotestSundayNextPointPrice: Number(event.target.value || 0) })}
+                                className="h-9 w-32 rounded-lg border border-slate-200 px-2 text-right text-sm"
+                              />
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <div className="mt-3 text-xs text-slate-500">
+                        После сохранения тарифов вернитесь во вкладку «Сверка» и нажмите «Пересчитать стоимости»,
+                        чтобы применить новые ставки к заявкам периода.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {clientSection === 'documents' && (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="text-sm font-semibold text-slate-950">Счета и акты</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Выставленные комплекты: счёт, акт и реестр. Статус оплаты и подтверждающие документы.
+                    </div>
+                  </div>
+
+                  {documentsLoading ? (
+                    <div className="px-5 py-6 text-sm text-slate-500">Загрузка…</div>
+                  ) : documents.length === 0 ? (
+                    <div className="px-5 py-6 text-sm text-slate-500">Комплектов пока нет.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1180px] text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.06em] text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2 font-semibold">№</th>
+                            <th className="px-3 py-2 font-semibold">Дата</th>
+                            <th className="px-3 py-2 font-semibold">Клиент</th>
+                            <th className="px-3 py-2 font-semibold">Период</th>
+                            <th className="px-3 py-2 font-semibold">Заявок</th>
+                            <th className="px-3 py-2 font-semibold">Сумма</th>
+                            <th className="px-3 py-2 font-semibold">Статус</th>
+                            <th className="px-3 py-2 font-semibold">Документы</th>
+                            <th className="px-3 py-2 font-semibold">Оплата</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {documents.map((document) => (
+                            <tr key={document.id} className="align-top">
+                              <td className="px-3 py-2 font-semibold text-slate-950">{document.number}</td>
+                              <td className="px-3 py-2 text-slate-600">{document.documentDateText || formatDate(document.documentDate)}</td>
+                              <td className="px-3 py-2 text-slate-700">{document.clientName}</td>
+                              <td className="px-3 py-2 text-slate-600">{formatDate(document.periodFrom)} — {formatDate(document.periodTo)}</td>
+                              <td className="px-3 py-2 text-slate-700">{document.requestsCount}</td>
+                              <td className="px-3 py-2 text-right font-medium text-slate-900">{Number(document.totalAmount).toFixed(2)} ₽</td>
+                              <td className="px-3 py-2">
+                                <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${
+                                  document.status === 'paid'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : document.status === 'cancelled'
+                                      ? 'border-slate-200 bg-slate-50 text-slate-500'
+                                      : 'border-amber-200 bg-amber-50 text-amber-700'
+                                }`}>
+                                  {document.status === 'paid' ? 'Оплачено' : document.status === 'cancelled' ? 'Аннулирован' : 'Ожидает оплаты'}
+                                </span>
+                                {document.voidReason && (
+                                  <div className="mt-1 text-[11px] text-slate-500">{document.voidReason}</div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex flex-wrap gap-2">
+                                  {([['invoice', 'Счёт', FileText], ['act', 'Акт', ScrollText], ['registry', 'Реестр', Table2]] as const).map(([kind, label, Icon]) => (
+                                    <a
+                                      key={kind}
+                                      href={billingDocumentFileUrl(document.id, kind)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      <Icon className="h-3.5 w-3.5" />
+                                      {label}
+                                    </a>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex flex-col gap-1">
+                                  {paymentDraft?.id === document.id ? (
+                                    <div className="flex flex-col gap-1">
+                                      <input
+                                        value={paymentDraft.comment}
+                                        onChange={(event) => setPaymentDraft({ ...paymentDraft, comment: event.target.value })}
+                                        placeholder="Комментарий к оплате"
+                                        className="h-8 w-48 rounded-lg border border-slate-200 px-2 text-xs"
+                                      />
+                                      <div className="flex gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => void markPayment(document, true, paymentDraft.comment)}
+                                          className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+                                        >
+                                          Отметить оплату
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setPaymentDraft(null)}
+                                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                                        >
+                                          Отмена
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => setPaymentDraft({ id: document.id, paid: document.status !== 'paid', comment: document.paymentComment ?? '' })}
+                                        disabled={document.status === 'cancelled'}
+                                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-200 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        {document.status === 'paid' ? 'Снять оплату' : 'Оплачено'}
+                                      </button>
+                                      <label className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                        <Paperclip className="h-3.5 w-3.5" />
+                                        Подтверждение
+                                        <input
+                                          type="file"
+                                          accept="application/pdf,image/jpeg,image/png"
+                                          className="hidden"
+                                          onChange={(event) => {
+                                            const file = event.target.files?.[0];
+                                            if (file) void attachPaymentProof(document, file);
+                                            event.target.value = '';
+                                          }}
+                                        />
+                                      </label>
+                                      {document.status !== 'cancelled' && document.status !== 'paid' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setVoidDraft({ id: document.id, number: document.number, reason: '' })}
+                                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 px-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                                        >
+                                          <Ban className="h-3.5 w-3.5" />
+                                          Аннулировать
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {document.paidAt && (
+                                    <div className="text-[11px] text-slate-500">Оплачено {formatDate(document.paidAt)}</div>
+                                  )}
+                                  {(document.paymentProofs ?? []).length > 0 && (
+                                    <div className="flex flex-col gap-1">
+                                      {(document.paymentProofs ?? []).map((proof) => (
+                                        <div key={proof.id} className="flex items-center gap-1 text-[11px] text-slate-600">
+                                          <a
+                                            href={billingDocumentProofUrl(proof)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="underline decoration-dotted hover:text-slate-900"
+                                          >
+                                            {proof.originalName}
+                                          </a>
+                                          <button
+                                            type="button"
+                                            onClick={() => void removePaymentProof(proof.id)}
+                                            className="text-slate-400 hover:text-rose-600"
+                                            title="Удалить файл"
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
         </>
       )}
+
+      {/* Manager decision about a cancelled / unfinished request. */}
+      <Modal isOpen={Boolean(decisionDraft)} onClose={() => setDecisionDraft(null)}>
+        <div className="w-[min(560px,calc(100vw-32px))] rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="text-base font-semibold text-slate-950">
+            Разбор заявки №{decisionDraft?.requestId}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Статус заявки: {decisionDraft?.statusLabel || decisionDraft?.status}
+          </div>
+          <label className="mt-4 block text-xs font-medium text-slate-600">
+            Причина / комментарий решения
+            <textarea
+              value={decisionDraft?.reviewNote ?? ''}
+              onChange={(event) => setDecisionDraft((current) => current ? { ...current, reviewNote: event.target.value } : current)}
+              rows={3}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              placeholder="Например: заказ отменён клиентом по телефону"
+            />
+          </label>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => { void submitReviewDecision(decisionDraft!.requestId, 'confirm_cancelled', decisionDraft!.reviewNote); setDecisionDraft(null); }}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Подтвердить отмену
+            </button>
+            <button
+              type="button"
+              onClick={() => { void submitReviewDecision(decisionDraft!.requestId, 'mark_completed', decisionDraft!.reviewNote); setDecisionDraft(null); }}
+              className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+              title="Заявка уйдёт в обычный процесс выполнения: проставится дата, рассчитается стоимость и появится проверка"
+            >
+              Фактически выполнена
+            </button>
+            <button
+              type="button"
+              onClick={() => { void submitReviewDecision(decisionDraft!.requestId, 'requires_clarification', decisionDraft!.reviewNote); setDecisionDraft(null); }}
+              className="rounded-xl border border-fuchsia-200 px-3 py-2 text-xs font-semibold text-fuchsia-700 hover:bg-fuchsia-50"
+            >
+              Требует уточнения
+            </button>
+            <button
+              type="button"
+              onClick={() => { void submitReviewDecision(decisionDraft!.requestId, 'not_billable', decisionDraft!.reviewNote); setDecisionDraft(null); }}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Не оплачивать
+            </button>
+            <button
+              type="button"
+              onClick={() => { void submitReviewDecision(decisionDraft!.requestId, 'reset', ''); setDecisionDraft(null); }}
+              className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+            >
+              Снять решение
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Annul a document: the record stays, nothing is deleted. */}
+      <Modal isOpen={Boolean(voidDraft)} onClose={() => setVoidDraft(null)}>
+        <div className="w-[min(520px,calc(100vw-32px))] rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="text-base font-semibold text-slate-950">
+            Аннулировать документ №{voidDraft?.number}?
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Документ останется в истории со статусом «Аннулирован». Заявки не будут удалены.
+          </div>
+          <label className="mt-4 block text-xs font-medium text-slate-600">
+            Причина аннулирования
+            <textarea
+              value={voidDraft?.reason ?? ''}
+              onChange={(event) => setVoidDraft((current) => current ? { ...current, reason: event.target.value } : current)}
+              rows={3}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+          </label>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => setVoidDraft(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+              Отмена
+            </button>
+            <button
+              type="button"
+              disabled={!voidDraft?.reason.trim()}
+              onClick={() => { const draft = voidDraft!; setVoidDraft(null); const document = documents.find((d) => d.id === draft.id); if (document) void annulDocument(document, draft.reason); }}
+              className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
+            >
+              Аннулировать
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Our own requisites used by the printed documents. */}
+      <Modal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)}>
+        <div className="max-h-[86vh] w-[min(900px,calc(100vw-32px))] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-base font-semibold text-slate-950">Реквизиты организации</div>
+              <div className="mt-1 text-xs text-slate-500">Печатаются на счетах и актах. Не подставляются автоматически.</div>
+            </div>
+            <span className="text-xs text-slate-400">{settingsSaving ? 'Сохранение…' : ''}</span>
+          </div>
+
+          {!documentSettings ? (
+            <div className="mt-4 text-sm text-slate-500">Загрузка…</div>
+          ) : (
+            <>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {([
+                  ['executorName', 'Полное наименование *'],
+                  ['executorShortName', 'Сокращённое наименование'],
+                  ['executorInn', 'ИНН *'],
+                  ['executorKpp', 'КПП'],
+                  ['executorOgrn', 'ОГРН'],
+                  ['executorOgrnip', 'ОГРНИП'],
+                  ['executorAddress', 'Юридический адрес *'],
+                  ['executorPostalAddress', 'Почтовый адрес'],
+                  ['executorPhone', 'Телефон'],
+                  ['executorEmail', 'E-mail'],
+                  ['bankName', 'Банк *'],
+                  ['bankBik', 'БИК *'],
+                  ['bankAccount', 'Расчётный счёт *'],
+                  ['bankCorrespondentAccount', 'Корреспондентский счёт *'],
+                  ['directorName', 'ФИО руководителя *'],
+                  ['directorPosition', 'Должность руководителя'],
+                  ['accountantName', 'ФИО бухгалтера'],
+                  ['vatText', 'Текст НДС на документах'],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="block text-xs font-medium text-slate-600">
+                    {label}
+                    <input
+                      value={String(documentSettings[key] ?? '')}
+                      onChange={(event) => setDocumentSettings({ ...documentSettings, [key]: event.target.value } as DocumentSettingsDto)}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                    />
+                  </label>
+                ))}
+                <label className="block text-xs font-medium text-slate-600">
+                  Режим НДС
+                  <select
+                    value={documentSettings.vatMode}
+                    onChange={(event) => setDocumentSettings({ ...documentSettings, vatMode: event.target.value })}
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                  >
+                    <option value="without_vat">Без НДС</option>
+                    <option value="vat">НДС</option>
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-slate-600">
+                  Ставка НДС, %
+                  <input
+                    type="number" min="0" max="100" step="0.01"
+                    value={String(documentSettings.vatRate ?? 0)}
+                    onChange={(event) => setDocumentSettings({ ...documentSettings, vatRate: Number(event.target.value || 0) })}
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-600">
+                  Следующий номер документа
+                  <input
+                    type="number" min="1" step="1"
+                    value={String(documentSettings.nextDocumentNumber)}
+                    onChange={(event) => setDocumentSettings({ ...documentSettings, nextDocumentNumber: Number(event.target.value || 1) })}
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-600 md:col-span-3">
+                  Основание работы без НДС (необязательно)
+                  <input
+                    value={String(documentSettings.vatExemptionBasis ?? '')}
+                    onChange={(event) => setDocumentSettings({ ...documentSettings, vatExemptionBasis: event.target.value })}
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-4">
+                {([['signature', 'Подпись', documentSettings.signatureFile], ['stamp', 'Печать', documentSettings.stampFile]] as const).map(([kind, label, file]) => (
+                  <div key={kind} className="flex items-center gap-2">
+                    <label className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {file ? `Заменить: ${label}` : `Загрузить: ${label}`}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(event) => {
+                          const selected = event.target.files?.[0];
+                          if (selected) void uploadSettingsImage(kind, selected);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                    {file && <span className="text-[11px] text-slate-500">{file}</span>}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" onClick={() => setSettingsOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                  Закрыть
+                </button>
+                <button
+                  type="button"
+                  disabled={settingsSaving}
+                  onClick={() => void persistSettings(documentSettings)}
+                  className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                >
+                  Сохранить реквизиты
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
     </div>
   );
 }

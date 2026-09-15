@@ -81,6 +81,12 @@ COPY package.json ./
 
 # Копируем собранный backend
 COPY --from=backend-builder /app/dist ./dist
+
+# Шрифты с кириллицей для PDF-документов (счёт, акт).
+# Runtime-образ alpine не содержит системных шрифтов, поэтому они поставляются
+# вместе с приложением. Путь должен совпадать с тем, что вычисляет сервер:
+# dist/index.js -> __dirname = /app/dist -> <__dirname>/../assets/fonts = /app/assets/fonts.
+COPY server/assets ./assets
 COPY --from=backend-builder /app/drizzle ./drizzle
 COPY --from=backend-builder /app/scripts ./scripts
 

@@ -1362,9 +1362,10 @@ export const appRouter = router({
   // ─── Billing ────────────────────────────────────────────────────────────────
   billing: router({
     /**
-     * Review workspace for one client and period: requests, their quote state and
-     * why a document can or cannot be issued. This replaced the previous plain
-     * list, which required the browser to have filled the amounts in first.
+     * Review workspace for one client and period. Shows EVERY request of the period
+     * (completed, cancelled, pending, assigned, in_progress), its price state, the
+     * manager decision for non-completed ones, and exactly why the period is not
+     * ready for documents yet.
      */
     overview: managerProcedure
       .input(z.object({
@@ -1377,20 +1378,32 @@ export const appRouter = router({
           throw new Error("dateFrom must not be after dateTo");
         }
 
-        const { buildBillingOverview, listClientBillingDocuments } = await import("./_core/billingDocuments");
-        const overview = await buildBillingOverview(input.clientId, input.dateFrom, input.dateTo);
-        const documents = await listClientBillingDocuments(input.clientId);
+        const { buildClientBillingOverview, REVIEW_STATE_LABELS } = await import("./_core/billingReview");
+        const { listDocuments } = await import("./_core/billingDocumentService");
+
+        const overview = await buildClientBillingOverview(input.clientId, input.dateFrom, input.dateTo);
+        const documents = await listDocuments({ clientId: input.clientId, limit: 100 });
 
         return {
           requests: overview.rows.map((row) => ({
             ...row.request,
+            billingState: row.state,
+            billingIssue: row.issue,
+            billingBlocking: row.blocking,
+            reviewState: row.reviewState,
+            reviewStateLabel: row.reviewState ? REVIEW_STATE_LABELS[row.reviewState] : null,
+            reviewNote: row.reviewNote,
+            statusLabel: row.statusLabel,
+            tariffCategory: row.category,
+            // Kept for compatibility with the previous screen contract.
             quoteState: row.state,
             quoteIssue: row.issue,
-            tariffCategory: row.category,
           })),
           counts: overview.counts,
-          checkedAmount: overview.readyAmount,
-          readyAmount: overview.allReadyAmount,
+          checkedAmount: overview.checkedAmount,
+          readyAmount: overview.pricedAmount,
+          billedAmount: overview.billedAmount,
+          readiness: overview.readiness,
           documents,
         };
       }),
@@ -1437,35 +1450,164 @@ export const appRouter = router({
         return outcome;
       }),
 
-    /** Issue the client document for one period. */
-    issueDocument: managerProcedure
+    /**
+     * Manager decision about a request that is not billed as completed.
+     * "mark_completed" hands the request to the existing completed workflow, so the
+     * quote and the review run through the single supported path.
+     */
+    reviewDecision: managerProcedure
+      .input(z.object({
+        requestId: z.number().int().positive(),
+        action: z.enum(["confirm_cancelled", "mark_completed", "requires_clarification", "not_billable", "reset"]),
+        note: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { applyReviewDecision, ReviewDecisionError } = await import("./_core/billingReview");
+        const { addRequestActivityEvent, getManagerById } = db;
+
+        try {
+          await applyReviewDecision(input.requestId, input.action, input.note ?? null);
+        } catch (error) {
+          if (error instanceof ReviewDecisionError) throw new Error(error.message);
+          throw error;
+        }
+
+        const manager = await getManagerById(ctx.managerId);
+        await addRequestActivityEvent({
+          requestId: input.requestId,
+          actorType: "manager",
+          actorId: ctx.managerId,
+          actorName: manager?.name ?? "Менеджер",
+          action: "updated",
+          note: "Решение по финансовой сверке",
+          changes: { billingReview: { action: input.action, note: input.note ?? null } },
+        });
+
+        broadcastLive("requests_changed", { requestId: input.requestId });
+
+        return { success: true };
+      }),
+
+    /** Preview of the document set: number, date, client, period, count, total, blockers. */
+    previewSet: managerProcedure
       .input(z.object({
         clientId: z.number().int().positive(),
         dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        documentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }))
-      .mutation(async ({ input, ctx }) => {
-        if (input.dateFrom > input.dateTo) {
-          throw new Error("dateFrom must not be after dateTo");
-        }
-
-        const { issueClientBillingDocument } = await import("./_core/billingDocuments");
-        const result = await issueClientBillingDocument(
-          input.clientId,
-          input.dateFrom,
-          input.dateTo,
-          ctx.managerId,
-        );
-
-        if (result.ok) broadcastLive("requests_changed");
-
-        return result;
+      .query(async ({ input }) => {
+        const { previewDocumentSet } = await import("./_core/billingDocumentService");
+        return await previewDocumentSet(input.clientId, input.dateFrom, input.dateTo, input.documentDate);
       }),
 
     /**
-     * Read-only preview of the historical backfill: which old completed requests
-     * have no price yet and whether the current tariff can fill them in.
+     * Issue the document set for the period. Everything is validated server-side,
+     * so a blocked period returns the concrete reasons instead of a broken file.
      */
+    issueSet: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        documentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { issueDocumentSet, BillingDocumentError } = await import("./_core/billingDocumentService");
+        const { addRequestActivityEvent, getManagerById } = db;
+        try {
+          const document = await issueDocumentSet(
+            input.clientId,
+            input.dateFrom,
+            input.dateTo,
+            ctx.managerId,
+            input.documentDate,
+          );
+
+          const manager = await getManagerById(ctx.managerId);
+          await addRequestActivityEvent({
+            requestId: document.id,
+            actorType: "manager",
+            actorId: ctx.managerId,
+            actorName: manager?.name ?? "Менеджер",
+            action: "updated",
+            note: `Выставлен комплект документов №${document.number} на ${document.totalAmount.toFixed(2)} руб.`,
+            changes: { billingDocument: { number: document.number, requests: document.requestsCount } },
+          });
+
+          broadcastLive("requests_changed");
+          return { ok: true, document };
+        } catch (error) {
+          if (error instanceof BillingDocumentError) {
+            return { ok: false, reason: error.message };
+          }
+          throw error;
+        }
+      }),
+
+    /** Issued document sets: list, payment state, annulment. */
+    documents: managerProcedure
+      .input(z.object({ clientId: z.number().int().positive().optional() }).optional())
+      .query(async ({ input }) => {
+        const { listDocuments } = await import("./_core/billingDocumentService");
+        return await listDocuments({ clientId: input?.clientId, limit: 300 });
+      }),
+
+    setPaid: managerProcedure
+      .input(z.object({
+        documentId: z.number().int().positive(),
+        paid: z.boolean(),
+        comment: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { setDocumentPaid, BillingDocumentError } = await import("./_core/billingDocumentService");
+        try {
+          await setDocumentPaid(input.documentId, ctx.managerId, input.paid, input.comment ?? null);
+        } catch (error) {
+          if (error instanceof BillingDocumentError) throw new Error(error.message);
+          throw error;
+        }
+        broadcastLive("requests_changed");
+        return { success: true };
+      }),
+
+    voidDocument: managerProcedure
+      .input(z.object({
+        documentId: z.number().int().positive(),
+        reason: z.string().min(1).max(2000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { voidDocument, BillingDocumentError } = await import("./_core/billingDocumentService");
+        try {
+          await voidDocument(input.documentId, ctx.managerId, input.reason);
+        } catch (error) {
+          if (error instanceof BillingDocumentError) throw new Error(error.message);
+          throw error;
+        }
+        broadcastLive("requests_changed");
+        return { success: true };
+      }),
+
+    /** Attached payment confirmations of one document. */
+    documentFiles: managerProcedure
+      .input(z.object({ documentId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const { getDocument } = await import("./_core/billingDocumentService");
+        const document = await getDocument(input.documentId);
+        if (!document) throw new Error("Документ не найден");
+        return document.paymentProofs;
+      }),
+
+    removeDocumentFile: managerProcedure
+      .input(z.object({ fileId: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const { deleteDocumentFile } = await import("./_core/billingDocumentService");
+        const removed = await deleteDocumentFile(input.fileId);
+        if (!removed) throw new Error("Файл не найден");
+        return { success: true };
+      }),
+
+    /** Read-only preview of historical prices; never writes anything. */
     backfillPreview: managerProcedure
       .query(async () => {
         const { previewQuoteBackfill } = await import("./_core/requestQuote");
@@ -1490,41 +1632,19 @@ export const appRouter = router({
         return result;
       }),
 
-    reviewList: managerProcedure
-      .input(z.object({
-        clientId: z.number().int().positive(),
-        dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      }))
-      .query(async ({ input }) => {
-        if (input.dateFrom > input.dateTo) {
-          throw new Error("dateFrom must not be after dateTo");
-        }
-
-        return await db.getBillingReviewRequests(
-          input.clientId,
-          input.dateFrom,
-          input.dateTo,
-        );
-      }),
-
+    /** Mark a price as verified (or take the mark back). */
     setChecked: managerProcedure
       .input(z.object({
         requestId: z.number().int().positive(),
         checked: z.boolean(),
       }))
       .mutation(async ({ input, ctx }) => {
-        await db.setBillingChecked(
-          input.requestId,
-          ctx.managerId,
-          input.checked,
-        );
-
+        await db.setBillingChecked(input.requestId, ctx.managerId, input.checked);
         broadcastLive("requests_changed", { requestId: input.requestId });
-
         return { success: true };
       }),
 
+    /** Manual price / comment for one request; a manual price is never overwritten. */
     updateReviewFields: managerProcedure
       .input(
         z.object({
@@ -1538,58 +1658,33 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         const request = await db.getRequestById(input.requestId);
-
-        if (!request) {
-          throw new Error("Заявка не найдена");
-        }
-
+        if (!request) throw new Error("Заявка не найдена");
         if (request.status !== "completed") {
           throw new Error("Редактировать расчёт можно только у завершённой заявки");
         }
 
         const updatePayload = {
-          ...(input.deliveryFee !== undefined
-            ? { deliveryFee: input.deliveryFee.toFixed(2) }
-            : {}),
-          ...(input.comments !== undefined
-            ? { comments: input.comments }
-            : {}),
+          ...(input.deliveryFee !== undefined ? { deliveryFee: input.deliveryFee.toFixed(2) } : {}),
+          ...(input.comments !== undefined ? { comments: input.comments } : {}),
         };
 
         await db.updateRequest(input.requestId, updatePayload);
 
-        // A manager-edited amount is a manual price and must never be replaced by
-        // the automatic tariff calculation.
         if (input.deliveryFee !== undefined) {
           const { markManualPrice } = await import("./_core/requestQuote");
           await markManualPrice(input.requestId);
         }
 
         const changes: Record<string, unknown> = {};
-
-        if (
-          input.deliveryFee !== undefined &&
-          String(request.deliveryFee ?? "") !== input.deliveryFee.toFixed(2)
-        ) {
-          changes.deliveryFee = {
-            from: request.deliveryFee ?? null,
-            to: input.deliveryFee.toFixed(2),
-          };
+        if (input.deliveryFee !== undefined && String(request.deliveryFee ?? "") !== input.deliveryFee.toFixed(2)) {
+          changes.deliveryFee = { from: request.deliveryFee ?? null, to: input.deliveryFee.toFixed(2) };
         }
-
-        if (
-          input.comments !== undefined &&
-          (request.comments ?? "") !== input.comments
-        ) {
-          changes.comments = {
-            from: request.comments ?? null,
-            to: input.comments,
-          };
+        if (input.comments !== undefined && (request.comments ?? "") !== input.comments) {
+          changes.comments = { from: request.comments ?? null, to: input.comments };
         }
 
         if (Object.keys(changes).length > 0) {
           const manager = await db.getManagerById(ctx.managerId);
-
           await db.addRequestActivityEvent({
             requestId: input.requestId,
             actorType: "manager",
@@ -1602,7 +1697,6 @@ export const appRouter = router({
         }
 
         broadcastLive("requests_changed", { requestId: input.requestId });
-
         return { success: true };
       }),
   }),

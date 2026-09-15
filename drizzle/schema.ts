@@ -670,6 +670,14 @@ export const requests = pgTable("requests", {
   quoteSource: varchar("quoteSource", { length: 20 }),
 
   // Billing review
+  /**
+   * Manager decision for a request that is not billed as completed:
+   * 'cancelled_confirmed' | 'completed_confirmed' | 'requires_clarification' |
+   * 'not_billable'. NULL means "not reviewed yet".
+   */
+  billingReviewState: varchar("billingReviewState", { length: 30 }),
+  /** Manager's reason for the decision above. */
+  billingReviewNote: text("billingReviewNote"),
   /** When this completed work was financially checked by a manager */
   billingCheckedAt: timestamp("billingCheckedAt"),
   /** Manager who performed the latest financial check */
@@ -795,6 +803,27 @@ export const billingSettings = pgTable("billingSettings", {
   bankAccount: varchar("bankAccount", { length: 50 }),
   bankCorrespondentAccount: varchar("bankCorrespondentAccount", { length: 50 }),
 
+  /** Short printed name, when the full one is too long for a form */
+  executorShortName: varchar("executorShortName", { length: 500 }),
+  executorOgrn: varchar("executorOgrn", { length: 20 }),
+  executorOgrnip: varchar("executorOgrnip", { length: 20 }),
+  executorPostalAddress: text("executorPostalAddress"),
+  executorEmail: varchar("executorEmail", { length: 320 }),
+
+  /** Signature block printed on the invoice and the act */
+  directorName: varchar("directorName", { length: 255 }),
+  directorPosition: varchar("directorPosition", { length: 255 }),
+  accountantName: varchar("accountantName", { length: 255 }),
+
+  /** 'vat' | 'without_vat'; vatText keeps the printed wording */
+  vatMode: varchar("vatMode", { length: 20 }).default("without_vat").notNull(),
+  vatRate: decimal("vatRate", { precision: 5, scale: 2 }).default("0").notNull(),
+  vatExemptionBasis: text("vatExemptionBasis"),
+
+  /** Optional images stored as files under uploads/billing-settings/ */
+  signatureFile: text("signatureFile"),
+  stampFile: text("stampFile"),
+
   vatText: varchar("vatText", { length: 100 }).default("Без НДС").notNull(),
   documentNumberPrefix: varchar("documentNumberPrefix", { length: 50 }),
   nextDocumentNumber: integer("nextDocumentNumber").default(1).notNull(),
@@ -850,6 +879,29 @@ export const billingDocuments = pgTable("billingDocuments", {
   bankCorrespondentAccountSnapshot: varchar("bankCorrespondentAccountSnapshot", { length: 50 }).notNull(),
 
   vatTextSnapshot: varchar("vatTextSnapshot", { length: 100 }).notNull(),
+
+  // Snapshot captured when the set is issued, so later directory edits cannot
+  // rewrite an issued document.
+  serviceNameSnapshot: varchar("serviceNameSnapshot", { length: 500 }),
+  periodTextSnapshot: varchar("periodTextSnapshot", { length: 100 }),
+  vatModeSnapshot: varchar("vatModeSnapshot", { length: 20 }),
+  vatRateSnapshot: decimal("vatRateSnapshot", { precision: 5, scale: 2 }),
+  vatAmountSnapshot: decimal("vatAmountSnapshot", { precision: 12, scale: 2 }),
+  clientOgrnSnapshot: varchar("clientOgrnSnapshot", { length: 20 }),
+  directorNameSnapshot: varchar("directorNameSnapshot", { length: 255 }),
+  directorPositionSnapshot: varchar("directorPositionSnapshot", { length: 255 }),
+  accountantNameSnapshot: varchar("accountantNameSnapshot", { length: 255 }),
+  /** Shared printed date (DD.MM.YYYY) for the whole set */
+  documentDateText: varchar("documentDateText", { length: 10 }),
+  generatedAt: timestamp("generatedAt"),
+
+  // Annulment instead of deletion
+  voidedAt: timestamp("voidedAt"),
+  voidedByManagerId: integer("voidedByManagerId"),
+  voidReason: text("voidReason"),
+
+  /** Free-form note recorded with the payment */
+  paymentComment: text("paymentComment"),
 
   // Generated files, stored as relative paths
   invoiceFile: text("invoiceFile"),
@@ -1305,3 +1357,28 @@ export const addressOrgContacts = pgTable(
 
 export type AddressOrgContact = typeof addressOrgContacts.$inferSelect;
 export type InsertAddressOrgContact = typeof addressOrgContacts.$inferInsert;
+
+// ─── Billing document files (payment proof and future attachments) ───────────
+/**
+ * Metadata for files attached to a billing document. The bytes live on disk under
+ * uploads/billing-documents/<documentId>/, exactly like request attachments; the
+ * database only keeps the path and the validated metadata.
+ */
+export const billingDocumentFiles = pgTable("billingDocumentFiles", {
+  id: serial("id").primaryKey(),
+  /** FK -> billingDocuments.id ON DELETE RESTRICT (SQL migration). */
+  billingDocumentId: integer("billingDocumentId").notNull(),
+  /** 'payment_proof' today. */
+  kind: varchar("kind", { length: 30 }).default("payment_proof").notNull(),
+  originalName: varchar("originalName", { length: 255 }).notNull(),
+  storedName: varchar("storedName", { length: 255 }).notNull(),
+  fileUrl: text("fileUrl").notNull(),
+  /** Validated MIME type (not the client-declared extension). */
+  mimeType: varchar("mimeType", { length: 150 }).notNull(),
+  sizeBytes: integer("sizeBytes").notNull(),
+  uploadedByManagerId: integer("uploadedByManagerId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type BillingDocumentFile = typeof billingDocumentFiles.$inferSelect;
+export type InsertBillingDocumentFile = typeof billingDocumentFiles.$inferInsert;

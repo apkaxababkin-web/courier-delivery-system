@@ -10,6 +10,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
 import { registerCorrespondenceRoutes } from "./correspondenceRoutes";
 import { registerAddressBookRoutes } from "./addressBook";
+import { registerBillingRoutes } from "./billingRoutes";
 import { mirrorLegacyChatMessageToV2, registerChatV2Routes } from "./chatV2Routes";
 import { sendExpoPush } from "./expoPush";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
@@ -260,6 +261,7 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
   registerCompatRoutes(app);
   registerCorrespondenceRoutes(app);
   registerAddressBookRoutes(app);
+  registerBillingRoutes(app);
   registerChatV2Routes(app);
 
   app.get("/api/health", (_req, res) => {

@@ -921,49 +921,184 @@ export async function updateRequestClient(id: number, clientId: number | null): 
 
 // ─── Billing API ─────────────────────────────────────────────────────────────
 
-/** Quote state of one request inside the billing review. */
-export type BillingQuoteState = 'ready' | 'checked' | 'billed' | 'unpriced';
+/** UI state of one request inside the billing review. */
+export type BillingRequestState =
+  | 'billed'
+  | 'unpriced'
+  | 'ready'
+  | 'checked'
+  | 'decision_needed'
+  | 'decided_not_billable'
+  | 'decided_completed'
+  | 'clarification';
+
+export type BillingReviewState =
+  | 'cancelled_confirmed'
+  | 'completed_confirmed'
+  | 'requires_clarification'
+  | 'not_billable';
+
+export type BillingReviewAction =
+  | 'confirm_cancelled'
+  | 'mark_completed'
+  | 'requires_clarification'
+  | 'not_billable'
+  | 'reset';
 
 export interface BillingReviewRequest extends Request {
-  quoteState: BillingQuoteState;
-  quoteIssue?: string | null;
+  /** Server-computed review state of the request. */
+  billingState: BillingRequestState;
+  billingIssue?: string | null;
+  /** True when the period cannot be billed until this request is resolved. */
+  billingBlocking?: boolean;
+  reviewState?: BillingReviewState | null;
+  reviewStateLabel?: string | null;
+  reviewNote?: string | null;
+  statusLabel?: string;
   tariffCategory?: string;
+}
+
+export interface BillingCounts {
+  total: number;
+  completed: number;
+  unfinished: number;
+  cancelled: number;
+  checked: number;
+  ready: number;
+  unpriced: number;
+  billed: number;
+  decisionNeeded: number;
+  clarification: number;
+  notBillable: number;
+}
+
+export interface BillingReadiness {
+  ready: boolean;
+  blockers: string[];
+  executorGaps: { field: string; label: string }[];
+  clientGaps: { field: string; label: string }[];
+  unresolved: { requestId: number; reason: string }[];
+}
+
+export interface BillingPaymentProof {
+  id: number;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
 }
 
 export interface BillingDocumentRow {
   id: number;
   number: string;
   documentDate: string;
+  documentDateText?: string | null;
+  clientId: number;
+  clientName: string;
   periodFrom: string;
   periodTo: string;
   requestsCount: number;
-  totalAmount: string | number;
+  totalAmount: number;
   status: 'issued' | 'paid' | 'cancelled';
-  createdAt: string;
+  vatText?: string | null;
+  invoiceFile?: string | null;
+  actFile?: string | null;
+  registryFile?: string | null;
   paidAt?: string | null;
+  paidByManagerId?: number | null;
+  paymentComment?: string | null;
+  paymentProofs?: BillingPaymentProof[];
+  voidedAt?: string | null;
+  voidReason?: string | null;
+  createdAt: string;
 }
 
 export interface BillingOverview {
   requests: BillingReviewRequest[];
-  counts: { total: number; ready: number; checked: number; billed: number; unpriced: number };
+  counts: BillingCounts;
+  /** Sum of verified requests: what the document set will contain. */
   checkedAmount: number;
+  /** Sum of completed requests that already have a price. */
   readyAmount: number;
+  billedAmount: number;
+  readiness: BillingReadiness;
   documents: BillingDocumentRow[];
+}
+
+export interface DocumentPreview {
+  ready: boolean;
+  blockers: string[];
+  warnings: string[];
+  number: string;
+  documentDateIso: string;
+  documentDateText: string;
+  clientName: string;
+  periodFrom: string;
+  periodTo: string;
+  periodText: string;
+  requestsCount: number;
+  totalPlaces: number;
+  totalAmount: number;
+  totalAmountText: string;
+  amountInWords: string;
+  vatRateText: string;
+  lines: { name: string; quantity: number; price: number; amount: number }[];
 }
 
 export interface IssueDocumentResult {
   ok: boolean;
   reason?: string;
-  document?: BillingDocumentRow;
-  requestCount?: number;
-  totalAmount?: number;
-  blocked?: BillingReviewRequest[];
+  document?: {
+    id: number;
+    number: string;
+    documentDateText: string;
+    clientName: string;
+    requestsCount: number;
+    totalAmount: number;
+    invoiceFile: string;
+    actFile: string;
+    registryFile: string;
+  };
 }
 
+export interface DocumentSettingsDto {
+  executorName: string | null;
+  executorShortName: string | null;
+  executorInn: string | null;
+  executorKpp: string | null;
+  executorOgrn: string | null;
+  executorOgrnip: string | null;
+  executorAddress: string | null;
+  executorPostalAddress: string | null;
+  executorPhone: string | null;
+  executorEmail: string | null;
+  bankName: string | null;
+  bankBik: string | null;
+  bankAccount: string | null;
+  bankCorrespondentAccount: string | null;
+  vatMode: string;
+  vatRate: number;
+  vatText: string;
+  vatExemptionBasis: string | null;
+  directorName: string | null;
+  directorPosition: string | null;
+  accountantName: string | null;
+  signatureFile: string | null;
+  stampFile: string | null;
+  documentNumberPrefix: string | null;
+  nextDocumentNumber: number;
+}
+
+const EMPTY_BILLING_COUNTS: BillingCounts = {
+  total: 0, completed: 0, unfinished: 0, cancelled: 0,
+  checked: 0, ready: 0, unpriced: 0, billed: 0,
+  decisionNeeded: 0, clarification: 0, notBillable: 0,
+};
+
 /**
- * Review workspace for one client and period. Everything the screen needs comes
- * from the server: amounts are already calculated there, and the response carries
- * the reason a document can or cannot be issued.
+ * Review workspace for one client and period. The server returns every request of
+ * the period (completed, cancelled and unfinished), the manager decisions already
+ * taken, and exactly why the period is not ready for documents.
  */
 export async function getBillingOverview(
   clientId: number,
@@ -975,9 +1110,11 @@ export async function getBillingOverview(
     { clientId, dateFrom, dateTo },
     {
       requests: [],
-      counts: { total: 0, ready: 0, checked: 0, billed: 0, unpriced: 0 },
+      counts: { ...EMPTY_BILLING_COUNTS },
       checkedAmount: 0,
       readyAmount: 0,
+      billedAmount: 0,
+      readiness: { ready: false, blockers: [], executorGaps: [], clientGaps: [], unresolved: [] },
       documents: [],
     },
   );
@@ -1003,24 +1140,141 @@ export async function recalcRequestQuote(requestId: number): Promise<{
   reason?: string;
   preserved?: string;
 }> {
-  return await trpcPost(
-    'billing.recalcRequest',
-    { requestId },
-    { status: 'skipped' },
-  );
+  return await trpcPost('billing.recalcRequest', { requestId }, { status: 'skipped' });
 }
 
-/** Issue the client document for the selected period. */
-export async function issueBillingDocument(
+/** Record the manager's decision about a cancelled or unfinished request. */
+export async function setBillingReviewDecision(
+  requestId: number,
+  action: BillingReviewAction,
+  note?: string,
+): Promise<void> {
+  await trpcPost('billing.reviewDecision', { requestId, action, note }, { success: true });
+}
+
+/** Preview of the document set: number, date, client, period, count, total, blockers. */
+export async function getDocumentPreview(
   clientId: number,
   dateFrom: string,
   dateTo: string,
+  documentDate?: string,
+): Promise<DocumentPreview | null> {
+  return await trpcGet<DocumentPreview | null>(
+    'billing.previewSet',
+    { clientId, dateFrom, dateTo, documentDate },
+    null,
+  );
+}
+
+/** Issue the document set (invoice + act + registry) for the period. */
+export async function issueDocumentSet(
+  clientId: number,
+  dateFrom: string,
+  dateTo: string,
+  documentDate?: string,
 ): Promise<IssueDocumentResult> {
   return await trpcPost(
-    'billing.issueDocument',
-    { clientId, dateFrom, dateTo },
+    'billing.issueSet',
+    { clientId, dateFrom, dateTo, documentDate },
     { ok: false, reason: 'Сервер не ответил' },
   );
+}
+
+/** Issued document sets, newest first. */
+export async function getBillingDocuments(clientId?: number): Promise<BillingDocumentRow[]> {
+  return await trpcGet<BillingDocumentRow[]>('billing.documents', clientId ? { clientId } : {}, []);
+}
+
+/** Mark a document as paid (or take the mark back). */
+export async function setBillingDocumentPaid(
+  documentId: number,
+  paid: boolean,
+  comment?: string,
+): Promise<void> {
+  await trpcPost('billing.setPaid', { documentId, paid, comment }, { success: true });
+}
+
+/** Annul a document with a reason (never a silent delete). */
+export async function voidBillingDocument(documentId: number, reason: string): Promise<void> {
+  await trpcPost('billing.voidDocument', { documentId, reason }, { success: true });
+}
+
+export async function removeBillingDocumentFile(fileId: number): Promise<void> {
+  await trpcPost('billing.removeDocumentFile', { fileId }, { success: true });
+}
+
+// ─── Document settings (our own requisites) ──────────────────────────────────
+
+export async function getDocumentSettings(): Promise<DocumentSettingsDto | null> {
+  return await restJson<DocumentSettingsDto | null>('/api/manager/billing/settings');
+}
+
+export async function saveDocumentSettings(
+  payload: Partial<DocumentSettingsDto>,
+): Promise<DocumentSettingsDto> {
+  return await restJson<DocumentSettingsDto>('/api/manager/billing/settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Upload the optional signature or stamp image used on the printed documents. */
+export async function uploadDocumentSettingsImage(
+  kind: 'signature' | 'stamp',
+  file: File,
+): Promise<DocumentSettingsDto> {
+  const response = await managerFetch(`/api/manager/billing/settings/image/${kind}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  const payload = await readJson(response);
+  if (!response.ok) throw new Error(payload?.error?.message || 'Не удалось загрузить изображение');
+  return payload as DocumentSettingsDto;
+}
+
+/** Attach a payment confirmation (PDF/JPG/PNG) to an issued document. */
+export async function uploadPaymentProof(
+  documentId: number,
+  file: File,
+): Promise<BillingPaymentProof> {
+  const response = await managerFetch(`/api/manager/billing/documents/${documentId}/payment-proof`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  const payload = await readJson(response);
+  if (!response.ok) throw new Error(payload?.error?.message || 'Не удалось загрузить подтверждение оплаты');
+  return payload as BillingPaymentProof;
+}
+
+/** URL of a generated set file, for opening or downloading it. */
+export function billingDocumentFileUrl(documentId: number, kind: 'invoice' | 'act' | 'registry'): string {
+  return `/api/manager/billing/documents/${documentId}/file/${kind}`;
+}
+
+/** URL of an on-the-fly preview, which never reserves a number. */
+export function billingPreviewUrl(
+  clientId: number,
+  dateFrom: string,
+  dateTo: string,
+  kind: 'invoice' | 'act' | 'registry',
+  documentDate?: string,
+): string {
+  const params = new URLSearchParams({ clientId: String(clientId), dateFrom, dateTo, kind });
+  if (documentDate) params.set('documentDate', documentDate);
+  return `/api/manager/billing/documents/preview?${params.toString()}`;
+}
+
+/** URL of an attached payment confirmation. */
+export function billingDocumentProofUrl(file: BillingPaymentProof): string {
+  return `/api/manager/billing-document-files/${file.id}/${encodeURIComponent((file as unknown as { storedName?: string }).storedName ?? '')}`;
 }
 
 export async function getBillingReviewRequests(
