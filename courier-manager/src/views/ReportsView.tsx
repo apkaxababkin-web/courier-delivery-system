@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays, Search, Download, FileSpreadsheet, ArrowLeft, Pencil, RefreshCw,
   FileText, ScrollText, Table2, Wallet, Ban, Paperclip, CheckCircle2, AlertTriangle, Settings2,
@@ -715,6 +715,8 @@ export default function ReportsView() {
   const [billingOverview, setBillingOverview] = useState<Awaited<ReturnType<typeof getBillingOverview>> | null>(null);
   /** Client section: reconciliation, tariffs or issued documents. */
   const [clientSection, setClientSection] = useState<'review' | 'tariffs' | 'documents'>('review');
+  /** Anchor of the client section tabs, kept in view when switching sections. */
+  const clientSectionsRef = useRef<HTMLDivElement | null>(null);
   /** Preview of the set about to be issued: number, date and totals are confirmed here. */
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
   const [previewDate, setPreviewDate] = useState('');
@@ -863,6 +865,22 @@ export default function ReportsView() {
     };
   }, [selectedClientId, dateFrom, dateTo, billingRefreshVersion, clientSection]);
 
+
+  /** Switch the client section and keep the tab strip in view. */
+  function openClientSection(section: 'review' | 'tariffs' | 'documents') {
+    setClientSection(section);
+    clientSectionsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  /**
+   * Switching between «Сверка», «Тарифы» and «Счета и акты» must not require
+   * scrolling back up through the reconciliation table: bring the tabs and the
+   * section header back into view. Client and period are component state, so they
+   * are preserved by definition.
+   */
+  useEffect(() => {
+    clientSectionsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [clientSection]);
 
   /** Recalculate every eligible price of this client for the selected period. */
   async function recalcClientPeriod() {
@@ -1537,42 +1555,58 @@ export default function ReportsView() {
       </div>
 
       {activeTab === 'documents' && selectedClientId === 'all' ? (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-500">
-                  Дата от
-                </span>
-                <div className="relative">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(event) => { setDateFrom(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
-                    className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-                  />
-                </div>
-              </label>
+        // The ref lives on the whole section so switching tabs always brings the
+        // (always visible) tab strip and the section header back into view.
+        <div ref={clientSectionsRef} className="space-y-4">
+          {/* Client calculations are split into three sections. They are part of
+              the section itself, so they stay visible before a client is chosen:
+              a manager must not have to guess that «Тарифы» or «Счета и акты»
+              exist at all. The two client-specific sections open once a client
+              is selected. */}
+          <div
+            className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"
+          >
+            <button
+              type="button"
+              onClick={() => openClientSection('review')}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                clientSection === 'review'
+                  ? 'bg-slate-950 text-white'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              Сверка
+            </button>
 
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-500">
-                  Дата до
-                </span>
-                <div className="relative">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(event) => { setDateTo(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
-                    className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-                  />
-                </div>
-              </label>
-            </div>
+            {([
+              ['tariffs', 'Тарифы'],
+              ['documents', 'Счета и акты'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                disabled={!selectedClient}
+                title={selectedClient ? undefined : 'Сначала выберите клиента'}
+                onClick={() => openClientSection(id)}
+                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                  clientSection === id && selectedClient
+                    ? 'bg-slate-950 text-white'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-50`}
+              >
+                {label}
+              </button>
+            ))}
+
+            {!selectedClient && (
+              <span className="pl-1 text-xs text-slate-400">
+                Выберите клиента ниже, чтобы открыть тарифы и документы
+              </span>
+            )}
           </div>
 
-          {!selectedClient ? (
+          {/* Client list, shown while no client is chosen. */}
+          {!selectedClient && (
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
                 <div className="text-sm font-semibold text-slate-950">
@@ -1602,8 +1636,46 @@ export default function ReportsView() {
                 ))}
               </div>
             </div>
-          ) : (
+          )}
+
+          {selectedClient && (
             <>
+              {(clientSection === 'review' || clientSection === 'documents') && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">
+                        Дата от
+                      </span>
+                      <div className="relative">
+                        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="date"
+                          value={dateFrom}
+                          onChange={(event) => { setDateFrom(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
+                          className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">
+                        Дата до
+                      </span>
+                      <div className="relative">
+                        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="date"
+                          value={dateTo}
+                          onChange={(event) => { setDateTo(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
+                          className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                        />
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
                   <button
@@ -1706,25 +1778,6 @@ export default function ReportsView() {
                 </div>
               </div>
 
-              {/* Section switch: reconciliation, tariffs, issued documents. */}
-              <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-                {([
-                  ['review', 'Сверка'],
-                  ['tariffs', 'Тарифы'],
-                  ['documents', 'Счета и акты'],
-                ] as const).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setClientSection(id)}
-                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                      clientSection === id ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
 
               {/* Preview of the set: number, date, client, period, count, total. */}
               {clientSection === 'review' && preview && (
