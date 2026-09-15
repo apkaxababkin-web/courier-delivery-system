@@ -126,6 +126,7 @@
     "esbuild": "^0.23.1",
     "eslint": "^9.39.2",
     "eslint-config-expo": "~10.0.0",
+    "happy-dom": "^15.11.7",
     "metro-minify-terser": "^0.84.4",
     "prettier": "^3.7.4",
     "qrcode": "^1.5.4",
