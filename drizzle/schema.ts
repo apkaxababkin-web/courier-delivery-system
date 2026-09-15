@@ -827,6 +827,8 @@ export const billingSettings = pgTable("billingSettings", {
   /** Optional images stored as files under uploads/billing-settings/ */
   signatureFile: text("signatureFile"),
   stampFile: text("stampFile"),
+  /** Print the organisation stamp on invoices and acts. */
+  addStampToDocuments: boolean("addStampToDocuments").default(false).notNull(),
 
   vatText: varchar("vatText", { length: 100 }).default("Без НДС").notNull(),
   documentNumberPrefix: varchar("documentNumberPrefix", { length: 50 }),
@@ -897,6 +899,10 @@ export const billingDocuments = pgTable("billingDocuments", {
   directorNameSnapshot: varchar("directorNameSnapshot", { length: 255 }),
   directorPositionSnapshot: varchar("directorPositionSnapshot", { length: 255 }),
   accountantNameSnapshot: varchar("accountantNameSnapshot", { length: 255 }),
+  /** Signature/stamp files frozen at issue time (paths under uploads/). */
+  signatureFileSnapshot: text("signatureFileSnapshot"),
+  stampFileSnapshot: text("stampFileSnapshot"),
+  stampEnabledSnapshot: boolean("stampEnabledSnapshot"),
   /** Shared printed date (DD.MM.YYYY) for the whole set */
   documentDateText: varchar("documentDateText", { length: 10 }),
   generatedAt: timestamp("generatedAt"),

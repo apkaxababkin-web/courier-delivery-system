@@ -129,6 +129,35 @@ vi.mock("../courier-manager/src/lib/api", () => {
     createdAt: "2026-09-01T10:00:00.000Z",
   };
 
+  const settingsDto = {
+    executorName: "Индивидуальный предприниматель Бабкин Юрий Тимофеевич",
+    executorShortName: null,
+    executorInn: "030201064412",
+    executorKpp: null,
+    executorOgrn: "3190327000019291",
+    executorOgrnip: null,
+    executorAddress: "671510, Россия, Бурятия Республика, Багдарин",
+    executorPostalAddress: null,
+    executorPhone: "89503942512",
+    executorEmail: null,
+    bankName: 'ООО "Банк Точка"',
+    bankBik: "044525104",
+    bankAccount: "40802810001500359887",
+    bankCorrespondentAccount: "30101810745374525104",
+    vatMode: "without_vat",
+    vatRate: 0,
+    vatText: "Без НДС",
+    vatExemptionBasis: null,
+    directorName: "Бабкин Ю. Т.",
+    directorPosition: "Директор",
+    accountantName: "Бабкин Ю. Т.",
+    signatureFile: "uploads/billing-settings/signature-1.png",
+    stampFile: null,
+    addStampToDocuments: false,
+    documentNumberPrefix: null,
+    nextDocumentNumber: 256,
+  };
+
   const overview = {
     requests,
     counts: {
@@ -174,9 +203,11 @@ vi.mock("../courier-manager/src/lib/api", () => {
     getBillingDocumentHistory: vi.fn(async () => []),
     uploadPaymentProof: vi.fn(async () => undefined),
     removeBillingDocumentFile: vi.fn(async () => undefined),
-    getDocumentSettings: vi.fn(async () => null),
-    saveDocumentSettings: vi.fn(async () => null),
-    uploadDocumentSettingsImage: vi.fn(async () => null),
+    getDocumentSettings: vi.fn(async () => ({ ...settingsDto })),
+    saveDocumentSettings: vi.fn(async (patch: Record<string, unknown>) => ({ ...settingsDto, ...patch })),
+    uploadDocumentSettingsImage: vi.fn(async (_kind: string, _file: File) => ({ ...settingsDto, signatureFile: "uploads/billing-settings/signature-new.png" })),
+    fetchDocumentSettingsImage: vi.fn(async () => new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: "image/png" })),
+    deleteDocumentSettingsImage: vi.fn(async () => ({ ...settingsDto, signatureFile: null, stampFile: null })),
     fetchManagerBlob: vi.fn(async () => ({
       blob: new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])], { type: 'application/pdf' }),
       fileName: "Счет_1_2026-09-01.pdf",
@@ -275,6 +306,16 @@ async function typeInto(element: HTMLInputElement, value: string): Promise<void>
   });
 }
 
+/** Open the organisation requisites dialog from the client toolbar. */
+async function openSettings(): Promise<void> {
+  const button = container!.querySelector('button[title="Реквизиты организации для счетов и актов"]')
+    ?? Array.from(container!.querySelectorAll("button")).find((item) => (item.textContent ?? "").includes("Реквизиты"));
+  if (!button) throw new Error("кнопка «Реквизиты» не найдена");
+  await click(button as HTMLElement);
+  // The dialog renders through a React portal into document.body, outside `container`.
+  await waitFor(() => (document.body.textContent?.includes("Реквизиты организации") ? true : null));
+}
+
 async function click(element: HTMLElement): Promise<void> {
   await act(async () => {
     element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
@@ -309,11 +350,13 @@ async function openClient(): Promise<void> {
 
 /** Blob-URL support that happy-dom may not provide. */
 const createdObjectUrls: string[] = [];
+const revokedObjectUrls: string[] = [];
 let openedUrls: string[] = [];
 
 beforeEach(() => {
   document.body.innerHTML = "";
   createdObjectUrls.length = 0;
+  revokedObjectUrls.length = 0;
   openedUrls = [];
 
   (URL as unknown as { createObjectURL: (blob: Blob) => string }).createObjectURL = (blob: Blob) => {
@@ -321,7 +364,9 @@ beforeEach(() => {
     createdObjectUrls.push(url);
     return url;
   };
-  (URL as unknown as { revokeObjectURL: (url: string) => void }).revokeObjectURL = () => undefined;
+  (URL as unknown as { revokeObjectURL: (url: string) => void }).revokeObjectURL = (url: string) => {
+    revokedObjectUrls.push(url);
+  };
 
   window.open = ((url: string) => {
     openedUrls.push(String(url));
@@ -455,6 +500,59 @@ describe("«Расчёты»: реальный DOM-рендер клиентск
     const firstCell = (cancelledRow as HTMLElement).querySelector("td")!;
     expect((firstCell.textContent ?? "").trim()).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
     expect((firstCell.textContent ?? "").trim()).not.toBe("—");
+  });
+
+  it("блок «Подпись и печать» отрисован и тянет preview авторизованным blob-запросом", async () => {
+    await renderReports();
+    await openClient();
+    await openSettings();
+
+    // The dialog itself is portalled into document.body.
+    await waitFor(() => (document.body.textContent?.includes("Подпись и печать") ? true : null));
+
+    // Both images are requested through the authenticated helper, never through a bare
+    // <img src> pointing at the protected endpoint.
+    await waitFor(() => {
+      const calls = (api.fetchDocumentSettingsImage as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
+      return calls.includes("signature") && calls.includes("stamp") ? true : null;
+    });
+    expect(api.fetchDocumentSettingsImage).toHaveBeenCalledWith("signature");
+    expect(api.fetchDocumentSettingsImage).toHaveBeenCalledWith("stamp");
+
+    // Controls of the block exist, and the stamp switch is present and off.
+    expect(document.querySelector('[data-testid="settings-signature-upload"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="settings-stamp-upload"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="settings-signature-preview"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="settings-stamp-preview"]')).toBeTruthy();
+    const stampToggle = document.querySelector('[data-testid="settings-stamp-enabled"]') as HTMLInputElement;
+    expect(stampToggle).toBeTruthy();
+    expect(stampToggle.checked).toBe(false);
+
+    // A missing image is an empty state, not an error: both mock blobs are present, so
+    // the previews render as images and no error banner appears.
+    expect(document.querySelector('[data-testid="settings-stamp-preview"] img')).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Не удалось");
+  });
+
+  it("переключатель печати сохраняется через настройки", async () => {
+    await renderReports();
+    await openClient();
+    await openSettings();
+    await waitFor(() => (document.body.textContent?.includes("Подпись и печать") ? true : null));
+
+    const stampToggle = document.querySelector('[data-testid="settings-stamp-enabled"]') as HTMLInputElement;
+    // React 19 tracks the DOM value itself, so the native setter is used here too.
+    const checkedSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
+    await act(async () => {
+      checkedSetter?.call(stampToggle, true);
+      stampToggle.dispatchEvent(new window.Event("click", { bubbles: true }));
+      stampToggle.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+
+    await waitFor(() => ((api.saveDocumentSettings as ReturnType<typeof vi.fn>).mock.calls.length > 0 ? true : null));
+    expect(api.saveDocumentSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ addStampToDocuments: true }),
+    );
   });
 
   it("L. скачивает документы авторизованным запросом, а не голым окном", async () => {

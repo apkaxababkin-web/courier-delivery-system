@@ -35,6 +35,8 @@ export interface DocumentSettings {
   accountantName: string | null;
   signatureFile: string | null;
   stampFile: string | null;
+  /** Print the organisation stamp on invoices and acts. */
+  addStampToDocuments: boolean;
   documentNumberPrefix: string | null;
   nextDocumentNumber: number;
 }
@@ -63,6 +65,7 @@ export const EMPTY_DOCUMENT_SETTINGS: DocumentSettings = {
   accountantName: null,
   signatureFile: null,
   stampFile: null,
+  addStampToDocuments: false,
   documentNumberPrefix: null,
   nextDocumentNumber: 1,
 };
@@ -104,6 +107,7 @@ function mapRow(row: Record<string, unknown>): DocumentSettings {
     accountantName: str(row.accountantName),
     signatureFile: str(row.signatureFile),
     stampFile: str(row.stampFile),
+    addStampToDocuments: row.addStampToDocuments === true || row.addStampToDocuments === "true",
     documentNumberPrefix: str(row.documentNumberPrefix),
     nextDocumentNumber: Number(row.nextDocumentNumber ?? 1),
   };
@@ -185,6 +189,12 @@ export async function saveDocumentSettings(
     const rate = Number(String(input.vatRate ?? "0").replace(",", "."));
     if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new DocumentSettingsError("Некорректная ставка НДС");
     updates.vatRate = rate;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "addStampToDocuments")) {
+    const value = input.addStampToDocuments;
+    if (typeof value !== "boolean") throw new DocumentSettingsError("Некорректное значение флага печати");
+    updates.addStampToDocuments = value;
   }
 
   if (Object.prototype.hasOwnProperty.call(input, "nextDocumentNumber")) {

@@ -19,6 +19,7 @@ import {
 import { clientDocumentAddress, clientDocumentName, clientPostalAddress, type ClientRequisites } from "./billingReview";
 import type { DocumentSettings } from "./documentSettings";
 import type { BillingRequestRow } from "./billingReview";
+import type { DocumentImages } from "./documentImages";
 
 export interface DocumentLine {
   /** Running number in the table. */
@@ -75,6 +76,12 @@ export interface DocumentSetData {
     accountantName: string | null;
     signatureFile: string | null;
     stampFile: string | null;
+    /** Resolved absolute path of the signature image, when one is configured. */
+    signaturePath: string | null;
+    /** Resolved absolute path of the stamp image, when one is configured. */
+    stampPath: string | null;
+    /** False when the organisation does not print a stamp. */
+    stampEnabled: boolean;
     vatText: string;
     vatExemptionBasis: string | null;
   };
@@ -139,6 +146,12 @@ export interface BuildDocumentSetInput {
   rows: BillingRequestRow[];
   /** Optional per-request comments override (defaults to request.comments). */
   comments?: Map<number, string>;
+  /**
+   * Signature/stamp as resolved for THIS document: for an issued document the
+   * service passes the frozen snapshot, not the current settings, so a later
+   * replacement cannot change an already generated PDF.
+   */
+  images?: DocumentImages;
 }
 
 /**
@@ -212,6 +225,11 @@ export function buildDocumentSetData(input: BuildDocumentSetInput): DocumentSetD
       accountantName: settings.accountantName,
       signatureFile: settings.signatureFile,
       stampFile: settings.stampFile,
+      // Resolved for this document: frozen snapshot for an issued document, current
+      // settings for a preview.
+      signaturePath: input.images?.signaturePath ?? null,
+      stampPath: input.images?.stampPath ?? null,
+      stampEnabled: Boolean(input.images?.stampPath),
       vatText: settings.vatText || vat.rateText,
       vatExemptionBasis: settings.vatExemptionBasis,
     },

@@ -75,6 +75,7 @@ const settings: DocumentSettings = {
   accountantName: 'Бабкин Ю. Т.',
   signatureFile: null,
   stampFile: null,
+  addStampToDocuments: false,
   documentNumberPrefix: null,
   nextDocumentNumber: 256,
 };

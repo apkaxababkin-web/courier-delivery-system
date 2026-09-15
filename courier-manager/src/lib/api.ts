@@ -1116,6 +1116,8 @@ export interface DocumentSettingsDto {
   accountantName: string | null;
   signatureFile: string | null;
   stampFile: string | null;
+  /** Print the organisation stamp on invoices and acts. */
+  addStampToDocuments: boolean;
   documentNumberPrefix: string | null;
   nextDocumentNumber: number;
 }
@@ -1288,6 +1290,36 @@ export async function uploadDocumentSettingsImage(
   const payload = await readJson(response);
   if (!response.ok) throw new Error(payload?.error?.message || 'Не удалось загрузить изображение');
   return payload as DocumentSettingsDto;
+}
+
+/**
+ * Fetch the current signature/stamp as a blob so it can be previewed.
+ *
+ * The endpoint stays manager-protected, so a plain `<img src>` cannot load it: the
+ * bytes come through the authenticated fetch and are shown as an object URL.
+ */
+export async function fetchDocumentSettingsImage(
+  kind: 'signature' | 'stamp',
+): Promise<Blob | null> {
+  const response = await managerFetch(`/api/manager/billing/settings/image/${kind}`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  // 404 simply means "not uploaded yet"; the UI shows an empty state.
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Не удалось загрузить изображение (${response.status})`);
+
+  const blob = await response.blob();
+  return blob.size > 0 ? blob : null;
+}
+
+/** Remove the signature/stamp from the settings (idempotent on the server). */
+export async function deleteDocumentSettingsImage(
+  kind: 'signature' | 'stamp',
+): Promise<DocumentSettingsDto> {
+  return await restJson<DocumentSettingsDto>(`/api/manager/billing/settings/image/${kind}`, {
+    method: 'DELETE',
+  });
 }
 
 /** Attach a payment confirmation (PDF/JPG/PNG) to an issued document. */

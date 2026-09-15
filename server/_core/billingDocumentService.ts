@@ -33,6 +33,13 @@ import {
   type BillingRequestRow,
 } from "./billingReview";
 import { loadDocumentSettings, missingExecutorRequisites, type DocumentSettings } from "./documentSettings";
+import {
+  documentOverlays,
+  resolveDocumentImages,
+  snapshotDocumentAssets,
+  type DocumentImages,
+  type DocumentSignatureSnapshot,
+} from "./documentImages";
 import { buildDocumentSetData, documentSetTotals, type DocumentSetData } from "./billingDocumentData";
 import { renderActPdf, renderInvoicePdf } from "./billingPdf";
 import { renderRegistryXlsx } from "./billingRegistryXlsx";
@@ -232,6 +239,7 @@ async function buildData(
   settings: DocumentSettings,
   rowsToBill: BillingRequestRow[],
   number: string,
+  images: DocumentImages,
 ): Promise<DocumentSetData> {
   const client = await loadClientRequisites(clientId);
   if (!client) throw new BillingDocumentError("Клиент не найден", 404);
@@ -243,7 +251,21 @@ async function buildData(
     settings,
     client,
     rows: rowsToBill,
+    images,
   });
+}
+
+/**
+ * Resolve the images an issued document must print.
+ *
+ * The document snapshot wins; a document issued before the snapshot columns existed
+ * has NULL there and falls back to the current settings (historical behaviour).
+ */
+function imagesForDocument(
+  snapshot: DocumentSignatureSnapshot,
+  settings: DocumentSettings,
+): DocumentImages {
+  return resolveDocumentImages(snapshot, settings);
 }
 
 /**
@@ -263,8 +285,10 @@ export async function previewDocumentSet(
   const dateIso = documentDateIso || new Date().toISOString().slice(0, 10);
 
   const billable = billableRows(overview);
+  // A preview always shows the CURRENT settings: nothing is frozen yet.
+  const previewImages = resolveDocumentImages({}, settings);
   const data = client && billable.length > 0
-    ? await buildData(clientId, from, to, dateIso, settings, billable, number)
+    ? await buildData(clientId, from, to, dateIso, settings, billable, number, previewImages)
     : null;
 
   const blockers = [...overview.readiness.blockers];
@@ -361,7 +385,7 @@ export async function renderPreviewFile(
   const settings = await loadDocumentSettings();
   const number = await currentDocumentNumber();
   const dateIso = documentDateIso || new Date().toISOString().slice(0, 10);
-  const data = await buildData(clientId, from, to, dateIso, settings, billable, number);
+  const data = await buildData(clientId, from, to, dateIso, settings, billable, number, resolveDocumentImages({}, settings));
   const suffix = `${number}_${dateIso}`;
 
   if (kind === "invoice") {
@@ -455,7 +479,10 @@ export async function issueDocumentSet(
   const number = preview.number;
 
   // Render before writing anything, so a rendering failure leaves no documents.
-  const data = await buildData(clientId, from, to, dateIso, settings, billable, number);
+  // The document is rendered from the CURRENT settings, whose image bytes are then
+  // frozen next to the document (see below).
+  const issuedImages = resolveDocumentImages({}, settings);
+  const data = await buildData(clientId, from, to, dateIso, settings, billable, number, issuedImages);
   const [invoice, act, registry] = await Promise.all([
     renderInvoicePdf(data),
     renderActPdf(data),
@@ -534,6 +561,20 @@ export async function issueDocumentSet(
 
   const documentId = Number((created as Record<string, unknown>).id);
   const expectedNumber = String((created as Record<string, unknown>).number);
+
+  // Freeze the signature/stamp bytes next to the document and remember where they
+  // are. A later replacement in the settings never touches these copies, so the
+  // issued PDF stays exactly as it was generated (nothing is regenerated either).
+  const frozen = snapshotDocumentAssets(documentId, issuedImages);
+  await conn
+    .update(billingDocuments)
+    .set({
+      signatureFileSnapshot: frozen.signatureFile,
+      stampFileSnapshot: frozen.stampFile,
+      stampEnabledSnapshot: Boolean(issuedImages.stampPath),
+      updatedAt: new Date(),
+    })
+    .where(eq(billingDocuments.id, documentId));
 
   // Files are written after the transaction commits; if writing fails the document
   // exists but without files, which is reported as a generation error below.

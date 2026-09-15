@@ -23,6 +23,8 @@ import {
   removeBillingDocumentFile,
   getDocumentSettings,
   saveDocumentSettings,
+  fetchDocumentSettingsImage,
+  deleteDocumentSettingsImage,
   uploadDocumentSettingsImage,
   billingDocumentFileUrl,
   billingPreviewUrl,
@@ -719,6 +721,11 @@ export default function ReportsView() {
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentSettings, setDocumentSettings] = useState<DocumentSettingsDto | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Object URLs of the loaded signature/stamp previews (revoked on change/close). */
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [stampPreview, setStampPreview] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState<'signature' | 'stamp' | null>(null);
+  const [imageError, setImageError] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState<{ id: number; paid: boolean; comment: string } | null>(null);
   /** Manager decision dialog for a cancelled/unfinished request. */
@@ -1179,18 +1186,81 @@ export default function ReportsView() {
     }
   }
 
-  async function uploadSettingsImage(kind: 'signature' | 'stamp', file: File) {
-    setSettingsSaving(true);
-    setError('');
+  /** Replace the object URL of one preview, revoking the previous one. */
+  function applySettingsPreview(kind: 'signature' | 'stamp', url: string | null) {
+    const apply = kind === 'signature' ? setSignaturePreview : setStampPreview;
+    apply((previous) => {
+      if (previous && previous !== url) URL.revokeObjectURL(previous);
+      return url;
+    });
+  }
+
+  /**
+   * Load the current signature/stamp through the authenticated API and show it as an
+   * object URL. A 404 means "not uploaded yet" and clears the preview.
+   */
+  async function loadSettingsImagePreview(kind: 'signature' | 'stamp') {
     try {
-      setDocumentSettings(await uploadDocumentSettingsImage(kind, file));
-      setBillingNotice(kind === 'signature' ? 'Подпись загружена' : 'Печать загружена');
-    } catch (settingsError) {
-      setError(settingsError instanceof Error ? settingsError.message : 'Не удалось загрузить изображение');
-    } finally {
-      setSettingsSaving(false);
+      const blob = await fetchDocumentSettingsImage(kind);
+      applySettingsPreview(kind, blob ? URL.createObjectURL(blob) : null);
+    } catch {
+      // A missing or unreadable preview is not an error the manager must act on.
+      applySettingsPreview(kind, null);
     }
   }
+
+  async function uploadSettingsImage(kind: 'signature' | 'stamp', file: File) {
+    setImageBusy(kind);
+    setImageError('');
+    setError('');
+    try {
+      const next = await uploadDocumentSettingsImage(kind, file);
+      setDocumentSettings(next);
+      setBillingNotice(kind === 'signature' ? 'Подпись загружена' : 'Печать загружена');
+      await loadSettingsImagePreview(kind);
+    } catch (settingsError) {
+      const message = settingsError instanceof Error ? settingsError.message : 'Не удалось загрузить изображение';
+      setImageError(message);
+      setError(message);
+    } finally {
+      setImageBusy(null);
+    }
+  }
+
+  async function removeSettingsImage(kind: 'signature' | 'stamp') {
+    setImageBusy(kind);
+    setImageError('');
+    try {
+      setDocumentSettings(await deleteDocumentSettingsImage(kind));
+      applySettingsPreview(kind, null);
+      setBillingNotice(kind === 'signature' ? 'Подпись удалена' : 'Печать удалена');
+    } catch (settingsError) {
+      const message = settingsError instanceof Error ? settingsError.message : 'Не удалось удалить изображение';
+      setImageError(message);
+    } finally {
+      setImageBusy(null);
+    }
+  }
+
+  // Load the signature/stamp previews whenever the settings dialog opens, and release
+  // every object URL when it closes or the view unmounts.
+  useEffect(() => {
+    if (!settingsOpen || !documentSettings) return;
+    void loadSettingsImagePreview('signature');
+    void loadSettingsImagePreview('stamp');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsOpen, documentSettings?.signatureFile, documentSettings?.stampFile]);
+
+  useEffect(() => () => {
+    setSignaturePreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+    setStampPreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+  }, []);
 
   const periodRequests = useMemo(() => {
     return requests.filter((request) => {
@@ -3130,26 +3200,94 @@ export default function ReportsView() {
                 </label>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-4">
-                {([['signature', 'Подпись', documentSettings.signatureFile], ['stamp', 'Печать', documentSettings.stampFile]] as const).map(([kind, label, file]) => (
-                  <div key={kind} className="flex items-center gap-2">
-                    <label className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                      <Paperclip className="h-3.5 w-3.5" />
-                      {file ? `Заменить: ${label}` : `Загрузить: ${label}`}
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg"
-                        className="hidden"
-                        onChange={(event) => {
-                          const selected = event.target.files?.[0];
-                          if (selected) void uploadSettingsImage(kind, selected);
-                          event.target.value = '';
-                        }}
-                      />
-                    </label>
-                    {file && <span className="text-[11px] text-slate-500">{file}</span>}
+              {/* ─── Подпись и печать ───────────────────────────────── */}
+              <div className="mt-5 rounded-2xl border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-900">Подпись и печать</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  PNG с прозрачным фоном. Изображения подставляются в счёт и акт; замена не меняет уже
+                  выставленные документы.
+                </div>
+
+                {imageError && (
+                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                    {imageError}
                   </div>
-                ))}
+                )}
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  {([
+                    ['signature', 'Подпись руководителя', 'signatureFile', signaturePreview],
+                    ['stamp', 'Печать', 'stampFile', stampPreview],
+                  ] as const).map(([kind, label, fileKey, preview]) => {
+                    const stored = documentSettings[fileKey] as string | null;
+                    const busy = imageBusy === kind;
+                    return (
+                      <div key={kind} className="rounded-xl border border-slate-200 p-3">
+                        <div className="text-xs font-semibold text-slate-700">{label}</div>
+
+                        <div
+                          data-testid={`settings-${kind}-preview`}
+                          className="mt-2 flex h-24 items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-200 bg-slate-50"
+                        >
+                          {busy ? (
+                            <span className="text-[11px] text-slate-500">Загрузка…</span>
+                          ) : preview ? (
+                            <img src={preview} alt={label} className="max-h-24 max-w-full object-contain" />
+                          ) : (
+                            <span className="text-[11px] text-slate-400">
+                              {stored ? 'Не удалось показать файл' : 'Не загружена'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <label className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                            <Paperclip className="h-3.5 w-3.5" />
+                            {stored ? 'Заменить' : 'Загрузить'}
+                            <input
+                              type="file"
+                              accept="image/png"
+                              data-testid={`settings-${kind}-upload`}
+                              className="hidden"
+                              disabled={busy}
+                              onChange={(event) => {
+                                const selected = event.target.files?.[0];
+                                if (selected) void uploadSettingsImage(kind, selected);
+                                // Reset so choosing the same file again still fires.
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            data-testid={`settings-${kind}-delete`}
+                            disabled={busy || !stored}
+                            onClick={() => void removeSettingsImage(kind)}
+                            className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    data-testid="settings-stamp-enabled"
+                    checked={Boolean(documentSettings.addStampToDocuments)}
+                    onChange={(event) => {
+                      const next = { ...documentSettings, addStampToDocuments: event.target.checked };
+                      setDocumentSettings(next);
+                      void persistSettings(next);
+                    }}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  Добавлять печать в документы
+                </label>
               </div>
 
               <div className="mt-5 flex justify-end gap-2">

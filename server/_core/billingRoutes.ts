@@ -28,7 +28,13 @@ import {
 } from "./billingDocumentService";
 import { loadDocumentSettings, saveDocumentSettings, DocumentSettingsError } from "./documentSettings";
 
-const DOCUMENT_SETTINGS_DIR = process.env.BILLING_SETTINGS_DIR || path.join(process.cwd(), "uploads", "billing-settings");
+/**
+ * Settings image storage. Resolved per call, not at import time, so the directory can
+ * be configured by the environment (the deployed service runs with its own root).
+ */
+function documentSettingsDir(): string {
+  return process.env.BILLING_SETTINGS_DIR || path.join(process.cwd(), "uploads", "billing-settings");
+}
 
 /** Accepted payment confirmation types. The extension is never trusted alone. */
 const ALLOWED_PAYMENT_PROOF = [
@@ -87,6 +93,36 @@ function safePreviewKind(value: unknown): PreviewKind | null {
  * here independently would break as soon as the directory is configured
  * differently from the process directory.
  */
+/**
+ * Absolute path of a stored settings image (signature / stamp).
+ *
+ * The stored value is always a path produced by the upload route, but it is still
+ * validated here: it must stay inside the settings directory, so a hand-edited
+ * database value can never make the preview or the delete endpoint touch an
+ * unrelated file.
+ */
+function resolveSettingsImagePath(storedPath: string | null | undefined): string | null {
+  const relative = String(storedPath ?? "").trim();
+  if (!relative) return null;
+
+  const normalized = path.normalize(relative);
+  if (normalized.startsWith("..") || path.isAbsolute(normalized)) return null;
+
+  const absolute = path.resolve(process.cwd(), normalized);
+  const root = path.resolve(documentSettingsDir());
+  // The only allowed location is the settings directory itself (which is configurable
+  // and therefore not necessarily under <cwd>/uploads). Traversal and absolute paths
+  // were rejected above, so this bounds the value to generated image files only.
+  if (!absolute.startsWith(root + path.sep)) return null;
+
+  return absolute;
+}
+
+function settingsImageKind(value: unknown): "signature" | "stamp" | null {
+  const kind = String(value ?? "");
+  return kind === "signature" || kind === "stamp" ? kind : null;
+}
+
 function resolveStoredPath(relativePath: string): string | null {
   return resolveStoredFilePath(relativePath);
 }
@@ -138,17 +174,19 @@ export function registerBillingRoutes(app: Express) {
           return;
         }
 
+        // PNG only: a signature/stamp needs transparency, and the type is taken from
+        // the leading bytes, never from the file extension or the user supplied name.
         const detected = detectFileKind(body);
-        if (!detected || (detected.mime !== "image/png" && detected.mime !== "image/jpeg")) {
-          res.status(400).json({ error: { message: "Подойдёт только PNG или JPEG" } });
+        if (!detected || detected.mime !== "image/png") {
+          res.status(400).json({ error: { message: "Подойдёт только PNG с прозрачным фоном" } });
           return;
         }
 
-        await fs.mkdir(DOCUMENT_SETTINGS_DIR, { recursive: true });
+        await fs.mkdir(documentSettingsDir(), { recursive: true });
         const storedName = `${kind}-${Date.now()}-${crypto.randomUUID()}${detected.ext}`;
-        await fs.writeFile(path.join(DOCUMENT_SETTINGS_DIR, storedName), body);
+        await fs.writeFile(path.join(documentSettingsDir(), storedName), body);
 
-        const relative = path.relative(process.cwd(), path.join(DOCUMENT_SETTINGS_DIR, storedName));
+        const relative = path.relative(process.cwd(), path.join(documentSettingsDir(), storedName));
         const settings = await saveDocumentSettings(
           {},
           kind === "signature" ? { signatureFile: relative } : { stampFile: relative },
@@ -160,6 +198,69 @@ export function registerBillingRoutes(app: Express) {
       }
     },
   );
+
+  /** Read the current signature/stamp so the settings UI can preview it. */
+  app.get(`${root}/settings/image/:kind`, async (req, res) => {
+    try {
+      const kind = settingsImageKind(req.params.kind);
+      if (!kind) return void res.status(400).json({ error: { message: "Неизвестный тип изображения" } });
+
+      const settings = await loadDocumentSettings();
+      const stored = kind === "signature" ? settings.signatureFile : settings.stampFile;
+      const absolute = resolveSettingsImagePath(stored);
+      if (!absolute) return void res.status(404).json({ error: { message: "Изображение не загружено" } });
+
+      const extension = path.extname(absolute).toLowerCase();
+      const contentType = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : "image/png";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(`${kind}${extension}`)}`);
+      res.setHeader("Cache-Control", "no-store");
+      // Serve the resolved file. `res.sendFile` needs an absolute path and reports
+      // its failures through the callback, so the promise is awaited to avoid a
+      // premature 404 (or a silent one) when the file disappeared meanwhile.
+      await new Promise<void>((resolve) => {
+        res.sendFile(absolute, (error) => {
+          if (error && !res.headersSent) {
+            res.status(404).json({ error: { message: "Изображение не найдено" } });
+          }
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.error("Failed to serve document image", error);
+      res.status(500).json({ error: { message: "Не удалось отдать изображение" } });
+    }
+  });
+
+  /**
+   * Remove the signature/stamp. Idempotent by design: removing an absent image
+   * returns 200 with the current settings, so the UI can call it safely twice.
+   */
+  app.delete(`${root}/settings/image/:kind`, async (req, res) => {
+    try {
+      const kind = settingsImageKind(req.params.kind);
+      if (!kind) return void res.status(400).json({ error: { message: "Неизвестный тип изображения" } });
+
+      const settings = await loadDocumentSettings();
+      const stored = kind === "signature" ? settings.signatureFile : settings.stampFile;
+      const absolute = resolveSettingsImagePath(stored);
+
+      if (absolute) {
+        await fs.unlink(absolute).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      }
+
+      const updated = await saveDocumentSettings(
+        {},
+        kind === "signature" ? { signatureFile: null } : { stampFile: null },
+      );
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to delete document image", error);
+      res.status(500).json({ error: { message: "Не удалось удалить изображение" } });
+    }
+  });
 
   // ─── Preview files (nothing is persisted) ────────────────────────────────
   app.get(`${root}/documents/preview`, async (req, res) => {

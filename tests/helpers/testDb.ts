@@ -27,6 +27,7 @@ const FIXTURE = path.join(REPO_ROOT, "tests", "fixtures", "billing-schema.sql");
 const MIGRATIONS = [
   "0015_client_billing_documents.sql",
   "0016_billing_reissue_and_client_ogrn.sql",
+  "0017_document_signature_stamp_snapshot.sql",
 ].map((name) => path.join(REPO_ROOT, "drizzle", "migrations", name));
 
 /**
