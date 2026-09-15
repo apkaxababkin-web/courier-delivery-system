@@ -98,6 +98,18 @@ export async function provisionTestDatabase(): Promise<void> {
     throw new Error("Refusing to run: the test database and the source database are the same");
   }
 
+  // Hard safety net: these tests create and DROP databases, so they must never
+  // run against a remote server. Production is only ever touched by the deployed
+  // application, not by this harness.
+  const host = new URL(url).hostname;
+  const localHosts = ["localhost", "127.0.0.1", "::1", "host.docker.internal"];
+  if (!localHosts.includes(host) && process.env.TEST_ALLOW_REMOTE_DATABASE !== "1") {
+    throw new Error(
+      `Refusing to run: ${host} is not a local PostgreSQL host. ` +
+        "Billing tests create and drop databases and are meant for local development only.",
+    );
+  }
+
   admin = postgres(adminUrl(), { max: 1, onnotice: () => {} });
   await admin.unsafe(`DROP DATABASE IF EXISTS "${TEST_DB_NAME}" WITH (FORCE)`);
   await admin.unsafe(`CREATE DATABASE "${TEST_DB_NAME}"`);
