@@ -459,6 +459,10 @@ export const clients = pgTable("clients", {
   kpp: varchar("kpp", { length: 20 }),
   /** Legal address used in billing documents */
   legalAddress: text("legalAddress"),
+  /** OGRN for organisations / OGRNIP for individual entrepreneurs */
+  ogrn: varchar("ogrn", { length: 20 }),
+  /** Postal address printed on documents (falls back to the legal one) */
+  postalAddress: text("postalAddress"),
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -888,6 +892,8 @@ export const billingDocuments = pgTable("billingDocuments", {
   vatRateSnapshot: decimal("vatRateSnapshot", { precision: 5, scale: 2 }),
   vatAmountSnapshot: decimal("vatAmountSnapshot", { precision: 12, scale: 2 }),
   clientOgrnSnapshot: varchar("clientOgrnSnapshot", { length: 20 }),
+  /** Customer postal address at issue time */
+  clientPostalAddressSnapshot: text("clientPostalAddressSnapshot"),
   directorNameSnapshot: varchar("directorNameSnapshot", { length: 255 }),
   directorPositionSnapshot: varchar("directorPositionSnapshot", { length: 255 }),
   accountantNameSnapshot: varchar("accountantNameSnapshot", { length: 255 }),
@@ -898,6 +904,8 @@ export const billingDocuments = pgTable("billingDocuments", {
   // Annulment instead of deletion
   voidedAt: timestamp("voidedAt"),
   voidedByManagerId: integer("voidedByManagerId"),
+  /** The document that replaced this one after it was annulled */
+  replacesDocumentId: integer("replacesDocumentId"),
   voidReason: text("voidReason"),
 
   /** Free-form note recorded with the payment */
@@ -943,10 +951,36 @@ export const billingDocumentRequests = pgTable("billingDocumentRequests", {
 
   releasedAt: timestamp("releasedAt"),
   releasedByManagerId: integer("releasedByManagerId"),
+  /** True while this link still holds the request on an active document. */
+  active: boolean("active").default(true).notNull(),
+  /** Why the manager released the request (re-issue after annulment). */
+  releaseNote: text("releaseNote"),
 });
 
 export type BillingDocumentRequest = typeof billingDocumentRequests.$inferSelect;
 export type InsertBillingDocumentRequest = typeof billingDocumentRequests.$inferInsert;
+
+
+// ─── Billing Document Events Table ───────────────────────────────────────────
+
+/**
+ * Audit trail of the document lifecycle: issued, annulled, requests released,
+ * replaced by another document, payment set/cleared.
+ */
+export const billingDocumentEvents = pgTable("billingDocumentEvents", {
+  id: serial("id").primaryKey(),
+  billingDocumentId: integer("billingDocumentId").notNull(),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  managerId: integer("managerId"),
+  managerName: varchar("managerName", { length: 255 }),
+  note: text("note"),
+  /** Structured extras: released request ids, replacement document id, … */
+  details: text("details"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type BillingDocumentEvent = typeof billingDocumentEvents.$inferSelect;
+export type InsertBillingDocumentEvent = typeof billingDocumentEvents.$inferInsert;
 
 
 export const managers = pgTable("managers", {

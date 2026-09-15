@@ -153,7 +153,7 @@ export async function loadClientPeriodRequests(clientId: number, from: string, t
   return rows as DeliveryRequest[];
 }
 
-/** Active (not released) billing membership for the given requests. */
+/** Active billing membership for the given requests (released links do not count). */
 export async function activeBillingMembership(requestIds: number[]): Promise<Map<number, number>> {
   if (requestIds.length === 0) return new Map();
   const conn = await db.getDb();
@@ -161,7 +161,7 @@ export async function activeBillingMembership(requestIds: number[]): Promise<Map
   const rows = asRows(await conn.execute(sql`
     SELECT bdr."requestId", bdr."billingDocumentId"
       FROM "billingDocumentRequests" bdr
-     WHERE bdr."releasedAt" IS NULL
+     WHERE bdr."active"
        AND bdr."requestId" IN (${sql.join(requestIds.map((id) => sql`${id}`), sql`, `)})`));
   return new Map(rows.map((row) => [Number(row.requestId), Number(row.billingDocumentId)]));
 }
@@ -184,7 +184,7 @@ export async function loadClientRequisites(clientId: number): Promise<ClientRequ
   const conn = await db.getDb();
   if (!conn) throw new Error("Database not available");
   const row = asRows(await conn.execute(sql`
-    SELECT "id","name","legalName","inn","kpp","legalAddress","address"
+    SELECT "id","name","legalName","inn","kpp","legalAddress","address","ogrn","postalAddress","phone","email"
       FROM "clients" WHERE "id" = ${clientId} LIMIT 1`))[0];
   if (!row) return null;
 
@@ -194,12 +194,12 @@ export async function loadClientRequisites(clientId: number): Promise<ClientRequ
     legalName: row.legalName == null ? null : String(row.legalName),
     inn: row.inn == null ? null : String(row.inn),
     kpp: row.kpp == null ? null : String(row.kpp),
-    ogrn: null,
+    ogrn: row.ogrn == null ? null : String(row.ogrn),
     legalAddress: row.legalAddress == null ? null : String(row.legalAddress),
-    postalAddress: null,
+    postalAddress: row.postalAddress == null ? null : String(row.postalAddress),
     address: row.address == null ? null : String(row.address),
-    phone: null,
-    email: null,
+    phone: row.phone == null ? null : String(row.phone),
+    email: row.email == null ? null : String(row.email),
   };
 }
 
@@ -213,9 +213,18 @@ export function missingClientRequisites(client: ClientRequisites | null): Requis
   return gaps;
 }
 
-/** The address printed as the customer address, preferring the legal one. */
+/**
+ * The address printed as the customer address: postal address first (that is the
+ * one a courier invoice traditionally carries), then legal, then the working one.
+ * None of them is required to issue a document.
+ */
 export function clientDocumentAddress(client: ClientRequisites): string {
-  return client.legalAddress || client.address || "";
+  return client.postalAddress || client.legalAddress || client.address || "";
+}
+
+/** The address printed as the postal address, falling back to the printed one. */
+export function clientPostalAddress(client: ClientRequisites): string {
+  return client.postalAddress || client.legalAddress || client.address || "";
 }
 
 /** The name printed on documents, preferring the full legal name. */

@@ -195,14 +195,16 @@ export async function quoteRequest(request: QuoteInput): Promise<QuoteResult> {
   return computeQuote(request, rates, hasTariffRow);
 }
 
-/** True when the request already belongs to an active (non-released) billing document. */
+/** True when the request is held by an active billing document. */
 export async function isRequestBilled(requestId: number): Promise<boolean> {
   const conn = await db.getDb();
   if (!conn) throw new Error("Database not available");
 
+  // `active` is the single source of truth: releasing an annulled document clears
+  // it, which is what makes the request billable again.
   const rows = await conn.execute(sql`
     SELECT 1 FROM "billingDocumentRequests"
-     WHERE "requestId" = ${requestId} AND "releasedAt" IS NULL
+     WHERE "requestId" = ${requestId} AND "active"
      LIMIT 1`);
   const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] })?.rows ?? [];
   return (list as unknown[]).length > 0;
@@ -219,7 +221,7 @@ export async function billedRequestIdSet(requestIds: number[]): Promise<Set<numb
     .from(sql`"billingDocumentRequests"`)
     .where(and(
       inArray(sql`"requestId"`, requestIds),
-      isNull(sql`"releasedAt"`),
+      sql`"active"`,
     ));
   const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] })?.rows ?? [];
   return new Set((list as { requestId: number }[]).map((row) => Number(row.requestId)));
@@ -407,7 +409,7 @@ export async function previewQuoteBackfill(clientId?: number): Promise<BackfillP
   const skippedRows = rowsOf(skippedResult)[0] as Record<string, unknown> | undefined;
 
   const skippedBilled = await conn.execute(sql`
-    SELECT count(*)::int AS n FROM "billingDocumentRequests" WHERE "releasedAt" IS NULL`);
+    SELECT count(*)::int AS n FROM "billingDocumentRequests" WHERE "active"`);
   const billedCount = Number(rowsOf(skippedBilled)[0]?.n ?? 0);
 
   const clientNames = new Map<number, string | null>();

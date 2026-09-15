@@ -23,6 +23,10 @@ export interface Client {
   inn?: string;
   kpp?: string;
   legalAddress?: string;
+  /** OGRN for organisations / OGRNIP for individual entrepreneurs */
+  ogrn?: string;
+  /** Postal address printed on documents */
+  postalAddress?: string;
   contactPerson?: string;
   phone?: string;
   email?: string;
@@ -1010,6 +1014,12 @@ export interface BillingDocumentRow {
   paymentProofs?: BillingPaymentProof[];
   voidedAt?: string | null;
   voidReason?: string | null;
+  /** Annulled document this set replaced, if any. */
+  replacesDocumentId?: number | null;
+  /** True when an annulled document no longer holds its requests. */
+  requestsReleased?: boolean;
+  /** How many links still hold their requests. */
+  activeRequestsCount?: number;
   createdAt: string;
 }
 
@@ -1043,6 +1053,27 @@ export interface DocumentPreview {
   amountInWords: string;
   vatRateText: string;
   lines: { name: string; quantity: number; price: number; amount: number }[];
+  /** Requests that an active document still holds; must be released to re-issue. */
+  blockedRequestIds?: number[];
+  blockingDocuments?: { documentId: number; number: string; status: string; documentDate: string | null }[];
+}
+
+/** One lifecycle event of a document set (append-only audit trail). */
+export interface BillingDocumentHistoryEntry {
+  id: number;
+  kind: 'issued' | 'reissued' | 'voided' | 'requests_released' | 'replaced_by' | 'payment_set' | 'payment_cleared';
+  managerId: number | null;
+  managerName: string | null;
+  note: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ReleaseDocumentResult {
+  ok: boolean;
+  reason?: string;
+  documentId?: number;
+  releasedRequestIds?: number[];
 }
 
 export interface IssueDocumentResult {
@@ -1172,12 +1203,35 @@ export async function issueDocumentSet(
   dateFrom: string,
   dateTo: string,
   documentDate?: string,
+  replacesDocumentId?: number,
 ): Promise<IssueDocumentResult> {
   return await trpcPost(
     'billing.issueSet',
-    { clientId, dateFrom, dateTo, documentDate },
+    { clientId, dateFrom, dateTo, documentDate, replacesDocumentId },
     { ok: false, reason: 'Сервер не ответил' },
   );
+}
+
+/**
+ * Release the requests of an annulled document so they can be re-issued.
+ * The old document and its composition stay in history.
+ */
+export async function releaseBillingDocument(
+  documentId: number,
+  note?: string,
+): Promise<ReleaseDocumentResult> {
+  return await trpcPost(
+    'billing.releaseDocument',
+    { documentId, note },
+    { ok: false, reason: 'Сервер не ответил' },
+  );
+}
+
+/** Audit trail of one document. */
+export async function getBillingDocumentHistory(
+  documentId: number,
+): Promise<BillingDocumentHistoryEntry[]> {
+  return await trpcGet<BillingDocumentHistoryEntry[]>('billing.documentHistory', { documentId }, []);
 }
 
 /** Issued document sets, newest first. */

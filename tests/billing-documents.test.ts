@@ -159,6 +159,9 @@ describe('document data builder', () => {
     expect(data.seller.inn).toBe('030201064412');
     expect(data.buyer.inn).toBe('7536165529');
     expect(data.buyer.address).toContain('Ковыльная');
+    // OGRN stays optional: an empty seller/client OGRN must not break anything.
+    expect(data.buyer.ogrn).toBeNull();
+    expect(data.buyer.postalAddress).toBe(data.buyer.address);
     expect(data.vat.rateText).toBe('Без НДС');
   });
 
@@ -254,19 +257,20 @@ describe('xlsx registry', () => {
     const sheet = workbook.getWorksheet('Реестр');
     expect(sheet).toBeTruthy();
 
-    // Title, client, period and document line.
+    // Title, client, requisites, period and document line.
     expect(sheet!.getCell('A1').value).toBe('Реестр выполненных заявок');
     expect(String(sheet!.getCell('A2').value)).toContain('Клиент:');
-    expect(String(sheet!.getCell('A3').value)).toContain('Период: 16.08.2026');
+    expect(String(sheet!.getCell('A3').value)).toContain('Реквизиты: ИНН 7536165529');
+    expect(String(sheet!.getCell('A4').value)).toContain('Период: 16.08.2026');
 
-    // Header row starts on line 5 and matches the sample sheet.
+    // Header row starts on line 6 and matches the sample sheet.
     const headers = ['№ п/п', 'Дата', 'Тип заявки', 'Откуда', 'Куда', 'Количество мест', 'Сумма, руб.', 'Комментарий'];
     headers.forEach((text, index) => {
-      expect(sheet!.getRow(5).getCell(index + 1).value).toBe(text);
+      expect(sheet!.getRow(6).getCell(index + 1).value).toBe(text);
     });
 
     // First data row.
-    const first = sheet!.getRow(6);
+    const first = sheet!.getRow(7);
     expect(first.getCell(1).value).toBe(1);
     expect(first.getCell(2).value).toBe('17.08.2026');
     expect(first.getCell(3).value).toBe('Доставка');
@@ -275,14 +279,14 @@ describe('xlsx registry', () => {
     expect(first.getCell(7).value).toBe(700);
 
     // Totals row: numeric sum, not text.
-    const totals = sheet!.getRow(6 + data.registry.length);
+    const totals = sheet!.getRow(7 + data.registry.length);
     expect(totals.getCell(1).value).toBe('ИТОГО');
     expect(totals.getCell(6).value).toBe(4);
     expect(totals.getCell(7).value).toBe(1000);
     expect(typeof totals.getCell(7).value).toBe('number');
 
     // Frozen header and sensible widths.
-    expect(sheet!.views[0]).toMatchObject({ state: 'frozen', ySplit: 5 });
+    expect(sheet!.views[0]).toMatchObject({ state: 'frozen', ySplit: 6 });
     expect(sheet!.getColumn(7).width).toBeGreaterThan(10);
   });
 
@@ -293,7 +297,7 @@ describe('xlsx registry', () => {
     await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
     const sheet = workbook.getWorksheet('Реестр')!;
     // One header, one data row, then totals: no phantom rows.
-    expect(sheet.getRow(6).getCell(1).value).toBe(1);
-    expect(sheet.getRow(7).getCell(1).value).toBe('ИТОГО');
+    expect(sheet.getRow(7).getCell(1).value).toBe(1);
+    expect(sheet.getRow(8).getCell(1).value).toBe('ИТОГО');
   });
 });

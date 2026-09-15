@@ -13,8 +13,8 @@
  * What it does:
  *   1. creates `courier_billing_test_<suffix>` on the server of SOURCE_DATABASE_URL,
  *   2. applies tests/fixtures/billing-schema.sql (production-shaped DDL, no data),
- *   3. applies drizzle/migrations/0015_client_billing_documents.sql, so the
- *      migration itself is exercised,
+ *   3. applies the billing migrations (0015, 0016, …) in order, so the migrations
+ *      themselves are exercised,
  *   4. points DATABASE_URL at the new database for the whole test process,
  *   5. drops the database in global teardown, together with the generated files.
  */
@@ -24,12 +24,10 @@ import postgres from "postgres";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const FIXTURE = path.join(REPO_ROOT, "tests", "fixtures", "billing-schema.sql");
-const MIGRATION_0015 = path.join(
-  REPO_ROOT,
-  "drizzle",
-  "migrations",
+const MIGRATIONS = [
   "0015_client_billing_documents.sql",
-);
+  "0016_billing_reissue_and_client_ogrn.sql",
+].map((name) => path.join(REPO_ROOT, "drizzle", "migrations", name));
 
 /**
  * One fixed name, not a pid-suffixed one: vitest runs global setup and teardown
@@ -117,7 +115,10 @@ export async function provisionTestDatabase(): Promise<void> {
   const sql = postgres(testDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
     await runSqlFile(sql, FIXTURE);
-    await runSqlFile(sql, MIGRATION_0015);
+    // Every billing migration is applied in order, so the tests exercise them too.
+    for (const migration of MIGRATIONS) {
+      await runSqlFile(sql, migration);
+    }
   } finally {
     await sql.end();
   }

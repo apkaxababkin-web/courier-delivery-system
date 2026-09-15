@@ -19,6 +19,8 @@ type ClientForm = {
   inn: string;
   kpp: string;
   legalAddress: string;
+  ogrn: string;
+  postalAddress: string;
   contactPerson: string;
   phone: string;
   email: string;
@@ -34,6 +36,8 @@ const emptyClient: ClientForm = {
   inn: '',
   kpp: '',
   legalAddress: '',
+  ogrn: '',
+  postalAddress: '',
   contactPerson: '',
   phone: '',
   email: '',
@@ -137,6 +141,8 @@ export default function ClientsViewV2() {
         inn: client.inn || '',
         kpp: client.kpp || '',
         legalAddress: client.legalAddress || '',
+        ogrn: client.ogrn || '',
+        postalAddress: client.postalAddress || '',
         contactPerson: client.contactPerson || '',
         phone: client.phone || '',
         email: client.email || '',
@@ -588,6 +594,8 @@ export default function ClientsViewV2() {
             <Info label="ИНН" value={selected.inn || '—'} />
             <Info label="КПП" value={selected.kpp || '—'} />
             <Info label="Юридический адрес" value={selected.legalAddress || '—'} />
+            <Info label="ОГРН / ОГРНИП" value={selected.ogrn || '—'} />
+            <Info label="Почтовый адрес" value={selected.postalAddress || '—'} />
             <Info label="Телефон" value={selected.phone || '—'} />
             <Info label="Email" value={selected.email || '—'} />
             <Info label="Роль" value="Ответственный за клиента" />
@@ -1166,6 +1174,13 @@ function ClientModal({ form, setForm, editing, onSubmit, onClose }: { form: Clie
                 value={form.kpp}
                 onChange={(event) => setForm({ ...form, kpp: event.target.value })}
               />
+
+              <input
+                className={inputClass}
+                placeholder="ОГРН / ОГРНИП (для документов)"
+                value={form.ogrn}
+                onChange={(event) => setForm({ ...form, ogrn: event.target.value })}
+              />
             </div>
 
             <textarea
@@ -1173,6 +1188,13 @@ function ClientModal({ form, setForm, editing, onSubmit, onClose }: { form: Clie
               placeholder="Юридический адрес"
               value={form.legalAddress}
               onChange={(event) => setForm({ ...form, legalAddress: event.target.value })}
+            />
+
+            <textarea
+              className={`${inputClass} min-h-20 py-3`}
+              placeholder="Почтовый адрес (если отличается от юридического)"
+              value={form.postalAddress}
+              onChange={(event) => setForm({ ...form, postalAddress: event.target.value })}
             />
           </div>
         </div>

@@ -31,6 +31,10 @@ export interface SeedOptions {
   legalName?: string | null;
   inn?: string | null;
   legalAddress?: string | null;
+  /** OGRN / OGRNIP; optional for documents. */
+  ogrn?: string | null;
+  /** Postal address; optional for documents. */
+  postalAddress?: string | null;
   /** Tariff card. `null` means "client has no tariff card at all". */
   tariff?: Partial<Record<
     | "deliveryFirstPlace" | "deliveryNextPlace"
@@ -107,8 +111,8 @@ async function resetTables(sql: postgres.Sql): Promise<void> {
   // Generated PDFs/XLSX from the previous test must not leak into this one.
   fs.rmSync(TEST_UPLOADS_DIR, { recursive: true, force: true });
   await sql.unsafe(`
-    TRUNCATE "billingDocumentFiles", "billingDocumentRequests", "billingDocuments",
-             "requestActivity", "requests", "clientTariffs", "clientPoints",
+    TRUNCATE "billingDocumentFiles", "billingDocumentEvents", "billingDocumentRequests",
+             "billingDocuments", "requestActivity", "requests", "clientTariffs", "clientPoints",
              "clientRegularClients", "clients", "billingSettings", "managers"
       RESTART IDENTITY CASCADE`);
 }
@@ -134,13 +138,15 @@ export async function seed(options: SeedOptions = {}): Promise<SeedResult> {
   }
 
   const client = await db`
-    INSERT INTO "clients" ("name","address","legalName","inn","legalAddress")
+    INSERT INTO "clients" ("name","address","legalName","inn","legalAddress","ogrn","postalAddress")
     VALUES (
       ${options.clientName ?? 'Клиент «Тест»'},
       ${options.legalAddress ?? "г. Москва, ул. Клиентская, д. 7"},
       ${options.legalName === undefined ? 'ООО «Клиент Тест»' : options.legalName},
       ${options.inn === undefined ? "7709876543" : options.inn},
-      ${options.legalAddress === undefined ? "г. Москва, ул. Клиентская, д. 7" : options.legalAddress}
+      ${options.legalAddress === undefined ? "г. Москва, ул. Клиентская, д. 7" : options.legalAddress},
+      ${options.ogrn === undefined ? null : options.ogrn},
+      ${options.postalAddress === undefined ? null : options.postalAddress}
     ) RETURNING id`;
   const clientId = Number(client[0].id);
 

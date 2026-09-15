@@ -26,7 +26,9 @@ import {
 } from "../server/_core/billingReview";
 import {
   billingDocumentsDirectory,
+  documentHistory,
   getDocument,
+  releaseDocumentRequests,
   issueDocumentSet,
   listDocuments,
   previewDocumentSet,
@@ -603,6 +605,231 @@ describe("выставление комплекта документов", () =>
   });
 });
 
+describe("перевыставление после аннулирования", () => {
+  beforeEach(async () => {
+    current = await seed({
+      requests: [
+        { key: "a", requestType: "delivery", status: "completed", placesCount: 3, deliveryFee: 1100, checked: true, date: "2026-08-17" },
+        { key: "b", requestType: "movement", status: "completed", placesCount: 1, deliveryFee: 700, checked: true, date: "2026-08-18" },
+      ],
+    });
+  });
+
+  it("аннулированный документ сохраняется, заявки освобождаются и попадают в новый", async () => {
+    const original = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, "2026-09-01");
+    const originalAmount = original.totalAmount;
+
+    await voidDocument(original.id, current!.managerId, "Неверная сумма");
+
+    // Пока заявки не освобождены, повторно выставить их нельзя.
+    await expect(issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, "2026-09-01"))
+      .rejects.toThrow("удерживается другими документами");
+
+    const released = await releaseDocumentRequests(original.id, current!.managerId, "Перевыставляем корректной суммой");
+    expect(released.releasedRequestIds.sort((x, y) => x - y))
+      .toEqual([current!.byKey.a.id, current!.byKey.b.id].sort((x, y) => x - y));
+
+    // Старый документ остался в истории целиком: номер, сумма, состав.
+    const stored = await getDocument(original.id);
+    expect(stored?.status).toBe("cancelled");
+    expect(stored?.number).toBe("1");
+    expect(stored?.totalAmount).toBe(originalAmount);
+    expect(stored?.requestsCount).toBe(2);
+    expect(stored?.activeRequestsCount).toBe(0);
+    expect(stored?.requestsReleased).toBe(true);
+    const composition = await current!.db`
+      SELECT "requestId", "amount", "active", "releasedAt", "releasedByManagerId", "releaseNote"
+        FROM "billingDocumentRequests" WHERE "billingDocumentId" = ${original.id} ORDER BY "requestId"`;
+    expect(composition).toHaveLength(2);
+    expect(composition.every((row) => row.active === false)).toBe(true);
+    expect(composition.every((row) => row.releasedAt !== null)).toBe(true);
+    expect(composition[0].releaseNote).toBe("Перевыставляем корректной суммой");
+
+    // Новый документ вместо аннулированного.
+    const replacement = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, {
+      documentDateIso: "2026-09-02",
+      replacesDocumentId: original.id,
+    });
+    expect(replacement.number).toBe("2");
+    expect(replacement.replacesDocumentId).toBe(original.id);
+    expect(replacement.totalAmount).toBe(originalAmount);
+
+    // Новая активная привязка существует, старая — нет.
+    const links = await current!.db`
+      SELECT "billingDocumentId", "requestId", "active"
+        FROM "billingDocumentRequests" ORDER BY "billingDocumentId", "requestId"`;
+    const active = links.filter((row) => row.active === true);
+    expect(active).toHaveLength(2);
+    expect(active.every((row) => Number(row.billingDocumentId) === replacement.id)).toBe(true);
+    expect(links.filter((row) => row.active === false)).toHaveLength(2);
+
+    // Двойное активное включение невозможно.
+    const other = await current!.db`
+      INSERT INTO "billingDocuments" ("number","clientId","documentDate","periodFrom","periodTo","requestsCount",
+        "totalAmount","status","serviceDescription","clientNameSnapshot","clientInnSnapshot","clientKppSnapshot",
+        "clientAddressSnapshot","executorNameSnapshot","executorInnSnapshot","executorKppSnapshot",
+        "executorAddressSnapshot","bankNameSnapshot","bankBikSnapshot","bankAccountSnapshot",
+        "bankCorrespondentAccountSnapshot","vatModeSnapshot","vatTextSnapshot","createdByManagerId")
+      VALUES ('99', ${current!.clientId}, '2026-09-03', ${PERIOD_FROM}, ${PERIOD_TO}, 1, 1, 'issued', 'Тест', 'Клиент',
+        '7709876543', '', 'адрес', 'ООО «МИГ»', '7701234567', '', 'адрес', 'Банк', '044525225',
+        '40702810900000012345', '30101810400000000225', 'without_vat', 'Без НДС', ${current!.managerId}) RETURNING id`;
+    await expect(current!.db`
+      INSERT INTO "billingDocumentRequests" ("billingDocumentId","requestId","amount","active")
+      VALUES (${Number(other[0].id)}, ${current!.byKey.a.id}, 1100, true)`)
+      .rejects.toThrow();
+
+    // Сверка видит заявки как выставленные, а не как свободные.
+    const overview = await buildClientBillingOverview(current!.clientId, PERIOD_FROM, PERIOD_TO);
+    expect(overview.counts.billed).toBe(2);
+    expect(overview.readiness.ready).toBe(false);
+  });
+
+  it("освобождённая заявка снова считается невыставленной", async () => {
+    const { isRequestBilled, billedRequestIdSet } = await import("../server/_core/requestQuote");
+    const issued = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, "2026-09-01");
+    const requestId = current!.byKey.a.id;
+
+    expect(await isRequestBilled(requestId)).toBe(true);
+    expect([...(await billedRequestIdSet([requestId, current!.byKey.b.id]))].sort()).toEqual(
+      [requestId, current!.byKey.b.id].sort(),
+    );
+
+    await voidDocument(issued.id, current!.managerId, "ошибка");
+    // Аннулирование само по себе ещё держит заявки.
+    expect(await isRequestBilled(requestId)).toBe(true);
+
+    await releaseDocumentRequests(issued.id, current!.managerId, "перевыставляем");
+    expect(await isRequestBilled(requestId)).toBe(false);
+    expect((await billedRequestIdSet([requestId, current!.byKey.b.id])).size).toBe(0);
+
+    // После освобождения заявку можно рассчитать заново обычным путём.
+    await current!.db`UPDATE "requests" SET "billingCheckedAt" = NULL WHERE id = ${requestId}`;
+    const request = (await current!.db`SELECT * FROM "requests" WHERE id = ${requestId}`)[0];
+    const outcome = await applyQuoteForRequest(request as never);
+    expect(outcome.status).toBe("calculated");
+    expect(outcome.amount).toBe(1100);
+  });
+
+  it("пишет audit trail: кто аннулировал, когда, причина и какой документ заменил", async () => {
+    const original = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, "2026-09-01");
+    await voidDocument(original.id, current!.managerId, "Ошибка в реквизитах");
+    await releaseDocumentRequests(original.id, current!.managerId, "Готовим замену");
+    const replacement = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, {
+      documentDateIso: "2026-09-02",
+      replacesDocumentId: original.id,
+    });
+
+    const history = await documentHistory(original.id);
+    expect(history.map((entry) => entry.kind)).toEqual([
+      "issued", "voided", "requests_released", "replaced_by",
+    ]);
+    const voided = history.find((entry) => entry.kind === "voided")!;
+    expect(voided.managerId).toBe(current!.managerId);
+    expect(voided.managerName).toBe("Тестовый менеджер");
+    expect(voided.note).toBe("Ошибка в реквизитах");
+    expect(new Date(voided.createdAt).getTime()).toBeGreaterThan(0);
+
+    const released = history.find((entry) => entry.kind === "requests_released")!;
+    expect(released.note).toBe("Готовим замену");
+    expect((released.details as { releasedCount: number }).releasedCount).toBe(2);
+
+    const replaced = history.find((entry) => entry.kind === "replaced_by")!;
+    expect((replaced.details as { replacedByDocumentId: number }).replacedByDocumentId).toBe(replacement.id);
+    expect((replaced.details as { replacedByNumber: string }).replacedByNumber).toBe("2");
+
+    const replacementHistory = await documentHistory(replacement.id);
+    expect(replacementHistory.map((entry) => entry.kind)).toEqual(["reissued"]);
+    expect((replacementHistory[0].details as { replacesDocumentId: number }).replacesDocumentId).toBe(original.id);
+  });
+
+  it("нельзя освободить заявки действующего или оплаченного документа", async () => {
+    const issued = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, "2026-09-01");
+    await expect(releaseDocumentRequests(issued.id, current!.managerId, null))
+      .rejects.toThrow("только у аннулированного");
+
+    await setDocumentPaid(issued.id, current!.managerId, true, null);
+    await expect(releaseDocumentRequests(issued.id, current!.managerId, null))
+      .rejects.toThrow("оплаченного");
+  });
+
+  it("повторное освобождение ничего не меняет", async () => {
+    const issued = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, "2026-09-01");
+    await voidDocument(issued.id, current!.managerId, "ошибка");
+    const first = await releaseDocumentRequests(issued.id, current!.managerId, "первый раз");
+    const second = await releaseDocumentRequests(issued.id, current!.managerId, "второй раз");
+    expect(first.releasedRequestIds).toHaveLength(2);
+    expect(second.releasedRequestIds).toEqual([]);
+  });
+
+  it("показывает предпросмотру, какие заявки удерживаются старым документом", async () => {
+    const issued = await issueDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, current!.managerId, "2026-09-01");
+    await voidDocument(issued.id, current!.managerId, "ошибка");
+
+    const preview = await previewDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, "2026-09-02");
+    expect(preview.ready).toBe(false);
+    expect(preview.blockedRequestIds.sort((x, y) => x - y))
+      .toEqual([current!.byKey.a.id, current!.byKey.b.id].sort((x, y) => x - y));
+    expect(preview.blockingDocuments).toEqual([
+      { documentId: issued.id, number: "1", status: "cancelled", documentDate: "2026-09-01" },
+    ]);
+    expect(preview.blockers.join(" | ")).toContain("удерживается другими документами: 2");
+
+    await releaseDocumentRequests(issued.id, current!.managerId, "возврат");
+    const after = await previewDocumentSet(current!.clientId, PERIOD_FROM, PERIOD_TO, "2026-09-02");
+    expect(after.ready).toBe(true);
+    expect(after.blockedRequestIds).toEqual([]);
+    expect(after.blockingDocuments).toEqual([]);
+  });
+});
+
+describe("реквизиты клиента: ОГРН и почтовый адрес", () => {
+  it("попадают в snapshot документа и не обязательны для выставления", async () => {
+    current = await seed({
+      ogrn: "1157746123456",
+      postalAddress: "127000, г. Москва, а/я 12",
+      requests: [{ key: "a", status: "completed", placesCount: 3, deliveryFee: 1100, checked: true, date: "2026-08-17" }],
+    });
+
+    const issued = await issueDocumentSet(current.clientId, PERIOD_FROM, PERIOD_TO, current.managerId, "2026-09-01");
+    const raw = await current.db`SELECT * FROM "billingDocuments" WHERE id = ${issued.id}`;
+    expect(raw[0].clientOgrnSnapshot).toBe("1157746123456");
+    expect(raw[0].clientPostalAddressSnapshot).toBe("127000, г. Москва, а/я 12");
+    expect(raw[0].clientAddressSnapshot).toBe("127000, г. Москва, а/я 12");
+
+    // Смена реквизитов после выставления не переписывает документ.
+    await current.db`UPDATE "clients" SET "ogrn" = '9999999999999', "postalAddress" = 'другой' WHERE id = ${current.clientId}`;
+    const after = await current.db`SELECT * FROM "billingDocuments" WHERE id = ${issued.id}`;
+    expect(after[0].clientOgrnSnapshot).toBe("1157746123456");
+    expect(after[0].clientPostalAddressSnapshot).toBe("127000, г. Москва, а/я 12");
+  });
+
+  it("выставляется и без ОГРН с почтовым адресом", async () => {
+    current = await seed({
+      requests: [{ key: "a", status: "completed", placesCount: 1, deliveryFee: 500, checked: true, date: "2026-08-17" }],
+    });
+    const preview = await previewDocumentSet(current.clientId, PERIOD_FROM, PERIOD_TO, "2026-09-01");
+    expect(preview.ready).toBe(true);
+
+    const issued = await issueDocumentSet(current.clientId, PERIOD_FROM, PERIOD_TO, current.managerId, "2026-09-01");
+    const raw = await current.db`SELECT * FROM "billingDocuments" WHERE id = ${issued.id}`;
+    expect(raw[0].clientOgrnSnapshot).toBeNull();
+    expect(raw[0].clientPostalAddressSnapshot).toBe("г. Москва, ул. Клиентская, д. 7");
+  });
+
+  it("карточка клиента отдаёт ОГРН и почтовый адрес и обновляется через API", async () => {
+    current = await seed({ ogrn: "1234567890123", postalAddress: "а/я 1" });
+    const { loadClientRequisites } = await import("../server/_core/billingReview");
+    const requisites = await loadClientRequisites(current.clientId);
+    expect(requisites?.ogrn).toBe("1234567890123");
+    expect(requisites?.postalAddress).toBe("а/я 1");
+
+    await current.db`UPDATE "clients" SET "ogrn" = NULL, "postalAddress" = NULL WHERE id = ${current.clientId}`;
+    const cleared = await loadClientRequisites(current.clientId);
+    expect(cleared?.ogrn).toBeNull();
+    expect(cleared?.postalAddress).toBeNull();
+  });
+});
+
 describe("жизненный цикл документа: оплата и аннулирование", () => {
   let documentId = 0;
 
@@ -866,6 +1093,49 @@ describe("данные комплекта документов", () => {
     expect(data.amountInWords).toBe(amountInWordsRu(1800));
     expect(formatMoney(data.totalAmount)).toBe("1\u00A0800,00");
     expect(data.buyer.name).toBe("ООО «Клиент Тест»");
+  });
+});
+
+describe("миграции", () => {
+  it("0016 добавляет реквизиты клиента, флаг active, таблицу событий и уникальный индекс", async () => {
+    current = await seed();
+
+    const columns = await current.db`
+      SELECT table_name, column_name FROM information_schema.columns
+       WHERE (table_name = 'clients' AND column_name IN ('ogrn','postalAddress'))
+          OR (table_name = 'billingDocuments' AND column_name IN ('replacesDocumentId','clientPostalAddressSnapshot'))
+          OR (table_name = 'billingDocumentRequests' AND column_name IN ('active','releaseNote'))
+       ORDER BY table_name, column_name`;
+    expect(columns.map((row) => `${row.table_name}.${row.column_name}`)).toEqual([
+      "billingDocumentRequests.active",
+      "billingDocumentRequests.releaseNote",
+      "billingDocuments.clientPostalAddressSnapshot",
+      "billingDocuments.replacesDocumentId",
+      "clients.ogrn",
+      "clients.postalAddress",
+    ]);
+
+    const events = await current.db`
+      SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = 'billingDocumentEvents'`;
+    expect(events[0].n).toBe(1);
+
+    const index = await current.db`
+      SELECT indexdef FROM pg_indexes WHERE indexname = 'billingDocumentRequests_active_request_key'`;
+    expect(index).toHaveLength(1);
+    expect(String(index[0].indexdef)).toContain("UNIQUE");
+    expect(String(index[0].indexdef)).toContain("WHERE");
+    expect(String(index[0].indexdef)).toContain("active");
+  });
+
+  it("0016 можно применять повторно (идемпотентность)", async () => {
+    current = await seed();
+    const { readMigration } = await import("./helpers/testDb");
+    await current.db.unsafe(readMigration("0016_billing_reissue_and_client_ogrn.sql"));
+
+    const columns = await current.db`
+      SELECT count(*)::int AS n FROM information_schema.columns
+       WHERE table_name = 'clients' AND column_name IN ('ogrn','postalAddress')`;
+    expect(columns[0].n).toBe(2);
   });
 });
 

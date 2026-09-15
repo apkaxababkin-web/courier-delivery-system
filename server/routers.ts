@@ -1320,6 +1320,8 @@ export const appRouter = router({
         inn: z.string().optional(),
         kpp: z.string().optional(),
         legalAddress: z.string().optional(),
+        ogrn: z.string().optional(),
+        postalAddress: z.string().optional(),
         contactPerson: z.string().optional(),
         phone: z.string().optional(),
         email: z.string().optional(),
@@ -1339,6 +1341,8 @@ export const appRouter = router({
         inn: z.string().optional(),
         kpp: z.string().optional(),
         legalAddress: z.string().optional(),
+        ogrn: z.string().optional(),
+        postalAddress: z.string().optional(),
         contactPerson: z.string().optional(),
         phone: z.string().optional(),
         email: z.string().optional(),
@@ -1511,6 +1515,8 @@ export const appRouter = router({
         dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         documentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        /** Annulled document this set replaces (requests must be released first). */
+        replacesDocumentId: z.number().int().positive().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const { issueDocumentSet, BillingDocumentError } = await import("./_core/billingDocumentService");
@@ -1521,7 +1527,10 @@ export const appRouter = router({
             input.dateFrom,
             input.dateTo,
             ctx.managerId,
-            input.documentDate,
+            {
+              documentDateIso: input.documentDate,
+              replacesDocumentId: input.replacesDocumentId ?? null,
+            },
           );
 
           const manager = await getManagerById(ctx.managerId);
@@ -1531,8 +1540,16 @@ export const appRouter = router({
             actorId: ctx.managerId,
             actorName: manager?.name ?? "Менеджер",
             action: "updated",
-            note: `Выставлен комплект документов №${document.number} на ${document.totalAmount.toFixed(2)} руб.`,
-            changes: { billingDocument: { number: document.number, requests: document.requestsCount } },
+            note: document.replacesDocumentId
+              ? `Перевыставлен комплект документов №${document.number} вместо аннулированного №${document.replacesDocumentId} на ${document.totalAmount.toFixed(2)} руб.`
+              : `Выставлен комплект документов №${document.number} на ${document.totalAmount.toFixed(2)} руб.`,
+            changes: {
+              billingDocument: {
+                number: document.number,
+                requests: document.requestsCount,
+                ...(document.replacesDocumentId ? { replacesDocumentId: document.replacesDocumentId } : {}),
+              },
+            },
           });
 
           broadcastLive("requests_changed");
@@ -1586,6 +1603,44 @@ export const appRouter = router({
         }
         broadcastLive("requests_changed");
         return { success: true };
+      }),
+
+    /**
+     * Free the requests of an annulled document so they can be re-issued.
+     * The old document keeps its number, files, sum and composition for ever.
+     */
+    releaseDocument: managerProcedure
+      .input(z.object({
+        documentId: z.number().int().positive(),
+        note: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { releaseDocumentRequests, BillingDocumentError } = await import("./_core/billingDocumentService");
+        try {
+          const result = await releaseDocumentRequests(input.documentId, ctx.managerId, input.note ?? null);
+          const manager = await db.getManagerById(ctx.managerId);
+          await db.addRequestActivityEvent({
+            requestId: input.documentId,
+            actorType: "manager",
+            actorId: ctx.managerId,
+            actorName: manager?.name ?? "Менеджер",
+            action: "updated",
+            note: `Заявки освобождены для перевыставления: ${result.releasedRequestIds.length}`,
+            changes: { releasedRequestIds: result.releasedRequestIds },
+          });
+          broadcastLive("requests_changed");
+          return { ok: true, ...result };
+        } catch (error) {
+          if (error instanceof BillingDocumentError) return { ok: false, reason: error.message };
+          throw error;
+        }
+      }),
+
+    documentHistory: managerProcedure
+      .input(z.object({ documentId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const { documentHistory } = await import("./_core/billingDocumentService");
+        return await documentHistory(input.documentId);
       }),
 
     /** Attached payment confirmations of one document. */

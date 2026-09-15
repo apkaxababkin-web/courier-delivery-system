@@ -12,7 +12,7 @@ import ExcelJS from "exceljs";
 import { formatDateRu, groupThousands } from "../../shared/billing-format";
 import type { DocumentSetData } from "./billingDocumentData";
 
-const HEADER_ROW = 5;
+const HEADER_ROW = 6;
 
 function thin(): Partial<ExcelJS.Borders> {
   const side: Partial<ExcelJS.Border> = { style: "thin", color: { argb: "FF94A3B8" } };
@@ -61,13 +61,23 @@ export async function renderRegistryXlsx(data: DocumentSetData): Promise<Buffer>
   sheet.getCell(2, 1).value = `Клиент: ${data.buyer.name}`;
   sheet.getCell(2, 1).font = { bold: true, size: 11 };
 
+  // Requisites are printed only when they exist: neither INN nor OGRN is required.
+  const buyerRequisites = [
+    data.buyer.inn ? `ИНН ${data.buyer.inn}` : "",
+    data.buyer.kpp ? `КПП ${data.buyer.kpp}` : "",
+    data.buyer.ogrn ? `ОГРН(ИП) ${data.buyer.ogrn}` : "",
+  ].filter(Boolean).join(", ");
   sheet.mergeCells(3, 1, 3, columnCount);
-  sheet.getCell(3, 1).value = `Период: ${data.periodText}`;
-  sheet.getCell(3, 1).font = { size: 11 };
+  sheet.getCell(3, 1).value = buyerRequisites ? `Реквизиты: ${buyerRequisites}` : "";
+  sheet.getCell(3, 1).font = { size: 10, color: { argb: "FF475569" } };
 
   sheet.mergeCells(4, 1, 4, columnCount);
-  sheet.getCell(4, 1).value = `Счёт №${data.number} от ${data.documentDateText} г. · заявок: ${data.requestsCount}`;
-  sheet.getCell(4, 1).font = { size: 10, color: { argb: "FF475569" } };
+  sheet.getCell(4, 1).value = `Период: ${data.periodText}`;
+  sheet.getCell(4, 1).font = { size: 11 };
+
+  sheet.mergeCells(5, 1, 5, columnCount);
+  sheet.getCell(5, 1).value = `Счёт №${data.number} от ${data.documentDateText} г. · заявок: ${data.requestsCount}`;
+  sheet.getCell(5, 1).font = { size: 10, color: { argb: "FF475569" } };
 
   // Header row.
   const header = sheet.getRow(HEADER_ROW);

@@ -17,6 +17,8 @@ import {
   getBillingDocuments,
   setBillingDocumentPaid,
   voidBillingDocument,
+  releaseBillingDocument,
+  getBillingDocumentHistory,
   uploadPaymentProof,
   removeBillingDocumentFile,
   getDocumentSettings,
@@ -32,6 +34,7 @@ import {
   getClientTariffs,
   updateClientTariffs,
   type BillingDocumentRow,
+  type BillingDocumentHistoryEntry,
   type BillingPaymentProof,
   type BillingRequestState,
   type BillingReviewAction,
@@ -82,6 +85,20 @@ function getCurrentMonthRange() {
     from: toDateKey(first.toISOString()),
     to: toDateKey(last.toISOString()),
   };
+}
+
+/** DD.MM.YYYY HH:MM for audit-trail timestamps. */
+function formatDateTime(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 function formatDate(value?: string | null) {
@@ -718,6 +735,12 @@ export default function ReportsView() {
     reviewNote: string;
   } | null>(null);
   const [voidDraft, setVoidDraft] = useState<{ id: number; number: string; reason: string } | null>(null);
+  /** Annulled document whose requests are about to be released for re-issuing. */
+  const [releaseDraft, setReleaseDraft] = useState<{ id: number; number: string; note: string } | null>(null);
+  /** Annulled document the next document set will replace. */
+  const [replacesDocumentId, setReplacesDocumentId] = useState<number | null>(null);
+  /** Audit trail of the selected document. */
+  const [historyDraft, setHistoryDraft] = useState<{ number: string; entries: BillingDocumentHistoryEntry[] } | null>(null);
   const [isBillingLoading, setIsBillingLoading] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [isIssuing, setIsIssuing] = useState(false);
@@ -927,13 +950,23 @@ export default function ReportsView() {
     setError('');
     setBillingNotice('');
     try {
-      const result = await issueDocumentSet(selectedClientId, dateFrom, dateTo, preview?.documentDateIso);
+      const result = await issueDocumentSet(
+        selectedClientId,
+        dateFrom,
+        dateTo,
+        preview?.documentDateIso,
+        replacesDocumentId ?? undefined,
+      );
       if (result.ok && result.document) {
         setBillingNotice(
-          `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован: `
-          + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`,
+          replacesDocumentId
+            ? `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован взамен аннулированного: `
+              + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`
+            : `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован: `
+              + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`,
         );
         setPreview(null);
+        setReplacesDocumentId(null);
         setClientSection('documents');
       } else {
         setBillingNotice(result.reason ?? 'Комплект пока сформировать нельзя');
@@ -991,6 +1024,42 @@ export default function ReportsView() {
       void loadDocuments();
     } catch (paymentError) {
       setError(paymentError instanceof Error ? paymentError.message : 'Не удалось изменить статус оплаты');
+    }
+  }
+
+  /** Release the requests of an annulled document so the period can be re-issued. */
+  async function releaseRequests(document: BillingDocumentRow, note: string) {
+    setError('');
+    try {
+      const result = await releaseBillingDocument(document.id, note || undefined);
+      if (result.ok) {
+        const count = result.releasedRequestIds?.length ?? 0;
+        setBillingNotice(
+          count > 0
+            ? `Заявки документа №${document.number} освобождены (${count}). Их можно выставить заново.`
+            : `У документа №${document.number} нет удержанных заявок`,
+        );
+        // The next issued set will replace this annulled document.
+        setReplacesDocumentId(document.id);
+        setClientSection('review');
+        setPreview(null);
+        void loadPreview();
+      } else {
+        setBillingNotice(result.reason ?? 'Не удалось освободить заявки');
+      }
+      void loadDocuments();
+      setBillingRefreshVersion((version) => version + 1);
+    } catch (releaseError) {
+      setError(releaseError instanceof Error ? releaseError.message : 'Не удалось освободить заявки');
+    }
+  }
+
+  async function openHistory(document: BillingDocumentRow) {
+    setError('');
+    try {
+      setHistoryDraft({ number: document.number, entries: await getBillingDocumentHistory(document.id) });
+    } catch (historyError) {
+      setError(historyError instanceof Error ? historyError.message : 'Не удалось загрузить историю документа');
     }
   }
 
@@ -1480,7 +1549,7 @@ export default function ReportsView() {
                   <input
                     type="date"
                     value={dateFrom}
-                    onChange={(event) => setDateFrom(event.target.value)}
+                    onChange={(event) => { setDateFrom(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
                     className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                   />
                 </div>
@@ -1495,7 +1564,7 @@ export default function ReportsView() {
                   <input
                     type="date"
                     value={dateTo}
-                    onChange={(event) => setDateTo(event.target.value)}
+                    onChange={(event) => { setDateTo(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
                     className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                   />
                 </div>
@@ -1519,7 +1588,7 @@ export default function ReportsView() {
                   <button
                     key={client.id ?? 'without-client'}
                     type="button"
-                    onClick={() => setSelectedClientId(client.id)}
+                    onClick={() => { setSelectedClientId(client.id); setReplacesDocumentId(null); setPreview(null); }}
                     className="flex min-h-[56px] w-full items-center justify-between bg-white px-5 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                   >
                     <span className="truncate pr-4">
@@ -1539,7 +1608,7 @@ export default function ReportsView() {
                 <div className="flex min-w-0 items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setSelectedClientId('all')}
+                    onClick={() => { setSelectedClientId('all'); setReplacesDocumentId(null); setPreview(null); }}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
                     title="Назад к клиентам"
                   >
@@ -1684,6 +1753,45 @@ export default function ReportsView() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Re-issue context: which annulled document this set replaces. */}
+                  {replacesDocumentId && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      <span>
+                        Комплект выставляется взамен аннулированного документа №
+                        {documents.find((item) => item.id === replacesDocumentId)?.number ?? replacesDocumentId}.
+                        Освобождённые заявки можно включить снова.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setReplacesDocumentId(null)}
+                        className="font-semibold underline decoration-dotted hover:text-amber-950"
+                      >
+                        Не связывать с аннулированным
+                      </button>
+                    </div>
+                  )}
+
+                  {(preview.blockedRequestIds?.length ?? 0) > 0 && (
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                      <div className="font-semibold">
+                        Удерживается другими документами: {preview.blockedRequestIds!.length}
+                      </div>
+                      <div className="mt-1">
+                        {(preview.blockingDocuments ?? []).map((item) => (
+                          <span key={item.documentId} className="mr-3 inline-block">
+                            №{item.number}
+                            {item.status === 'cancelled' ? ' (аннулирован)' : item.status === 'paid' ? ' (оплачен)' : ' (действует)'}
+                            {item.documentDate ? ` от ${formatDate(item.documentDate)}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-1">
+                        Чтобы выставить эти заявки заново, освободите их на вкладке «Счета и акты»
+                        у аннулированного документа.
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <div><div className="text-xs text-slate-500">Счёт №</div><div className="text-lg font-semibold text-slate-950">{preview.number}</div></div>
@@ -1873,7 +1981,7 @@ export default function ReportsView() {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(event) => setDateFrom(event.target.value)}
+                onChange={(event) => { setDateFrom(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
                 className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
               />
             </div>
@@ -2404,6 +2512,20 @@ export default function ReportsView() {
                                 {document.voidReason && (
                                   <div className="mt-1 text-[11px] text-slate-500">{document.voidReason}</div>
                                 )}
+                                {document.status === 'cancelled' && (
+                                  <div className="mt-1 text-[11px] text-slate-500">
+                                    {document.requestsReleased
+                                      ? 'Заявки освобождены для перевыставления'
+                                      : `Заявки удерживаются: ${document.activeRequestsCount ?? 0}`}
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => void openHistory(document)}
+                                  className="mt-1 text-[11px] font-semibold text-slate-600 underline decoration-dotted hover:text-slate-900"
+                                >
+                                  История
+                                </button>
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-wrap gap-2">
@@ -2481,6 +2603,36 @@ export default function ReportsView() {
                                         >
                                           <Ban className="h-3.5 w-3.5" />
                                           Аннулировать
+                                        </button>
+                                      )}
+
+                                      {/* Annulled document: free its requests, then re-issue the period. */}
+                                      {document.status === 'cancelled' && (document.activeRequestsCount ?? 0) > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setReleaseDraft({ id: document.id, number: document.number, note: '' })}
+                                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                        >
+                                          <RefreshCw className="h-3.5 w-3.5" />
+                                          Освободить заявки ({document.activeRequestsCount})
+                                        </button>
+                                      )}
+                                      {document.status === 'cancelled' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setReplacesDocumentId(document.id);
+                                            setClientSection('review');
+                                            setPreview(null);
+                                            setBillingNotice(
+                                              `Документ №${document.number} будет указан как заменённый. `
+                                              + 'Проверьте период и выставите комплект заново.',
+                                            );
+                                          }}
+                                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                                        >
+                                          <FileSpreadsheet className="h-3.5 w-3.5" />
+                                          Перевыставить
                                         </button>
                                       )}
                                     </div>
@@ -2615,6 +2767,99 @@ export default function ReportsView() {
               className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
             >
               Аннулировать
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Release the requests of an annulled document so the period can be re-issued. */}
+      <Modal isOpen={Boolean(releaseDraft)} onClose={() => setReleaseDraft(null)}>
+        <div className="w-[min(560px,calc(100vw-32px))] rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="text-base font-semibold text-slate-950">
+            Освободить заявки документа №{releaseDraft?.number}?
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Аннулированный документ и его состав останутся в истории навсегда: номер, сумма, файлы и
+            состав заявок сохраняются. Освобождённые заявки станут доступны для нового комплекта.
+          </div>
+          <label className="mt-4 block text-xs font-medium text-slate-600">
+            Комментарий к освобождению
+            <textarea
+              value={releaseDraft?.note ?? ''}
+              onChange={(event) => setReleaseDraft((current) => current ? { ...current, note: event.target.value } : current)}
+              rows={3}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              placeholder="Например: перевыставляем с исправленной суммой"
+            />
+          </label>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => setReleaseDraft(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => { const draft = releaseDraft!; setReleaseDraft(null); const document = documents.find((d) => d.id === draft.id); if (document) void releaseRequests(document, draft.note); }}
+              className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+            >
+              Освободить заявки
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Audit trail of one document: issued, annulled, released, replaced. */}
+      <Modal isOpen={Boolean(historyDraft)} onClose={() => setHistoryDraft(null)}>
+        <div className="max-h-[80vh] w-[min(680px,calc(100vw-32px))] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="text-base font-semibold text-slate-950">
+            История документа №{historyDraft?.number}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Записи не удаляются: видно, кто и когда выставил, аннулировал, освободил заявки и какой
+            документ заменил этот.
+          </div>
+          <div className="mt-4 space-y-2">
+            {(historyDraft?.entries ?? []).length === 0 && (
+              <div className="text-sm text-slate-500">Записей пока нет.</div>
+            )}
+            {(historyDraft?.entries ?? []).map((entry) => {
+              const labels: Record<BillingDocumentHistoryEntry['kind'], string> = {
+                issued: 'Комплект выставлен',
+                reissued: 'Выставлен взамен аннулированного',
+                voided: 'Документ аннулирован',
+                requests_released: 'Заявки освобождены',
+                replaced_by: 'Заменён другим документом',
+                payment_set: 'Отмечена оплата',
+                payment_cleared: 'Оплата снята',
+              };
+              const details = entry.details ?? {};
+              const replacedBy = typeof details.replacedByNumber === 'string' ? details.replacedByNumber : null;
+              const replaces = typeof details.replacesDocumentId === 'number' ? details.replacesDocumentId : null;
+              const releasedCount = typeof details.releasedCount === 'number' ? details.releasedCount : null;
+              return (
+                <div key={entry.id} className="rounded-xl border border-slate-200 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-slate-900">{labels[entry.kind]}</span>
+                    <span className="text-[11px] text-slate-500">
+                      {formatDateTime(entry.createdAt)}{entry.managerName ? ` · ${entry.managerName}` : ''}
+                    </span>
+                  </div>
+                  {entry.note && <div className="mt-1 text-xs text-slate-600">{entry.note}</div>}
+                  {replacedBy && (
+                    <div className="mt-1 text-xs text-slate-600">Заменён документом №{replacedBy}</div>
+                  )}
+                  {replaces !== null && (
+                    <div className="mt-1 text-xs text-slate-600">Взамен аннулированного документа №{replaces}</div>
+                  )}
+                  {releasedCount !== null && (
+                    <div className="mt-1 text-xs text-slate-600">Освобождено заявок: {releasedCount}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button type="button" onClick={() => setHistoryDraft(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+              Закрыть
             </button>
           </div>
         </div>

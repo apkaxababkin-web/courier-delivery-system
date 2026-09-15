@@ -18,8 +18,10 @@ import {
   attachDocumentFile,
   billingDocumentsDirectory,
   deleteDocumentFile,
+  documentHistory,
   findDocumentFile,
   getDocument,
+  releaseDocumentRequests,
   renderPreviewFile,
   type PreviewKind,
 } from "./billingDocumentService";
@@ -292,6 +294,60 @@ export function registerBillingRoutes(app: Express) {
       }
     },
   );
+
+  /**
+   * Release the requests of an annulled document so they can be re-issued.
+   * The old document and its composition stay in history untouched.
+   */
+  app.post(`${root}/documents/:id/release`, express.json({ limit: "64kb" }), async (req, res) => {
+    try {
+      const documentId = Number(req.params.id);
+      if (!Number.isSafeInteger(documentId) || documentId <= 0) {
+        return void res.status(400).json({ error: { message: "Некорректный документ" } });
+      }
+      const managerId = managerIdOf(res);
+      if (!managerId) return void res.status(401).json({ error: { message: "Требуется авторизация менеджера" } });
+
+      const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : null;
+      const result = await releaseDocumentRequests(documentId, managerId, note || null);
+
+      try {
+        await db.addRequestActivityEvent({
+          requestId: documentId,
+          actorType: "manager",
+          actorId: managerId,
+          actorName: (await db.getManagerById(managerId))?.name ?? managerActorName(res),
+          action: "updated",
+          note: `Заявки освобождены для перевыставления (документ №${documentId}, заявок: ${result.releasedRequestIds.length})`,
+          changes: { releasedRequestIds: result.releasedRequestIds, note: note || null },
+        });
+      } catch (activityError) {
+        console.error("Failed to log release activity", activityError);
+      }
+
+      broadcastLive("requests_changed");
+      res.json(result);
+    } catch (error) {
+      const status = error instanceof Error && "status" in error ? Number((error as { status?: number }).status) : 500;
+      const message = error instanceof Error ? error.message : "Не удалось освободить заявки";
+      if (status >= 500) console.error("Failed to release document requests", error);
+      res.status(status || 500).json({ error: { message } });
+    }
+  });
+
+  /** Audit trail of one document: who issued, annulled, released, replaced it. */
+  app.get(`${root}/documents/:id/history`, async (req, res) => {
+    try {
+      const documentId = Number(req.params.id);
+      if (!Number.isSafeInteger(documentId) || documentId <= 0) {
+        return void res.status(400).json({ error: { message: "Некорректный документ" } });
+      }
+      res.json(await documentHistory(documentId));
+    } catch (error) {
+      console.error("Failed to load document history", error);
+      res.status(500).json({ error: { message: "Не удалось загрузить историю документа" } });
+    }
+  });
 
   app.get(`/api/manager/billing-document-files/:id/:storedName`, async (req: Request, res: Response) => {
     try {

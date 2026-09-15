@@ -12,13 +12,20 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { billingDocumentFiles, billingDocuments, billingDocumentRequests } from "../../drizzle/schema";
+import {
+  billingDocumentEvents,
+  billingDocumentFiles,
+  billingDocuments,
+  billingDocumentRequests,
+} from "../../drizzle/schema";
 import * as db from "../db";
 import { formatMoney, formatDateRu, groupThousands, sumMoney } from "../../shared/billing-format";
 import {
+  activeBillingMembership,
   billableRows,
   buildClientBillingOverview,
   clientDocumentName,
+  clientPostalAddress,
   loadClientRequisites,
   missingClientRequisites,
   type BillingOverview,
@@ -66,6 +73,90 @@ export class BillingDocumentError extends Error {
   }
 }
 
+/**
+ * Audit kinds recorded for a document set. The lifecycle is append-only: nothing
+ * is ever deleted from the history, an annulled document keeps its composition.
+ */
+export type BillingDocumentEventKind =
+  | "issued"            // new set created
+  | "reissued"          // this set replaced an annulled one
+  | "voided"            // annulled by a manager
+  | "requests_released" // its requests were returned for re-billing
+  | "replaced_by"       // annulled set: another set took over its requests
+  | "payment_set"       // marked as paid
+  | "payment_cleared";  // payment mark removed
+
+/** Append one lifecycle event. Never throws into the caller's flow. */
+async function recordDocumentEvent(input: {
+  documentId: number;
+  kind: BillingDocumentEventKind;
+  managerId: number | null;
+  managerName?: string | null;
+  note?: string | null;
+  details?: Record<string, unknown> | null;
+}): Promise<void> {
+  try {
+    const conn = await db.getDb();
+    if (!conn) return;
+    let managerName = input.managerName ?? null;
+    if (!managerName && input.managerId) {
+      const row = rows(await conn.execute(sql`SELECT "name" FROM "managers" WHERE "id" = ${input.managerId} LIMIT 1`))[0];
+      managerName = row?.name == null ? null : String(row.name);
+    }
+    await conn.insert(billingDocumentEvents).values({
+      billingDocumentId: input.documentId,
+      kind: input.kind,
+      managerId: input.managerId,
+      managerName,
+      note: input.note ?? null,
+      details: input.details ? JSON.stringify(input.details) : null,
+    });
+  } catch (error) {
+    console.error("[billing] failed to record document event", { kind: input.kind, error });
+  }
+}
+
+export interface DocumentHistoryEntry {
+  id: number;
+  kind: BillingDocumentEventKind;
+  managerId: number | null;
+  managerName: string | null;
+  note: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/** Full audit trail of one document set, oldest first. */
+export async function documentHistory(documentId: number): Promise<DocumentHistoryEntry[]> {
+  const conn = await db.getDb();
+  if (!conn) throw new Error("Database not available");
+  const list = rows(await conn.execute(sql`
+    SELECT "id","kind","managerId","managerName","note","details","createdAt"
+      FROM "billingDocumentEvents"
+     WHERE "billingDocumentId" = ${documentId}
+     ORDER BY "createdAt", "id"`));
+
+  return list.map((row) => {
+    let details: Record<string, unknown> | null = null;
+    if (row.details != null) {
+      try {
+        details = JSON.parse(String(row.details)) as Record<string, unknown>;
+      } catch {
+        details = { raw: String(row.details) };
+      }
+    }
+    return {
+      id: Number(row.id),
+      kind: String(row.kind) as BillingDocumentEventKind,
+      managerId: row.managerId == null ? null : Number(row.managerId),
+      managerName: row.managerName == null ? null : String(row.managerName),
+      note: row.note == null ? null : String(row.note),
+      details,
+      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    };
+  });
+}
+
 export interface DocumentPreview {
   ready: boolean;
   blockers: string[];
@@ -85,6 +176,14 @@ export interface DocumentPreview {
   lines: { name: string; quantity: number; price: number; amount: number }[];
   /** Non-blocking warnings, e.g. requests already on another document. */
   warnings: string[];
+  /**
+   * Requests of this period that would enter the set but are still held by an
+   * active document. A manager must explicitly release them (see
+   * releaseDocumentRequests) before the set can be issued.
+   */
+  blockedRequestIds: number[];
+  /** Documents those blocked requests belong to, for the message in the UI. */
+  blockingDocuments: { documentId: number; number: string; status: string; documentDate: string | null }[];
 }
 
 function rows(result: unknown): Record<string, unknown>[] {
@@ -169,9 +268,37 @@ export async function previewDocumentSet(
   if (alreadyDocumented > 0) {
     warnings.push(`Заявок уже включено в другие счета: ${alreadyDocumented}`);
   }
-  const duplicates = overview.documentedRequestIds.filter((id) => billable.some((row) => Number(row.request.id) === id));
-  if (duplicates.length > 0) {
-    blockers.push("Часть выбранных заявок уже включена в выставленный документ");
+
+  // A request that an active document holds is reported as "billed" and therefore
+  // never enters `billable`; it still has to be visible here, because a manager can
+  // only re-issue the period after explicitly releasing those requests. Requests
+  // that were already billed when the manager verified them are the candidates.
+  const blockingCandidates = overview.rows
+    .filter((row) => row.request.billingCheckedAt != null || row.state === "checked")
+    .map((row) => Number(row.request.id));
+  const blockingMembership = await activeBillingMembership(blockingCandidates);
+  const blockedRequestIds = [...blockingMembership.keys()].sort((a, b) => a - b);
+  const blockingDocuments = blockedRequestIds.length === 0
+    ? []
+    : rows(await (await db.getDb())!.execute(sql`
+        SELECT d."id", d."number", d."status", d."documentDate"
+          FROM "billingDocuments" d
+         WHERE d."id" IN (${sql.join(
+           [...new Set(blockingMembership.values())].map((id) => sql`${id}`),
+           sql`, `,
+         )})
+         ORDER BY d."id"`)).map((row) => ({
+      documentId: Number(row.id),
+      number: String(row.number),
+      status: String(row.status),
+      documentDate: row.documentDate == null ? null : String(row.documentDate).slice(0, 10),
+    }));
+
+  if (blockedRequestIds.length > 0) {
+    blockers.push(
+      `Заявок удерживается другими документами: ${blockedRequestIds.length}. ` +
+        "Освободите заявки у аннулированного документа, чтобы выставить их заново.",
+    );
   }
 
   return {
@@ -192,6 +319,8 @@ export async function previewDocumentSet(
     vatRateText: data?.vat.rateText ?? settings.vatText,
     lines: data?.lines.map((line) => ({ name: line.name, quantity: line.quantity, price: line.price, amount: line.amount })) ?? [],
     warnings,
+    blockedRequestIds,
+    blockingDocuments,
   };
 }
 
@@ -242,6 +371,8 @@ async function allocateNumber(tx: {
 export interface IssuedDocument {
   id: number;
   number: string;
+  /** Set when this document replaced an annulled one. */
+  replacesDocumentId: number | null;
   documentDateIso: string;
   documentDateText: string;
   clientId: number;
@@ -256,6 +387,17 @@ export interface IssuedDocument {
   totals: ReturnType<typeof documentSetTotals>;
 }
 
+export interface IssueDocumentSetOptions {
+  /** Printed date of the whole set; defaults to today. */
+  documentDateIso?: string;
+  /**
+   * Annulled document this set replaces. Its requests must already have been
+   * released (releaseDocumentRequests); passing the id links the history and
+   * records "replaced_by" on the old document.
+   */
+  replacesDocumentId?: number | null;
+}
+
 /**
  * Issue the set: reserve the number, render the three files, freeze the snapshot.
  * The request links are written inside the same transaction and the unique active
@@ -266,8 +408,13 @@ export async function issueDocumentSet(
   from: string,
   to: string,
   managerId: number,
-  documentDateIso?: string,
+  documentDateIsoOrOptions?: string | IssueDocumentSetOptions,
 ): Promise<IssuedDocument> {
+  const options: IssueDocumentSetOptions = typeof documentDateIsoOrOptions === "string"
+    ? { documentDateIso: documentDateIsoOrOptions }
+    : (documentDateIsoOrOptions ?? {});
+  const documentDateIso = options.documentDateIso;
+  const replacesDocumentId = options.replacesDocumentId ?? null;
   const preview = await previewDocumentSet(clientId, from, to, documentDateIso);
   if (!preview.ready) {
     throw new BillingDocumentError(preview.blockers.join("; ") || "Комплект документов не готов", 400);
@@ -328,8 +475,9 @@ export async function issueDocumentSet(
         clientNameSnapshot: data.buyer.name,
         clientInnSnapshot: data.buyer.inn ?? "",
         clientKppSnapshot: data.buyer.kpp,
-        clientOgrnSnapshot: null,
+        clientOgrnSnapshot: data.buyer.ogrn,
         clientAddressSnapshot: data.buyer.address,
+        clientPostalAddressSnapshot: clientPostalAddress(client),
         executorNameSnapshot: data.seller.name,
         executorInnSnapshot: data.seller.inn ?? "",
         executorKppSnapshot: data.seller.kpp,
@@ -343,6 +491,7 @@ export async function issueDocumentSet(
         directorPositionSnapshot: data.seller.directorPosition,
         accountantNameSnapshot: data.seller.accountantName,
         createdByManagerId: managerId,
+        replacesDocumentId,
         generatedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -356,6 +505,7 @@ export async function issueDocumentSet(
         billingDocumentId: documentId,
         requestId: Number(row.request.id),
         amount: Number(row.amount ?? 0).toFixed(2),
+        active: true,
       });
     }
 
@@ -385,9 +535,39 @@ export async function issueDocumentSet(
     .set({ invoiceFile, actFile, registryFile, updatedAt: new Date() })
     .where(eq(billingDocuments.id, documentId));
 
+  // Audit trail. The replacement is recorded on BOTH documents, so the history of
+  // the annulled set always answers "which document took these requests over".
+  await recordDocumentEvent({
+    documentId,
+    kind: replacesDocumentId ? "reissued" : "issued",
+    managerId,
+    note: replacesDocumentId
+      ? `Перевыставление вместо аннулированного документа №${replacesDocumentId}`
+      : null,
+    details: {
+      number: expectedNumber,
+      periodFrom: from,
+      periodTo: to,
+      requestIds: billable.map((row) => Number(row.request.id)),
+      totalAmount: data.totalAmount,
+      ...(replacesDocumentId ? { replacesDocumentId } : {}),
+    },
+  });
+
+  if (replacesDocumentId) {
+    await recordDocumentEvent({
+      documentId: replacesDocumentId,
+      kind: "replaced_by",
+      managerId,
+      note: `Заменён документом №${expectedNumber}`,
+      details: { replacedByDocumentId: documentId, replacedByNumber: expectedNumber },
+    });
+  }
+
   return {
     id: documentId,
     number: expectedNumber,
+    replacesDocumentId,
     documentDateIso: dateIso,
     documentDateText: formatDateRu(dateIso),
     clientId,
@@ -427,6 +607,12 @@ export interface BillingDocumentListRow {
   paymentProofs: { id: number; originalName: string; mimeType: string; sizeBytes: number; createdAt: string }[];
   voidedAt: string | null;
   voidReason: string | null;
+  /** Annulled document this set replaced, if any. */
+  replacesDocumentId: number | null;
+  /** True when the requests of this (annulled) document are free again. */
+  requestsReleased: boolean;
+  /** How many links still hold their requests. */
+  activeRequestsCount: number;
   createdAt: string;
 }
 
@@ -450,6 +636,21 @@ export async function listDocuments(options: { clientId?: number; limit?: number
      WHERE "billingDocumentId" IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
        AND "kind" = 'payment_proof'
      ORDER BY "id"`));
+
+  const membership = ids.length === 0 ? [] : rows(await conn.execute(sql`
+    SELECT "billingDocumentId",
+           count(*) FILTER (WHERE "active")::int AS "activeCount",
+           count(*)::int AS "totalCount"
+      FROM "billingDocumentRequests"
+     WHERE "billingDocumentId" IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+     GROUP BY "billingDocumentId"`));
+  const membershipByDocument = new Map<number, { active: number; total: number }>();
+  for (const row of membership) {
+    membershipByDocument.set(Number(row.billingDocumentId), {
+      active: Number(row.activeCount),
+      total: Number(row.totalCount),
+    });
+  }
 
   const byDocument = new Map<number, BillingDocumentListRow["paymentProofs"]>();
   for (const file of files) {
@@ -487,6 +688,9 @@ export async function listDocuments(options: { clientId?: number; limit?: number
     paymentProofs: byDocument.get(Number(row.id)) ?? [],
     voidedAt: row.voidedAt ? new Date(row.voidedAt as string).toISOString() : null,
     voidReason: row.voidReason == null ? null : String(row.voidReason),
+    replacesDocumentId: row.replacesDocumentId == null ? null : Number(row.replacesDocumentId),
+    requestsReleased: (membershipByDocument.get(Number(row.id))?.active ?? 0) === 0,
+    activeRequestsCount: membershipByDocument.get(Number(row.id))?.active ?? 0,
     createdAt: new Date(row.createdAt as string).toISOString(),
   }));
 }
@@ -509,6 +713,84 @@ export async function voidDocument(documentId: number, managerId: number, reason
     .update(billingDocuments)
     .set({ status: "cancelled", voidedAt: new Date(), voidedByManagerId: managerId, voidReason: reason, updatedAt: new Date() })
     .where(eq(billingDocuments.id, documentId));
+
+  await recordDocumentEvent({
+    documentId,
+    kind: "voided",
+    managerId,
+    note: reason,
+    details: { number: document.number, totalAmount: document.totalAmount, requestsCount: document.requestsCount },
+  });
+}
+
+export interface ReleasedDocumentRequests {
+  documentId: number;
+  /** Request ids that became billable again. */
+  releasedRequestIds: number[];
+}
+
+/**
+ * Explicitly release the requests of an ANNULLED document so they can be put on a
+ * new one.
+ *
+ * Safety rules:
+ *   * only an annulled document can be released — an issued or paid one must not
+ *     lose its requests;
+ *   * the membership rows are kept and stamped (releasedAt / releasedByManagerId /
+ *     releaseNote) and switched to active = false, so the composition of the old
+ *     document stays readable for ever;
+ *   * the partial unique index on active links still guarantees that a request can
+ *     never sit on two active documents at the same time.
+ */
+export async function releaseDocumentRequests(
+  documentId: number,
+  managerId: number,
+  note: string | null,
+): Promise<ReleasedDocumentRequests> {
+  const conn = await db.getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const document = await getDocument(documentId);
+  if (!document) throw new BillingDocumentError("Документ не найден", 404);
+  if (document.status === "paid") {
+    throw new BillingDocumentError("Нельзя освободить заявки оплаченного документа", 400);
+  }
+  if (document.status !== "cancelled") {
+    throw new BillingDocumentError("Освободить заявки можно только у аннулированного документа", 400);
+  }
+
+  const active = rows(await conn.execute(sql`
+    SELECT "requestId" FROM "billingDocumentRequests"
+     WHERE "billingDocumentId" = ${documentId} AND "active"
+     ORDER BY "requestId"`));
+  const requestIds = active.map((row) => Number(row.requestId));
+  if (requestIds.length === 0) {
+    return { documentId, releasedRequestIds: [] };
+  }
+
+  await conn.transaction(async (tx: { execute: (query: unknown) => Promise<unknown> }) => {
+    await tx.execute(sql`
+      UPDATE "billingDocumentRequests"
+         SET "active" = false,
+             "releasedAt" = now(),
+             "releasedByManagerId" = ${managerId},
+             "releaseNote" = ${note}
+       WHERE "billingDocumentId" = ${documentId} AND "active"`);
+  });
+
+  await recordDocumentEvent({
+    documentId,
+    kind: "requests_released",
+    managerId,
+    note,
+    details: {
+      requestIds,
+      releasedCount: requestIds.length,
+      documentNumber: document.number,
+    },
+  });
+
+  return { documentId, releasedRequestIds: requestIds };
 }
 
 /** Mark a document as paid (or back to issued) and record who did it. */
@@ -534,6 +816,14 @@ export async function setDocumentPaid(
       updatedAt: new Date(),
     })
     .where(eq(billingDocuments.id, documentId));
+
+  await recordDocumentEvent({
+    documentId,
+    kind: paid ? "payment_set" : "payment_cleared",
+    managerId,
+    note: comment,
+    details: { number: document.number, totalAmount: document.totalAmount },
+  });
 }
 
 export interface StoredBillingFile {

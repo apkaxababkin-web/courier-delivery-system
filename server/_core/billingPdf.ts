@@ -31,6 +31,18 @@ function assertFonts(): void {
   }
 }
 
+/**
+ * "Почтовый адрес: …" line, printed only when the customer postal address is
+ * actually known and differs from the already printed address. Missing OGRN or
+ * postal address must never break a document.
+ */
+function buyerPostalLine(data: DocumentSetData): string | null {
+  const postal = (data.buyer.postalAddress ?? "").trim();
+  if (!postal) return null;
+  if (postal === (data.buyer.address ?? "").trim()) return null;
+  return `Почтовый адрес: ${postal}`;
+}
+
 interface Doc {
   font(name: string): Doc;
   fontSize(size: number): Doc;
@@ -205,8 +217,12 @@ export async function renderInvoicePdf(data: DocumentSetData): Promise<Buffer> {
   doc.text([
     data.buyer.inn ? `ИНН ${data.buyer.inn}` : "",
     data.buyer.kpp ? `КПП ${data.buyer.kpp}` : "",
+    data.buyer.ogrn ? `ОГРН(ИП) ${data.buyer.ogrn}` : "",
   ].filter(Boolean).join(", "), MARGIN + 8, doc.y, { width: CONTENT_WIDTH - 8 });
   doc.text(data.buyer.address, MARGIN + 8, doc.y, { width: CONTENT_WIDTH - 8 });
+  if (buyerPostalLine(data)) {
+    doc.text(buyerPostalLine(data) as string, MARGIN + 8, doc.y, { width: CONTENT_WIDTH - 8 });
+  }
   doc.moveDown(0.5);
 
   doc.font("Bold").fontSize(10).text("Банк получателя:", MARGIN, doc.y);
@@ -291,9 +307,14 @@ export async function renderActPdf(data: DocumentSetData): Promise<Buffer> {
 
   partyBlock(doc, "Заказчик:", [
     data.buyer.name,
-    [data.buyer.inn ? `ИНН ${data.buyer.inn}` : "", data.buyer.kpp ? `КПП ${data.buyer.kpp}` : ""].filter(Boolean).join(", "),
+    [
+      data.buyer.inn ? `ИНН ${data.buyer.inn}` : "",
+      data.buyer.kpp ? `КПП ${data.buyer.kpp}` : "",
+      data.buyer.ogrn ? `ОГРН(ИП) ${data.buyer.ogrn}` : "",
+    ].filter(Boolean).join(", "),
     data.buyer.address,
-  ]);
+    buyerPostalLine(data),
+  ].filter((line): line is string => Boolean(line && line.trim())));
 
   doc.font("Regular").fontSize(9).text(`Период оказания услуг: ${data.periodText}`, MARGIN, doc.y, { width: CONTENT_WIDTH });
   doc.moveDown(0.4);

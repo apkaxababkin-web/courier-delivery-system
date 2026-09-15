@@ -16,7 +16,7 @@ import {
   vatBreakdown,
   type VatBreakdown,
 } from "../../shared/billing-format";
-import { clientDocumentAddress, clientDocumentName, type ClientRequisites } from "./billingReview";
+import { clientDocumentAddress, clientDocumentName, clientPostalAddress, type ClientRequisites } from "./billingReview";
 import type { DocumentSettings } from "./documentSettings";
 import type { BillingRequestRow } from "./billingReview";
 
@@ -83,7 +83,14 @@ export interface DocumentSetData {
     name: string;
     inn: string | null;
     kpp: string | null;
+    /** Printed address (postal preferred, else legal, else working). */
     address: string;
+    /** Legal address, when it differs from the printed one. */
+    legalAddress: string | null;
+    /** Postal address as stored on the client card. */
+    postalAddress: string | null;
+    /** OGRN / OGRNIP; optional — the template must work without it. */
+    ogrn: string | null;
     phone: string | null;
   };
 
@@ -213,6 +220,9 @@ export function buildDocumentSetData(input: BuildDocumentSetInput): DocumentSetD
       inn: client.inn,
       kpp: client.kpp,
       address: clientDocumentAddress(client),
+      legalAddress: client.legalAddress,
+      postalAddress: clientPostalAddress(client),
+      ogrn: client.ogrn,
       phone: client.phone,
     },
     lines,
