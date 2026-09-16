@@ -14,7 +14,7 @@
  * with empty signature lines.
  */
 import path from "node:path";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 function str(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -27,6 +27,16 @@ export interface DocumentImages {
   signaturePath: string | null;
   /** Absolute path of the stamp PNG, or null when not configured. */
   stampPath: string | null;
+  /**
+   * The exact bytes that were read from those paths.
+   *
+   * The invoice/act PDF and the immutable per-document copy are both built from THESE
+   * bytes, never from the path a second time. Otherwise replacing or deleting the
+   * settings PNG between rendering and copying would put different pixels into the
+   * PDF and into the snapshot (or make the copy fail) — see issueDocumentSet.
+   */
+  signatureBytes: Buffer | null;
+  stampBytes: Buffer | null;
 }
 
 export interface OverlayPlacement {
@@ -47,6 +57,9 @@ export interface DocumentOverlays {
   signaturePath: string | null;
   /** Resolved absolute path of the stamp image. */
   stampPath: string | null;
+  /** Bytes actually drawn — the same buffer that becomes the immutable copy. */
+  signatureBytes: Buffer | null;
+  stampBytes: Buffer | null;
   /** True when the stamp should be printed at all (flag on + file present). */
   stampEnabled: boolean;
 }
@@ -126,45 +139,46 @@ export const ACT_STAMP_PLACEMENT: OverlayPlacement = placement("STAMP_ACT", {
   height: 72,
 });
 
+/** Absolute path of the immutable asset copy of one issued document. */
+export function documentAssetPath(documentId: number, kind: "signature" | "stamp"): string {
+  // Same base directory as the issued documents themselves (BILLING_DOCUMENTS_DIR
+  // defaults to <cwd>/uploads/billing-documents).
+  const documentsRoot = process.env.BILLING_DOCUMENTS_DIR || path.join(process.cwd(), "uploads", "billing-documents");
+  return path.join(documentsRoot, String(documentId), "assets", `${kind}.png`);
+}
+
 /**
  * Immutable per-document copy of the signature/stamp.
  *
  * A snapshot that keeps pointing at the *settings* file would not be immutable:
  * replacing that PNG would silently change every already issued document. The bytes
- * are therefore copied next to the document itself, and the snapshot points there:
+ * that were RENDERED into the PDF are therefore written next to the document itself,
+ * and the snapshot points there:
  *
- *   uploads/billing-documents/<documentId>/assets/signature.<ext>
- *   uploads/billing-documents/<documentId>/assets/stamp.<ext>
+ *   uploads/billing-documents/<documentId>/assets/signature.png
+ *   uploads/billing-documents/<documentId>/assets/stamp.png
  *
- * A later replacement in the settings never touches these copies, and an issued PDF
- * is never regenerated.
+ * Writing the same buffer is what makes the PDF and its immutable copy the same image
+ * even if the settings file is replaced or deleted in the meantime.
+ *
+ * Throws when the copy cannot be written, so the caller can fail the whole issue
+ * instead of leaving a half-issued document behind.
  */
 export function snapshotDocumentAssets(
   documentId: number,
   images: DocumentImages,
 ): { signatureFile: string | null; stampFile: string | null } {
-  // Same base directory as the issued documents themselves (BILLING_DOCUMENTS_DIR
-  // defaults to <cwd>/uploads/billing-documents).
-  const documentsRoot = process.env.BILLING_DOCUMENTS_DIR || path.join(process.cwd(), "uploads", "billing-documents");
-  const directory = path.join(documentsRoot, String(documentId), "assets");
-  const copy = (source: string | null, kind: "signature" | "stamp"): string | null => {
-    if (!source) return null;
-    try {
-      if (!existsSync(source)) return null;
-      mkdirSync(directory, { recursive: true });
-      const extension = path.extname(source).toLowerCase() || ".png";
-      const target = path.join(directory, `${kind}${extension}`);
-      copyFileSync(source, target);
-      return path.relative(process.cwd(), target);
-    } catch (error) {
-      console.error("[billing] failed to snapshot document asset", { documentId, kind, error });
-      return null;
-    }
+  const write = (bytes: Buffer | null, kind: "signature" | "stamp"): string | null => {
+    if (!bytes) return null;
+    const target = documentAssetPath(documentId, kind);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, bytes);
+    return path.relative(process.cwd(), target);
   };
 
   return {
-    signatureFile: copy(images.signaturePath, "signature"),
-    stampFile: copy(images.stampPath, "stamp"),
+    signatureFile: write(images.signatureBytes, "signature"),
+    stampFile: write(images.stampBytes, "stamp"),
   };
 }
 
@@ -185,11 +199,14 @@ export function resolveImagePath(storedPath: string | null | undefined): string 
 }
 
 /**
- * Paths to print for one document.
+ * Images to print for one document, with their bytes already in memory.
  *
  * The document snapshot wins; NULL means "document issued before the snapshot
  * existed", so the current settings are used. The stamp is only returned when the
  * flag is on for this document AND the file actually resolves.
+ *
+ * Reading the bytes here guarantees that a later change of the settings file cannot
+ * affect either the rendered PDF or the immutable copy taken from the same buffer.
  */
 export function resolveDocumentImages(
   snapshot: DocumentSignatureSnapshot,
@@ -202,10 +219,26 @@ export function resolveDocumentImages(
       ? Boolean(settings.addStampToDocuments)
       : snapshot.stampEnabled === true;
 
+  const signaturePath = resolveImagePath(signatureSource);
+  const stampPath = stampEnabled ? resolveImagePath(stampSource) : null;
+
   return {
-    signaturePath: resolveImagePath(signatureSource),
-    stampPath: stampEnabled ? resolveImagePath(stampSource) : null,
+    signaturePath,
+    stampPath,
+    signatureBytes: readBytes(signaturePath),
+    stampBytes: readBytes(stampPath),
   };
+}
+
+/** Read an image once, so render and snapshot share exactly the same pixels. */
+function readBytes(filePath: string | null): Buffer | null {
+  if (!filePath) return null;
+  try {
+    return readFileSync(filePath);
+  } catch (error) {
+    console.error("[billing] failed to read document image", { filePath, error });
+    return null;
+  }
 }
 
 /** Overlay placements for one document kind, with the images already resolved. */
@@ -214,11 +247,13 @@ export function documentOverlays(
   images: DocumentImages,
 ): DocumentOverlays {
   return {
-    signature: images.signaturePath ? (kind === "invoice" ? INVOICE_SIGNATURE_PLACEMENT : ACT_SIGNATURE_PLACEMENT) : null,
-    stamp: images.stampPath ? (kind === "invoice" ? INVOICE_STAMP_PLACEMENT : ACT_STAMP_PLACEMENT) : null,
-    signaturePath: images.signaturePath,
-    stampPath: images.stampPath,
-    stampEnabled: Boolean(images.stampPath),
+    signature: images.signatureBytes ? (kind === "invoice" ? INVOICE_SIGNATURE_PLACEMENT : ACT_SIGNATURE_PLACEMENT) : null,
+    stamp: images.stampBytes ? (kind === "invoice" ? INVOICE_STAMP_PLACEMENT : ACT_STAMP_PLACEMENT) : null,
+    signaturePath: images.signatureBytes ? images.signaturePath : null,
+    stampPath: images.stampBytes ? images.stampPath : null,
+    signatureBytes: images.signatureBytes,
+    stampBytes: images.stampBytes,
+    stampEnabled: Boolean(images.stampBytes),
   };
 }
 

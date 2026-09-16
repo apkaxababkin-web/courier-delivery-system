@@ -142,6 +142,12 @@ const FRAME_HEIGHT = 784.9;
 const SIZE_BODY = 12;
 const SIZE_SMALL = 9.8;
 const SIZE_CAPTION = 10.5;
+/**
+ * Floor for a table caption: «Наименование» is 80pt wide at 12pt in Liberation Serif
+ * while the reference column is 66pt in this grid, so the caption is reduced only for
+ * itself (the reference prints it at ≈11pt in Arial) instead of being abbreviated.
+ */
+const CAPTION_MIN_SIZE = 9.6;
 const SIZE_TITLE = 15.8;
 
 /** Value column of «Получатель:» / «Плательщик:» blocks. */
@@ -445,10 +451,20 @@ function drawServiceTable(
   }
 
   doc.font("Bold").fontSize(SIZE_CAPTION);
-  const captions = ["№", "Наимен.", "Ед.", "Кол-во", "Цена р.", "Сумма р."];
+  // Captions are the exact wording of the reference document («Наименование», not a
+  // shortened form). A caption is shrunk only as far as it must be to stay on one
+  // line inside its own column; the column itself never moves, so the data grid and
+  // the totals block stay where the reference puts them.
+  const captions = ["№", "Наименование", "Ед.", "Кол-во", "Цена р.", "Сумма р."];
   captions.forEach((caption, index) => {
     const column = columns[index];
-    doc.text(caption, column.x, docY(geometry.headerBaseline, SIZE_CAPTION), {
+    let size = SIZE_CAPTION;
+    doc.font("Bold").fontSize(size);
+    while (doc.widthOfString(caption) > column.width && size > CAPTION_MIN_SIZE) {
+      size = Math.round((size - 0.25) * 100) / 100;
+      doc.font("Bold").fontSize(size);
+    }
+    doc.text(caption, column.x, docY(geometry.headerBaseline, size), {
       width: column.width,
       align: column.align === "left" && index > 1 ? "right" : "left",
       lineBreak: false,
@@ -513,21 +529,22 @@ function drawServiceTable(
 function drawOverlays(doc: Doc, overlays: DocumentOverlays | undefined): void {
   if (!overlays) return;
 
-  const draw = (imagePath: string | null, box: OverlayPlacement | null): void => {
-    if (!imagePath || !box) return;
+  const draw = (bytes: Buffer | null, box: OverlayPlacement | null): void => {
+    if (!bytes || !box) return;
     try {
-      const image = doc.openImage(imagePath);
+      // The bytes that were read once are drawn here; nothing is re-read from disk.
+      const image = doc.openImage(bytes);
       const fitted = fitSize(image.width, image.height, box.width, box.height);
       const x = box.x + (box.width - fitted.width) / 2;
       const y = box.y + (box.height - fitted.height) / 2;
-      doc.save().opacity(1).image(imagePath, x, y, { width: fitted.width, height: fitted.height }).restore();
+      doc.save().opacity(1).image(bytes, x, y, { width: fitted.width, height: fitted.height }).restore();
     } catch {
       // A broken image must never break the document.
     }
   };
 
-  draw(overlays.signaturePath, overlays.signature);
-  draw(overlays.stampPath, overlays.stamp);
+  draw(overlays.signatureBytes, overlays.signature);
+  draw(overlays.stampBytes, overlays.stamp);
 }
 
 /** "Всего наименований N, на сумму X" plus the amount in words. */

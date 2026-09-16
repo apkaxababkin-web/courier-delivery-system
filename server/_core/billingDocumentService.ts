@@ -398,6 +398,29 @@ export async function renderPreviewFile(
 }
 
 /** Allocate the next document number atomically (row lock on the settings row). */
+/**
+ * Reserve the id the next issued document will get.
+ *
+ * `nextval` is exactly what the `serial` primary key would use, so passing it back to
+ * the insert changes nothing. It is reserved BEFORE any file is written, which is what
+ * lets the files live at their final path and the row be created afterwards.
+ */
+async function reserveDocumentId(conn: { execute: (query: unknown) => Promise<unknown> }): Promise<number> {
+  // `pg_get_serial_sequence` only knows about OWNED sequences (what `serial` creates).
+  // The schema also has the plain `billingDocuments_id_seq`, which the tests use, so the
+  // conventional name is the fallback.
+  const result = rows(await conn.execute(sql`
+    SELECT nextval(COALESCE(
+      pg_get_serial_sequence('"billingDocuments"', 'id'),
+      '"billingDocuments_id_seq"'
+    )) AS id`));
+  const id = Number(result[0]?.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new BillingDocumentError("Не удалось зарезервировать идентификатор документа", 500);
+  }
+  return id;
+}
+
 async function allocateNumber(tx: {
   execute: (query: unknown) => Promise<unknown>;
 }): Promise<string> {
@@ -494,107 +517,125 @@ export async function issueDocumentSet(
     throw new BillingDocumentError("Итоговые суммы счёта, акта и реестра не совпадают — документы не созданы", 500);
   }
 
+  // ─── Atomic issue ─────────────────────────────────────────────────────────
+  //
+  // The transaction is the durability point and it covers EVERYTHING that can fail:
+  // id reservation, number allocation, rendering source bytes, the three files, the
+  // immutable image copies and the row plus its request links. Either the document
+  // exists with a number, its files and its links, or nothing was written at all —
+  // there is no state in which a partial set holds a number or blocks its requests.
+  //
+  // The transaction deliberately holds the `billingSettings` row lock (taken by
+  // allocateNumber) for its whole duration, so concurrent issues are serialised on the
+  // number and two sets can never share one.
+  let frozen: { signatureFile: string | null; stampFile: string | null } = { signatureFile: null, stampFile: null };
+  let invoiceFile = "";
+  let actFile = "";
+  let registryFile = "";
+
   const created = await conn.transaction(async (tx: {
     execute: (query: unknown) => Promise<unknown>;
     insert: (table: unknown) => { values: (values: unknown) => { returning: () => Promise<unknown[]> } };
   }) => {
-    const allocated = await allocateNumber(tx);
+    const documentId = await reserveDocumentId(tx);
+    const expectedNumber = await allocateNumber(tx);
 
-    const insertedRows = await tx
-      .insert(billingDocuments)
-      .values({
-        number: allocated,
-        clientId,
-        documentDate: dateIso,
-        documentDateText: formatDateRu(dateIso),
-        periodFrom: from,
-        periodTo: to,
-        requestsCount: billable.length,
-        totalAmount: data.totalAmount.toFixed(2),
-        status: "issued",
-        serviceDescription: data.serviceName,
-        serviceNameSnapshot: data.serviceName,
-        periodTextSnapshot: data.periodText,
-        vatModeSnapshot: settings.vatMode,
-        vatRateSnapshot: settings.vatMode === "vat" ? Number(settings.vatRate).toFixed(2) : "0",
-        vatAmountSnapshot: data.vat.vatAmount === null ? null : data.vat.vatAmount.toFixed(2),
-        vatTextSnapshot: data.vat.rateText,
-        clientNameSnapshot: data.buyer.name,
-        clientInnSnapshot: data.buyer.inn ?? "",
-        clientKppSnapshot: data.buyer.kpp,
-        clientOgrnSnapshot: data.buyer.ogrn,
-        clientAddressSnapshot: data.buyer.address,
-        clientPostalAddressSnapshot: clientPostalAddress(client),
-        executorNameSnapshot: data.seller.name,
-        executorInnSnapshot: data.seller.inn ?? "",
-        executorKppSnapshot: data.seller.kpp,
-        executorAddressSnapshot: data.seller.address,
-        executorPhoneSnapshot: data.seller.phone,
-        bankNameSnapshot: data.seller.bankName,
-        bankBikSnapshot: data.seller.bankBik,
-        bankAccountSnapshot: data.seller.bankAccount,
-        bankCorrespondentAccountSnapshot: data.seller.bankCorrespondentAccount,
-        directorNameSnapshot: data.seller.directorName,
-        directorPositionSnapshot: data.seller.directorPosition,
-        accountantNameSnapshot: data.seller.accountantName,
-        createdByManagerId: managerId,
-        replacesDocumentId,
-        generatedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
+    const dir = path.join(BILLING_DOCUMENTS_DIR, String(documentId));
+    const invoiceName = `invoice-${expectedNumber}.pdf`;
+    const actName = `act-${expectedNumber}.pdf`;
+    const registryName = `registry-${expectedNumber}.xlsx`;
 
-    const document = insertedRows[0] as Record<string, unknown>;
-    const documentId = Number(document.id);
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, invoiceName), invoice);
+      await fs.writeFile(path.join(dir, actName), act);
+      await fs.writeFile(path.join(dir, registryName), registry);
 
-    for (const row of billable) {
-      await tx.insert(billingDocumentRequests).values({
-        billingDocumentId: documentId,
-        requestId: Number(row.request.id),
-        amount: Number(row.amount ?? 0).toFixed(2),
-        active: true,
-      });
+      // Freeze the very bytes that were rendered: the PDF and its immutable copy can
+      // never disagree, and a later settings change cannot touch either of them.
+      frozen = snapshotDocumentAssets(documentId, issuedImages);
+      invoiceFile = path.relative(process.cwd(), path.join(dir, invoiceName));
+      actFile = path.relative(process.cwd(), path.join(dir, actName));
+      registryFile = path.relative(process.cwd(), path.join(dir, registryName));
+
+      const insertedRows = await tx
+        .insert(billingDocuments)
+        .values({
+          id: documentId,
+          number: expectedNumber,
+          clientId,
+          documentDate: dateIso,
+          documentDateText: formatDateRu(dateIso),
+          periodFrom: from,
+          periodTo: to,
+          requestsCount: billable.length,
+          totalAmount: data.totalAmount.toFixed(2),
+          status: "issued",
+          serviceDescription: data.serviceName,
+          serviceNameSnapshot: data.serviceName,
+          periodTextSnapshot: data.periodText,
+          vatModeSnapshot: settings.vatMode,
+          vatRateSnapshot: settings.vatMode === "vat" ? Number(settings.vatRate).toFixed(2) : "0",
+          vatAmountSnapshot: data.vat.vatAmount === null ? null : data.vat.vatAmount.toFixed(2),
+          vatTextSnapshot: data.vat.rateText,
+          clientNameSnapshot: data.buyer.name,
+          clientInnSnapshot: data.buyer.inn ?? "",
+          clientKppSnapshot: data.buyer.kpp,
+          clientOgrnSnapshot: data.buyer.ogrn,
+          clientAddressSnapshot: data.buyer.address,
+          clientPostalAddressSnapshot: clientPostalAddress(client),
+          executorNameSnapshot: data.seller.name,
+          executorInnSnapshot: data.seller.inn ?? "",
+          executorKppSnapshot: data.seller.kpp,
+          executorAddressSnapshot: data.seller.address,
+          executorPhoneSnapshot: data.seller.phone,
+          bankNameSnapshot: data.seller.bankName,
+          bankBikSnapshot: data.seller.bankBik,
+          bankAccountSnapshot: data.seller.bankAccount,
+          bankCorrespondentAccountSnapshot: data.seller.bankCorrespondentAccount,
+          directorNameSnapshot: data.seller.directorName,
+          directorPositionSnapshot: data.seller.directorPosition,
+          accountantNameSnapshot: data.seller.accountantName,
+          createdByManagerId: managerId,
+          replacesDocumentId,
+          generatedAt: new Date(),
+          updatedAt: new Date(),
+          // Written together with the row: a document is never visible in the database
+          // without the files and the frozen images that belong to it.
+          invoiceFile,
+          actFile,
+          registryFile,
+          signatureFileSnapshot: frozen.signatureFile,
+          stampFileSnapshot: frozen.stampFile,
+          stampEnabledSnapshot: Boolean(issuedImages.stampBytes),
+        })
+        .returning();
+
+      const document = insertedRows[0] as Record<string, unknown>;
+      if (Number(document.id) !== documentId) {
+        throw new BillingDocumentError("Идентификатор документа изменился во время выпуска — документы не созданы", 500);
+      }
+
+      for (const row of billable) {
+        await tx.insert(billingDocumentRequests).values({
+          billingDocumentId: documentId,
+          requestId: Number(row.request.id),
+          amount: Number(row.amount ?? 0).toFixed(2),
+          active: true,
+        });
+      }
+
+      return document;
+    } catch (failure) {
+      // The transaction rolls back, so no row, no link and no consumed number stay
+      // behind; the files written above are removed to leave no orphan on disk.
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      throw failure;
     }
-
-    return document;
   });
 
   const documentId = Number((created as Record<string, unknown>).id);
   const expectedNumber = String((created as Record<string, unknown>).number);
-
-  // Freeze the signature/stamp bytes next to the document and remember where they
-  // are. A later replacement in the settings never touches these copies, so the
-  // issued PDF stays exactly as it was generated (nothing is regenerated either).
-  const frozen = snapshotDocumentAssets(documentId, issuedImages);
-  await conn
-    .update(billingDocuments)
-    .set({
-      signatureFileSnapshot: frozen.signatureFile,
-      stampFileSnapshot: frozen.stampFile,
-      stampEnabledSnapshot: Boolean(issuedImages.stampPath),
-      updatedAt: new Date(),
-    })
-    .where(eq(billingDocuments.id, documentId));
-
-  // Files are written after the transaction commits; if writing fails the document
-  // exists but without files, which is reported as a generation error below.
-  const dir = path.join(BILLING_DOCUMENTS_DIR, String(documentId));
-  await fs.mkdir(dir, { recursive: true });
-  const invoiceName = `invoice-${expectedNumber}.pdf`;
-  const actName = `act-${expectedNumber}.pdf`;
-  const registryName = `registry-${expectedNumber}.xlsx`;
-  await fs.writeFile(path.join(dir, invoiceName), invoice);
-  await fs.writeFile(path.join(dir, actName), act);
-  await fs.writeFile(path.join(dir, registryName), registry);
-
-  const invoiceFile = path.relative(process.cwd(), path.join(dir, invoiceName));
-  const actFile = path.relative(process.cwd(), path.join(dir, actName));
-  const registryFile = path.relative(process.cwd(), path.join(dir, registryName));
-
-  await conn
-    .update(billingDocuments)
-    .set({ invoiceFile, actFile, registryFile, updatedAt: new Date() })
-    .where(eq(billingDocuments.id, documentId));
 
   // Audit trail. The replacement is recorded on BOTH documents, so the history of
   // the annulled set always answers "which document took these requests over".

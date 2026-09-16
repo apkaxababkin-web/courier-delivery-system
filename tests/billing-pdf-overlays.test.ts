@@ -104,8 +104,20 @@ function withImages(signaturePath: string | null, stampPath: string | null) {
   return data;
 }
 
+const TINY_SIGNATURE_BYTES = TINY_PNG;
+const TINY_STAMP_BYTES = TINY_PNG;
+
+function imagesFor(signaturePath: string | null, stampPath: string | null) {
+  return {
+    signaturePath,
+    stampPath,
+    signatureBytes: signaturePath ? TINY_SIGNATURE_BYTES : null,
+    stampBytes: stampPath ? TINY_STAMP_BYTES : null,
+  };
+}
+
 function overlaysFor(kind: "invoice" | "act", signaturePath: string | null, stampPath: string | null): DocumentOverlays {
-  return documentOverlays(kind, { signaturePath, stampPath });
+  return documentOverlays(kind, imagesFor(signaturePath, stampPath));
 }
 
 // ─── Temporary uploads (never the real ones) ─────────────────────────────────
@@ -337,7 +349,7 @@ describe("overlay geometry and image resolution", () => {
     process.env.BILLING_DOCUMENTS_DIR = SNAPSHOT_ROOT;
 
     try {
-      const frozen = snapshotDocumentAssets(documentId, { signaturePath: signatureFile, stampPath: stampFile });
+      const frozen = snapshotDocumentAssets(documentId, imagesFor(signatureFile, stampFile));
       expect(frozen.signatureFile).toBeTruthy();
       expect(frozen.stampFile).toBeTruthy();
 
