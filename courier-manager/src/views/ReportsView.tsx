@@ -14,6 +14,7 @@ import {
   setBillingReviewDecision,
   getDocumentPreview,
   issueDocumentSet,
+  getSuggestedBillingPeriod,
   getBillingDocuments,
   setBillingDocumentPaid,
   rollbackBillingDocument,
@@ -606,6 +607,14 @@ export default function ReportsView() {
   const clientSectionsRef = useRef<HTMLDivElement | null>(null);
   /** Preview of the set about to be issued: number, date and totals are confirmed here. */
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
+  const [firstDocumentNumber, setFirstDocumentNumber] = useState('');
+  const [numberInitOpen, setNumberInitOpen] = useState(false);
+  const [periodSuggestion, setPeriodSuggestion] = useState<{
+    lastPeriodFrom: string | null;
+    lastPeriodTo: string | null;
+    lastDocumentNumber: string | null;
+    nextDateFrom: string | null;
+  } | null>(null);
   const [previewDate, setPreviewDate] = useState('');
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [tariffs, setTariffs] = useState<ClientTariffsDto | null>(null);
@@ -721,6 +730,46 @@ export default function ReportsView() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function applySuggestedPeriod() {
+      if (typeof selectedClientId !== 'number') {
+        setPeriodSuggestion(null);
+        return;
+      }
+
+      try {
+        const suggestion = await getSuggestedBillingPeriod(selectedClientId);
+        if (cancelled) return;
+
+        setPeriodSuggestion(suggestion);
+
+        if (suggestion.nextDateFrom) {
+          setDateFrom(suggestion.nextDateFrom);
+
+          // Keep the manager's end date when it is still valid.
+          // If it became earlier than the new start, move it to the start.
+          setDateTo((current) =>
+            current < suggestion.nextDateFrom!
+              ? suggestion.nextDateFrom!
+              : current
+          );
+
+          setPreview(null);
+        }
+      } catch {
+        if (!cancelled) setPeriodSuggestion(null);
+      }
+    }
+
+    void applySuggestedPeriod();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClientId]);
 
   useEffect(() => {
     if (typeof selectedClientId !== 'number') {
@@ -846,6 +895,11 @@ export default function ReportsView() {
       const data = await getDocumentPreview(selectedClientId, dateFrom, dateTo, previewDate || undefined);
       setPreview(data);
       if (data?.documentDateIso && !previewDate) setPreviewDate(data.documentDateIso);
+
+      if (data?.numberInitializationRequired) {
+        setFirstDocumentNumber('');
+        setNumberInitOpen(true);
+      }
     } catch (previewError) {
       setError(previewError instanceof Error ? previewError.message : 'Не удалось построить предпросмотр');
     } finally {
@@ -868,12 +922,27 @@ export default function ReportsView() {
         dateFrom,
         dateTo,
         preview?.documentDateIso,
+        undefined,
+        firstDocumentNumber ? Number(firstDocumentNumber) : undefined,
       );
       if (result.ok && result.document) {
         setBillingNotice(
           `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован: `
             + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`,
         );
+        const nextDate = new Date(`${dateTo}T12:00:00`);
+        nextDate.setDate(nextDate.getDate() + 1);
+
+        const nextFrom = [
+          nextDate.getFullYear(),
+          String(nextDate.getMonth() + 1).padStart(2, '0'),
+          String(nextDate.getDate()).padStart(2, '0'),
+        ].join('-');
+
+        setDateFrom(nextFrom);
+        setDateTo(nextFrom);
+        setFirstDocumentNumber('');
+        setNumberInitOpen(false);
         setPreview(null);
         setClientSection('documents');
       } else {
@@ -1869,7 +1938,7 @@ export default function ReportsView() {
                   )}
 
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    <div><div className="text-xs text-slate-500">Счёт №</div><div className="text-lg font-semibold text-slate-950">{preview.number}</div></div>
+                    <div><div className="text-xs text-slate-500">Счёт №</div><div className="text-lg font-semibold text-slate-950">{preview.number || 'нужно задать'}</div></div>
                     <div><div className="text-xs text-slate-500">Дата</div><div className="text-lg font-semibold text-slate-950">{preview.documentDateText}</div></div>
                     <div><div className="text-xs text-slate-500">Клиент</div><div className="truncate text-sm font-medium text-slate-900">{preview.clientName}</div></div>
                     <div><div className="text-xs text-slate-500">Период</div><div className="text-sm font-medium text-slate-900">{preview.periodText}</div></div>
@@ -1887,7 +1956,14 @@ export default function ReportsView() {
                         ['invoice', 'Счёт', FileText],
                         ['act', 'Акт', ScrollText],
                       ] as const).map(([kind, label, Icon]) => {
-                        const url = billingPreviewUrl(Number(selectedClientId), dateFrom, dateTo, kind, preview.documentDateIso);
+                        const url = billingPreviewUrl(
+                          Number(selectedClientId),
+                          dateFrom,
+                          dateTo,
+                          kind,
+                          preview.documentDateIso,
+                          firstDocumentNumber ? Number(firstDocumentNumber) : undefined,
+                        );
                         return (
                           <button
                             key={kind}
@@ -3219,6 +3295,71 @@ export default function ReportsView() {
           )}
         </div>
       </Modal>
+
+      {numberInitOpen && preview && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-950">
+              Первый номер счёта за {preview.numberYear} год
+            </h3>
+
+            <p className="mt-2 text-sm leading-5 text-slate-600">
+              Введите номер этого счёта. Это потребуется только один раз.
+              Следующие счета этого года будут нумероваться автоматически.
+            </p>
+
+            <input
+              type="number"
+              min="1"
+              step="1"
+              autoFocus
+              value={firstDocumentNumber}
+              onChange={(event) =>
+                setFirstDocumentNumber(event.target.value.replace(/\D/g, ''))
+              }
+              className="mt-4 h-11 w-full rounded-xl border border-slate-300 px-3 text-base outline-none focus:border-sky-500"
+              placeholder="Например, 348"
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setNumberInitOpen(false);
+                  setFirstDocumentNumber('');
+                  setPreview(null);
+                }}
+                className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Отмена
+              </button>
+
+              <button
+                type="button"
+                disabled={!/^[1-9]\d*$/.test(firstDocumentNumber)}
+                onClick={() => {
+                  const value = Number(firstDocumentNumber);
+                  if (!Number.isSafeInteger(value) || value <= 0) return;
+
+                  setPreview((current) =>
+                    current
+                      ? {
+                          ...current,
+                          number: String(value),
+                          numberInitializationRequired: false,
+                        }
+                      : current,
+                  );
+                  setNumberInitOpen(false);
+                }}
+                className="h-10 rounded-xl bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Использовать номер
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

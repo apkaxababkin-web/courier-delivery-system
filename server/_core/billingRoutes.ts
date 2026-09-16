@@ -271,6 +271,10 @@ export function registerBillingRoutes(app: Express) {
       const dateFrom = String(req.query.dateFrom ?? "");
       const dateTo = String(req.query.dateTo ?? "");
       const documentDate = req.query.documentDate ? String(req.query.documentDate) : undefined;
+      const firstDocumentNumberRaw = req.query.firstDocumentNumber;
+      const firstDocumentNumber = firstDocumentNumberRaw == null || firstDocumentNumberRaw === ""
+        ? undefined
+        : Number(firstDocumentNumberRaw);
 
       if (!kind) return void res.status(400).json({ error: { message: "Неизвестный тип документа" } });
       if (!Number.isSafeInteger(clientId) || clientId <= 0) {
@@ -279,8 +283,21 @@ export function registerBillingRoutes(app: Express) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
         return void res.status(400).json({ error: { message: "Укажите период" } });
       }
+      if (
+        firstDocumentNumber !== undefined &&
+        (!Number.isSafeInteger(firstDocumentNumber) || firstDocumentNumber <= 0)
+      ) {
+        return void res.status(400).json({ error: { message: "Некорректный первый номер счёта" } });
+      }
 
-      const file = await renderPreviewFile(clientId, dateFrom, dateTo, kind, documentDate);
+      const file = await renderPreviewFile(
+        clientId,
+        dateFrom,
+        dateTo,
+        kind,
+        documentDate,
+        firstDocumentNumber,
+      );
       res.setHeader("Content-Type", file.contentType);
       res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
       res.setHeader("Cache-Control", "no-store");

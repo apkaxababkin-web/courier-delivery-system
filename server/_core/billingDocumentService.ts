@@ -189,6 +189,10 @@ export interface DocumentPreview {
   ready: boolean;
   blockers: string[];
   number: string;
+  /** Calendar year used for this document number. */
+  numberYear: number;
+  /** Manager must enter the first real number for this transition year. */
+  numberInitializationRequired: boolean;
   documentDateIso: string;
   documentDateText: string;
   clientName: string;
@@ -220,10 +224,140 @@ function rows(result: unknown): Record<string, unknown>[] {
   return Array.isArray(list) ? (list as Record<string, unknown>[]) : [];
 }
 
-export async function currentDocumentNumber(): Promise<string> {
+function documentYear(documentDateIso: string): number {
+  const year = Number(documentDateIso.slice(0, 4));
+  if (!Number.isSafeInteger(year) || year < 2000 || year > 9999) {
+    throw new BillingDocumentError("Некорректная дата документа", 400);
+  }
+  return year;
+}
+
+interface AnnualNumberPreview {
+  year: number;
+  number: string;
+  initializationRequired: boolean;
+}
+
+async function annualNumberPreview(
+  documentDateIso: string,
+  firstDocumentNumber?: number,
+): Promise<AnnualNumberPreview> {
+  const conn = await db.getDb();
+  if (!conn) throw new BillingDocumentError("База данных недоступна", 503);
+
   const settings = await loadDocumentSettings();
   const prefix = settings.documentNumberPrefix ?? "";
-  return `${prefix}${settings.nextDocumentNumber}`;
+  const year = documentYear(documentDateIso);
+
+  const result = rows(await conn.execute(sql`
+    SELECT "nextNumber", "initialized"
+      FROM "billingDocumentNumberSequences"
+     WHERE "year" = ${year}
+     LIMIT 1`));
+  const row = result[0];
+
+  // A year without a row is a normal new calendar year.
+  // Its first document starts from No. 1 automatically.
+  if (!row) {
+    return {
+      year,
+      number: `${prefix}1`,
+      initializationRequired: false,
+    };
+  }
+
+  const initialized = Boolean(row.initialized);
+  const nextNumber = Number(row.nextNumber);
+
+  if (!initialized) {
+    if (firstDocumentNumber == null) {
+      return { year, number: "", initializationRequired: true };
+    }
+    if (!Number.isSafeInteger(firstDocumentNumber) || firstDocumentNumber <= 0) {
+      throw new BillingDocumentError(
+        "Первый номер счёта должен быть положительным целым числом",
+        400,
+      );
+    }
+    return {
+      year,
+      number: `${prefix}${firstDocumentNumber}`,
+      initializationRequired: false,
+    };
+  }
+
+  if (!Number.isSafeInteger(nextNumber) || nextNumber <= 0) {
+    throw new BillingDocumentError(
+      `Некорректный следующий номер документов за ${year} год`,
+      500,
+    );
+  }
+
+  return {
+    year,
+    number: `${prefix}${nextNumber}`,
+    initializationRequired: false,
+  };
+}
+
+export interface SuggestedBillingPeriod {
+  lastPeriodFrom: string | null;
+  lastPeriodTo: string | null;
+  lastDocumentNumber: string | null;
+  nextDateFrom: string | null;
+}
+
+function nextIsoDate(dateIso: string): string {
+  const [year, month, day] = dateIso.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+export async function getSuggestedBillingPeriod(
+  clientId: number,
+): Promise<SuggestedBillingPeriod> {
+  const conn = await db.getDb();
+  if (!conn) throw new BillingDocumentError("База данных недоступна", 503);
+
+  const result = rows(await conn.execute(sql`
+    SELECT
+      "number",
+      "periodFrom",
+      "periodTo"
+    FROM "billingDocuments"
+    WHERE "clientId" = ${clientId}
+      AND "status" IN ('issued', 'paid')
+    ORDER BY "periodTo" DESC, "id" DESC
+    LIMIT 1`));
+
+  const row = result[0];
+
+  if (!row) {
+    return {
+      lastPeriodFrom: null,
+      lastPeriodTo: null,
+      lastDocumentNumber: null,
+      nextDateFrom: null,
+    };
+  }
+
+  const lastPeriodFrom = String(row.periodFrom).slice(0, 10);
+  const lastPeriodTo = String(row.periodTo).slice(0, 10);
+
+  return {
+    lastPeriodFrom,
+    lastPeriodTo,
+    lastDocumentNumber: String(row.number),
+    nextDateFrom: nextIsoDate(lastPeriodTo),
+  };
+}
+
+export async function currentDocumentNumber(
+  documentDateIso = new Date().toISOString().slice(0, 10),
+  firstDocumentNumber?: number,
+): Promise<string> {
+  return (await annualNumberPreview(documentDateIso, firstDocumentNumber)).number;
 }
 
 async function loadOverviewOrThrow(clientId: number, from: string, to: string): Promise<BillingOverview> {
@@ -282,8 +416,9 @@ export async function previewDocumentSet(
   const overview = await loadOverviewOrThrow(clientId, from, to);
   const settings = await loadDocumentSettings();
   const client = await loadClientRequisites(clientId);
-  const number = await currentDocumentNumber();
   const dateIso = documentDateIso || new Date().toISOString().slice(0, 10);
+  const annualNumber = await annualNumberPreview(dateIso);
+  const number = annualNumber.number;
 
   const billable = billableRows(overview);
   // A preview always shows the CURRENT settings: nothing is frozen yet.
@@ -350,6 +485,8 @@ export async function previewDocumentSet(
     ready: blockers.length === 0 && billable.length > 0,
     blockers: [...new Set(blockers)],
     number,
+    numberYear: annualNumber.year,
+    numberInitializationRequired: annualNumber.initializationRequired,
     documentDateIso: dateIso,
     documentDateText: formatDateRu(dateIso),
     clientName: client ? clientDocumentName(client) : "",
@@ -378,14 +515,26 @@ export async function renderPreviewFile(
   to: string,
   kind: PreviewKind,
   documentDateIso?: string,
+  firstDocumentNumber?: number,
 ): Promise<{ buffer: Buffer; fileName: string; contentType: string }> {
   const overview = await loadOverviewOrThrow(clientId, from, to);
   const billable = billableRows(overview);
   if (billable.length === 0) throw new BillingDocumentError("Нет проверенных заявок для документов", 400);
 
   const settings = await loadDocumentSettings();
-  const number = await currentDocumentNumber();
   const dateIso = documentDateIso || new Date().toISOString().slice(0, 10);
+  const number = kind === "registry"
+    ? ""
+    : await currentDocumentNumber(dateIso, firstDocumentNumber);
+
+  if (kind !== "registry" && !number) {
+    const year = documentYear(dateIso);
+    throw new BillingDocumentError(
+      `Для предпросмотра первого счёта ${year} года укажите начальный номер`,
+      409,
+    );
+  }
+
   const data = await buildData(clientId, from, to, dateIso, settings, billable, number, resolveDocumentImages({}, settings));
   const safeClientName = data.buyer.name
     .replace(/[\\/:*?"<>|]/g, "_")
@@ -414,7 +563,7 @@ export async function renderPreviewFile(
   };
 }
 
-/** Allocate the next document number atomically (row lock on the settings row). */
+/** Allocate the next document number atomically using the annual sequence row lock. */
 /**
  * Reserve the id the next issued document will get.
  *
@@ -438,18 +587,117 @@ async function reserveDocumentId(conn: { execute: (query: unknown) => Promise<un
   return id;
 }
 
-async function allocateNumber(tx: {
-  execute: (query: unknown) => Promise<unknown>;
-}): Promise<string> {
-  const updated = rows(await tx.execute(sql`
+async function allocateNumber(
+  tx: { execute: (query: unknown) => Promise<unknown> },
+  documentDateIso: string,
+  firstDocumentNumber?: number,
+): Promise<string> {
+  const year = documentYear(documentDateIso);
+
+  const settingsRows = rows(await tx.execute(sql`
+    SELECT "documentNumberPrefix"
+      FROM "billingSettings"
+     ORDER BY "id"
+     LIMIT 1`));
+  const settings = settingsRows[0];
+  if (!settings) {
+    throw new BillingDocumentError(
+      "Не удалось выделить номер документа: не найдены настройки документов",
+      500,
+    );
+  }
+  const prefix = settings.documentNumberPrefix == null
+    ? ""
+    : String(settings.documentNumberPrefix);
+
+  // Create a normal new-year sequence if this year has never been seen.
+  // ON CONFLICT makes concurrent first issues converge on the same row.
+  await tx.execute(sql`
+    INSERT INTO "billingDocumentNumberSequences"
+      ("year", "nextNumber", "initialized")
+    VALUES (${year}, 1, true)
+    ON CONFLICT ("year") DO NOTHING`);
+
+  const sequenceRows = rows(await tx.execute(sql`
+    SELECT "nextNumber", "initialized"
+      FROM "billingDocumentNumberSequences"
+     WHERE "year" = ${year}
+     FOR UPDATE`));
+  const sequence = sequenceRows[0];
+
+  if (!sequence) {
+    throw new BillingDocumentError(
+      `Не удалось получить нумерацию документов за ${year} год`,
+      500,
+    );
+  }
+
+  let allocated: number;
+
+  if (!Boolean(sequence.initialized)) {
+    if (
+      firstDocumentNumber == null ||
+      !Number.isSafeInteger(firstDocumentNumber) ||
+      firstDocumentNumber <= 0
+    ) {
+      throw new BillingDocumentError(
+        `Для первого счёта ${year} года укажите начальный номер`,
+        409,
+      );
+    }
+
+    allocated = firstDocumentNumber;
+
+    // Historical numbers are never reusable, even when the old document was
+    // cancelled/rolled back. Check explicitly so the manager gets a clear error
+    // instead of a database unique-index failure.
+    const formattedNumber = `${prefix}${allocated}`;
+    const duplicateRows = rows(await tx.execute(sql`
+      SELECT "id", "status"
+        FROM "billingDocuments"
+       WHERE EXTRACT(YEAR FROM "documentDate") = ${year}
+         AND "number" = ${formattedNumber}
+       LIMIT 1`));
+
+    if (duplicateRows.length > 0) {
+      throw new BillingDocumentError(
+        `Номер №${formattedNumber} уже использовался в ${year} году. Укажите следующий свободный номер.`,
+        409,
+      );
+    }
+
+    await tx.execute(sql`
+      UPDATE "billingDocumentNumberSequences"
+         SET "nextNumber" = ${allocated + 1},
+             "initialized" = true,
+             "updatedAt" = now()
+       WHERE "year" = ${year}`);
+  } else {
+    allocated = Number(sequence.nextNumber);
+
+    if (!Number.isSafeInteger(allocated) || allocated <= 0) {
+      throw new BillingDocumentError(
+        `Некорректный следующий номер документов за ${year} год`,
+        500,
+      );
+    }
+
+    await tx.execute(sql`
+      UPDATE "billingDocumentNumberSequences"
+         SET "nextNumber" = ${allocated + 1},
+             "updatedAt" = now()
+       WHERE "year" = ${year}`);
+  }
+
+  // Keep the old setting informationally synchronized for the existing
+  // settings screen. It is no longer the source of truth.
+  await tx.execute(sql`
     UPDATE "billingSettings"
-       SET "nextDocumentNumber" = "nextDocumentNumber" + 1, "updatedAt" = now()
-     WHERE "id" = (SELECT "id" FROM "billingSettings" ORDER BY "id" LIMIT 1)
-    RETURNING "documentNumberPrefix", ("nextDocumentNumber" - 1) AS "allocated"`));
-  const row = updated[0];
-  if (!row) throw new BillingDocumentError("Не удалось выделить номер документа: не найдены настройки документов", 500);
-  const prefix = row.documentNumberPrefix == null ? "" : String(row.documentNumberPrefix);
-  return `${prefix}${Number(row.allocated)}`;
+       SET "nextDocumentNumber" = ${allocated + 1},
+           "updatedAt" = now()
+     WHERE "id" = (SELECT "id" FROM "billingSettings" ORDER BY "id" LIMIT 1)`);
+
+  return `${prefix}${allocated}`;
 }
 
 export interface IssuedDocument {
@@ -480,6 +728,8 @@ export interface IssueDocumentSetOptions {
    * records "replaced_by" on the old document.
    */
   replacesDocumentId?: number | null;
+  /** Used once for an explicitly uninitialized transition year. */
+  firstDocumentNumber?: number;
 }
 
 /**
@@ -499,6 +749,7 @@ export async function issueDocumentSet(
     : (documentDateIsoOrOptions ?? {});
   const documentDateIso = options.documentDateIso;
   const replacesDocumentId = options.replacesDocumentId ?? null;
+  const firstDocumentNumber = options.firstDocumentNumber;
   const preview = await previewDocumentSet(clientId, from, to, documentDateIso);
   if (!preview.ready) {
     throw new BillingDocumentError(preview.blockers.join("; ") || "Комплект документов не готов", 400);
@@ -516,51 +767,77 @@ export async function issueDocumentSet(
   if (!conn) throw new Error("Database not available");
 
   const dateIso = preview.documentDateIso;
-  const number = preview.number;
 
-  // Render before writing anything, so a rendering failure leaves no documents.
-  // The document is rendered from the CURRENT settings, whose image bytes are then
-  // frozen next to the document (see below).
-  const issuedImages = resolveDocumentImages({}, settings);
-  const data = await buildData(clientId, from, to, dateIso, settings, billable, number, issuedImages);
-  const [invoice, act, registry] = await Promise.all([
-    renderInvoicePdf(data, documentOverlays("invoice", issuedImages)),
-    renderActPdf(data, documentOverlays("act", issuedImages)),
-    renderRegistryXlsx(data),
-  ]);
-
-  const totals = documentSetTotals(data);
-  if (totals.invoiceTotal !== totals.actTotal || totals.invoiceTotal !== totals.registryTotal || totals.invoiceTotal !== totals.linesTotal) {
-    throw new BillingDocumentError("Итоговые суммы счёта, акта и реестра не совпадают — документы не созданы", 500);
+  if (preview.numberInitializationRequired && firstDocumentNumber == null) {
+    throw new BillingDocumentError(
+      `Для первого счёта ${preview.numberYear} года укажите начальный номер`,
+      409,
+    );
   }
 
   // ─── Atomic issue ─────────────────────────────────────────────────────────
   //
-  // The transaction is the durability point and it covers EVERYTHING that can fail:
-  // id reservation, number allocation, rendering source bytes, the three files, the
-  // immutable image copies and the row plus its request links. Either the document
-  // exists with a number, its files and its links, or nothing was written at all —
-  // there is no state in which a partial set holds a number or blocks its requests.
-  //
-  // The transaction deliberately holds the `billingSettings` row lock (taken by
-  // allocateNumber) for its whole duration, so concurrent issues are serialised on the
-  // number and two sets can never share one.
-  let frozen: { signatureFile: string | null; stampFile: string | null } = { signatureFile: null, stampFile: null };
+  // allocateNumber locks the sequence row for this calendar year. We keep that
+  // lock until the document, files and request links are complete. Therefore
+  // concurrent issues receive different numbers, and each rendered file contains
+  // the exact number stored in its billingDocuments row.
+  let frozen: { signatureFile: string | null; stampFile: string | null } = {
+    signatureFile: null,
+    stampFile: null,
+  };
   let invoiceFile = "";
   let actFile = "";
   let registryFile = "";
+  let issuedData: DocumentSetData | null = null;
+  let issuedTotals: ReturnType<typeof documentSetTotals> | null = null;
 
   const created = await conn.transaction(async (tx: {
     execute: (query: unknown) => Promise<unknown>;
     insert: (table: unknown) => { values: (values: unknown) => { returning: () => Promise<unknown[]> } };
   }) => {
     const documentId = await reserveDocumentId(tx);
-    const expectedNumber = await allocateNumber(tx);
+    const allocatedNumber = await allocateNumber(tx, dateIso, firstDocumentNumber);
+
+    // Rendering happens only after the definitive annual number is allocated.
+    // Two concurrent previews may both show No. 1; committed documents will still
+    // correctly be rendered and stored as No. 1, No. 2, No. 3, and so on.
+    const issuedImages = resolveDocumentImages({}, settings);
+    const data = await buildData(
+      clientId,
+      from,
+      to,
+      dateIso,
+      settings,
+      billable,
+      allocatedNumber,
+      issuedImages,
+    );
+
+    const [invoice, act, registry] = await Promise.all([
+      renderInvoicePdf(data, documentOverlays("invoice", issuedImages)),
+      renderActPdf(data, documentOverlays("act", issuedImages)),
+      renderRegistryXlsx(data),
+    ]);
+
+    const totals = documentSetTotals(data);
+    if (
+      totals.invoiceTotal !== totals.actTotal ||
+      totals.invoiceTotal !== totals.registryTotal ||
+      totals.invoiceTotal !== totals.linesTotal
+    ) {
+      throw new BillingDocumentError(
+        "Итоговые суммы счёта, акта и реестра не совпадают — документы не созданы",
+        500,
+      );
+    }
+
+    issuedData = data;
+    issuedTotals = totals;
 
     const dir = path.join(BILLING_DOCUMENTS_DIR, String(documentId));
-    const invoiceName = `invoice-${expectedNumber}.pdf`;
-    const actName = `act-${expectedNumber}.pdf`;
-    const registryName = `registry-${expectedNumber}.xlsx`;
+    const invoiceName = `invoice-${allocatedNumber}.pdf`;
+    const actName = `act-${allocatedNumber}.pdf`;
+    const registryName = `registry-${allocatedNumber}.xlsx`;
 
     try {
       await fs.mkdir(dir, { recursive: true });
@@ -568,8 +845,7 @@ export async function issueDocumentSet(
       await fs.writeFile(path.join(dir, actName), act);
       await fs.writeFile(path.join(dir, registryName), registry);
 
-      // Freeze the very bytes that were rendered: the PDF and its immutable copy can
-      // never disagree, and a later settings change cannot touch either of them.
+      // Freeze the exact image assets used by the rendered document.
       frozen = snapshotDocumentAssets(documentId, issuedImages);
       invoiceFile = path.relative(process.cwd(), path.join(dir, invoiceName));
       actFile = path.relative(process.cwd(), path.join(dir, actName));
@@ -579,7 +855,7 @@ export async function issueDocumentSet(
         .insert(billingDocuments)
         .values({
           id: documentId,
-          number: expectedNumber,
+          number: allocatedNumber,
           clientId,
           documentDate: dateIso,
           documentDateText: formatDateRu(dateIso),
@@ -617,8 +893,6 @@ export async function issueDocumentSet(
           replacesDocumentId,
           generatedAt: new Date(),
           updatedAt: new Date(),
-          // Written together with the row: a document is never visible in the database
-          // without the files and the frozen images that belong to it.
           invoiceFile,
           actFile,
           registryFile,
@@ -630,7 +904,10 @@ export async function issueDocumentSet(
 
       const document = insertedRows[0] as Record<string, unknown>;
       if (Number(document.id) !== documentId) {
-        throw new BillingDocumentError("Идентификатор документа изменился во время выпуска — документы не созданы", 500);
+        throw new BillingDocumentError(
+          "Идентификатор документа изменился во время выпуска — документы не созданы",
+          500,
+        );
       }
 
       for (const row of billable) {
@@ -644,12 +921,22 @@ export async function issueDocumentSet(
 
       return document;
     } catch (failure) {
-      // The transaction rolls back, so no row, no link and no consumed number stay
-      // behind; the files written above are removed to leave no orphan on disk.
+      // Database changes, including the allocated annual number, roll back together.
+      // Remove any files already written so no orphaned set remains on disk.
       await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
       throw failure;
     }
   });
+
+  if (!issuedData || !issuedTotals) {
+    throw new BillingDocumentError(
+      "Комплект документов не был сформирован",
+      500,
+    );
+  }
+
+  const data: DocumentSetData = issuedData;
+  const totals: ReturnType<typeof documentSetTotals> = issuedTotals;
 
   const documentId = Number((created as Record<string, unknown>).id);
   const expectedNumber = String((created as Record<string, unknown>).number);

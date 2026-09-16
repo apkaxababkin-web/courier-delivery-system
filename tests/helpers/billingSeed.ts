@@ -112,9 +112,18 @@ async function resetTables(sql: postgres.Sql): Promise<void> {
   fs.rmSync(TEST_UPLOADS_DIR, { recursive: true, force: true });
   await sql.unsafe(`
     TRUNCATE "billingDocumentFiles", "billingDocumentEvents", "billingDocumentRequests",
-             "billingDocuments", "requestActivity", "requests", "clientTariffs", "clientPoints",
+             "billingDocuments", "billingDocumentNumberSequences",
+             "requestActivity", "requests", "clientTariffs", "clientPoints",
              "clientRegularClients", "clients", "billingSettings", "managers"
       RESTART IDENTITY CASCADE`);
+
+  // Ordinary billing tests start with an already initialized 2026 sequence.
+  // Dedicated annual-numbering tests explicitly switch this to initialized=false.
+  await sql`
+    INSERT INTO "billingDocumentNumberSequences"
+      ("year", "nextNumber", "initialized")
+    VALUES
+      (2026, 1, true)`;
 }
 
 /**

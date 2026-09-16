@@ -845,6 +845,20 @@ export type InsertBillingSettings = typeof billingSettings.$inferInsert;
 // ─── Billing Documents Table ─────────────────────────────────────────────────
 
 /**
+ * Independent annual sequence for invoice/act document numbers.
+ *
+ * 2026 is the transition year and is initialized manually once in production.
+ * Future years start automatically from No. 1.
+ */
+export const billingDocumentNumberSequences = pgTable("billingDocumentNumberSequences", {
+  year: integer("year").primaryKey(),
+  nextNumber: integer("nextNumber").notNull().default(1),
+  initialized: boolean("initialized").notNull().default(false),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+});
+
+/**
  * One row represents one immutable billing set:
  * invoice + act + completed works registry.
  */

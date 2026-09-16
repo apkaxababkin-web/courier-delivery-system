@@ -1512,12 +1512,21 @@ export const appRouter = router({
      * Issue the document set for the period. Everything is validated server-side,
      * so a blocked period returns the concrete reasons instead of a broken file.
      */
+    suggestedPeriod: managerProcedure
+      .input(z.object({ clientId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const { getSuggestedBillingPeriod } = await import("./_core/billingDocumentService");
+        return await getSuggestedBillingPeriod(input.clientId);
+      }),
+
     issueSet: managerProcedure
       .input(z.object({
         clientId: z.number().int().positive(),
         dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         documentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        /** Used once when the selected document year needs manual initialization. */
+        firstDocumentNumber: z.number().int().positive().optional(),
         /** Annulled document this set replaces (requests must be released first). */
         replacesDocumentId: z.number().int().positive().optional(),
       }))
@@ -1533,6 +1542,7 @@ export const appRouter = router({
             {
               documentDateIso: input.documentDate,
               replacesDocumentId: input.replacesDocumentId ?? null,
+              firstDocumentNumber: input.firstDocumentNumber,
             },
           );
 

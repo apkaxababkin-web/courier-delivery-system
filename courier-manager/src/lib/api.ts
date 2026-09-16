@@ -1040,6 +1040,8 @@ export interface DocumentPreview {
   blockers: string[];
   warnings: string[];
   number: string;
+  numberYear: number;
+  numberInitializationRequired: boolean;
   documentDateIso: string;
   documentDateText: string;
   clientName: string;
@@ -1207,16 +1209,39 @@ export async function getDocumentPreview(
 }
 
 /** Issue the document set (invoice + act + registry) for the period. */
+export interface SuggestedBillingPeriod {
+  lastPeriodFrom: string | null;
+  lastPeriodTo: string | null;
+  lastDocumentNumber: string | null;
+  nextDateFrom: string | null;
+}
+
+export async function getSuggestedBillingPeriod(
+  clientId: number,
+): Promise<SuggestedBillingPeriod> {
+  return await trpcGet(
+    'billing.suggestedPeriod',
+    { clientId },
+    {
+      lastPeriodFrom: null,
+      lastPeriodTo: null,
+      lastDocumentNumber: null,
+      nextDateFrom: null,
+    },
+  );
+}
+
 export async function issueDocumentSet(
   clientId: number,
   dateFrom: string,
   dateTo: string,
   documentDate?: string,
   replacesDocumentId?: number,
+  firstDocumentNumber?: number,
 ): Promise<IssueDocumentResult> {
   return await trpcPost(
     'billing.issueSet',
-    { clientId, dateFrom, dateTo, documentDate, replacesDocumentId },
+    { clientId, dateFrom, dateTo, documentDate, replacesDocumentId, firstDocumentNumber },
     { ok: false, reason: 'Сервер не ответил' },
   );
 }
@@ -1418,9 +1443,13 @@ export function billingPreviewUrl(
   dateTo: string,
   kind: 'invoice' | 'act' | 'registry',
   documentDate?: string,
+  firstDocumentNumber?: number,
 ): string {
   const params = new URLSearchParams({ clientId: String(clientId), dateFrom, dateTo, kind });
   if (documentDate) params.set('documentDate', documentDate);
+  if (firstDocumentNumber !== undefined) {
+    params.set('firstDocumentNumber', String(firstDocumentNumber));
+  }
   return `/api/manager/billing/documents/preview?${params.toString()}`;
 }
 
