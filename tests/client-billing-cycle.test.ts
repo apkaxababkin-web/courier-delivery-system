@@ -375,7 +375,7 @@ describe("предпросмотр", () => {
     expect(preview.amountInWords).toBe(amountInWordsRu(1800));
     expect(preview.vatRateText).toBe("Без НДС");
     expect(preview.lines).toHaveLength(1);
-    expect(preview.lines[0].name).toBe("Курьерские услуги за август 2026 г.");
+    expect(preview.lines[0].name).toBe("Курьерские услуги за период 16.08.2026–31.08.2026");
 
     const documents = await current!.db`SELECT count(*)::int AS n FROM "billingDocuments"`;
     expect(documents[0].n).toBe(0);
@@ -408,7 +408,7 @@ describe("предпросмотр", () => {
     expect(invoice.buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(act.buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(registry.buffer.subarray(0, 2).toString("latin1")).toBe("PK");
-    expect(invoice.fileName).toContain("Счет_1_2026-09-01");
+    expect(invoice.fileName).toBe("Счет_1_ООО «Клиент Тест»_16.08.2026-31.08.2026.pdf");
     expect(registry.fileName).toBe("Сверка_ООО «Клиент Тест»_16.08.2026-31.08.2026.xlsx");
 
     const reconciliationWorkbook = new ExcelJS.Workbook();
@@ -588,7 +588,7 @@ describe("выставление комплекта документов", () =>
     expect(row.vatRateSnapshot).toBe("0.00");
     expect(row.vatAmountSnapshot).toBeNull();
     expect(row.vatTextSnapshot).toBe("Без НДС");
-    expect(row.serviceNameSnapshot).toBe("Курьерские услуги за август 2026 г.");
+    expect(row.serviceNameSnapshot).toBe("Курьерские услуги за период 16.08.2026–31.08.2026");
     expect(row.periodTextSnapshot).toBe("16.08.2026–31.08.2026");
     expect(row.clientNameSnapshot).toBe("ООО «Клиент Тест»");
     expect(row.directorNameSnapshot).toBe(COMPLETE_SETTINGS.directorName);

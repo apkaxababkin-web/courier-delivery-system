@@ -125,9 +125,9 @@ export async function renderInvoicePdf(data:DocumentSetData,images?:DocumentOver
   const bottom=drawTable(d,data,264.1); drawTotals(d,data,bottom,false);
   drawSummary(d,data,351.0); line(d,L,379.7,R,379.7,1.15);
   txt(d,"Директор",118.4,421.8,95,{bold:true,size:8.0});
-  line(d,219.9,433.5,476.8,433.5,.5); txt(d,data.seller.directorName||data.seller.name,405,421.8,72,{size:8.0,align:"right"});
+  line(d,219.9,433.5,476.8,433.5,.5); txt(d,data.seller.directorName||data.seller.name,315,421.8,162,{size:7.5,align:"right"});
   txt(d,"Главный бухгалтер",118.4,445.0,100,{bold:true,size:8.0});
-  line(d,219.9,456.8,476.8,456.8,.5); txt(d,data.seller.accountantName||data.seller.directorName||"",405,445.0,72,{size:8.0,align:"right"});
+  line(d,219.9,456.8,476.8,456.8,.5); txt(d,data.seller.accountantName||data.seller.directorName||"",315,445.0,162,{size:7.5,align:"right"});
   overlay(d,images); return collect(d);
 }
 
@@ -141,7 +141,7 @@ export async function renderActPdf(data:DocumentSetData,images?:DocumentOverlays
   txt(d,"Вышеперечисленные услуги выполнены полностью и в срок. Заказчик претензий по объему, качеству, срокам оказания услуг не имеет.",L,304.3,W,{size:7.7,wrap:true});
   line(d,L,336.7,R,336.7,1.15);
   txt(d,"Исполнитель",30.6,389.5,75,{size:8.0});
-  line(d,90.3,408.4,297.0,408.4,.5); txt(d,data.seller.directorName||data.seller.name,220,389.5,77,{size:8.0,align:"right"});
+  line(d,90.3,408.4,297.0,408.4,.5); txt(d,data.seller.directorName||data.seller.name,135,389.5,162,{size:7.5,align:"right"});
   txt(d,"Заказчик",315,389.5,55,{size:8.0});
   line(d,359.1,408.4,564.6,408.4,.5); txt(d,data.buyer.name,410,389.5,154,{size:8.0,align:"right"});
   txt(d,"подпись",150,411.0,80,{size:SMALL,align:"center"}); txt(d,"подпись",420,411.0,80,{size:SMALL,align:"center"});

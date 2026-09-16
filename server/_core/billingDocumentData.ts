@@ -11,7 +11,6 @@ import {
   formatDateRu,
   formatMoney,
   periodText,
-  serviceNameForPeriod,
   sumMoney,
   vatBreakdown,
   type VatBreakdown,
@@ -184,7 +183,7 @@ export function buildDocumentSetData(input: BuildDocumentSetInput): DocumentSetD
 
   const totalAmount = sumMoney(registry.map((row) => row.amount));
   const totalPlaces = registry.reduce((sum, row) => sum + Number(row.placesCount ?? 0), 0);
-  const serviceName = serviceNameForPeriod(input.periodTo);
+  const serviceName = `Курьерские услуги за период ${formatDateRu(input.periodFrom)}–${formatDateRu(input.periodTo)}`;
   const vat = vatBreakdown(totalAmount, settings.vatMode, settings.vatRate);
 
   const lines: DocumentLine[] = registry.length === 0

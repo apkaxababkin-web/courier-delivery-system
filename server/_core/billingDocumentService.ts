@@ -387,18 +387,26 @@ export async function renderPreviewFile(
   const number = await currentDocumentNumber();
   const dateIso = documentDateIso || new Date().toISOString().slice(0, 10);
   const data = await buildData(clientId, from, to, dateIso, settings, billable, number, resolveDocumentImages({}, settings));
-  const suffix = `${number}_${dateIso}`;
-
-  if (kind === "invoice") {
-    return { buffer: await renderInvoicePdf(data, documentOverlays("invoice", resolveDocumentImages({}, settings))), fileName: `Счет_${suffix}.pdf`, contentType: "application/pdf" };
-  }
-  if (kind === "act") {
-    return { buffer: await renderActPdf(data, documentOverlays("act", resolveDocumentImages({}, settings))), fileName: `Акт_${suffix}.pdf`, contentType: "application/pdf" };
-  }
   const safeClientName = data.buyer.name
     .replace(/[\\/:*?"<>|]/g, "_")
     .trim() || "Клиент";
-  const reconciliationPeriod = `${formatDateRu(from)}-${formatDateRu(to)}`;
+  const filePeriod = `${formatDateRu(from)}-${formatDateRu(to)}`;
+
+  if (kind === "invoice") {
+    return {
+      buffer: await renderInvoicePdf(data, documentOverlays("invoice", resolveDocumentImages({}, settings))),
+      fileName: `Счет_${number}_${safeClientName}_${filePeriod}.pdf`,
+      contentType: "application/pdf",
+    };
+  }
+  if (kind === "act") {
+    return {
+      buffer: await renderActPdf(data, documentOverlays("act", resolveDocumentImages({}, settings))),
+      fileName: `Акт_${number}_${safeClientName}_${filePeriod}.pdf`,
+      contentType: "application/pdf",
+    };
+  }
+  const reconciliationPeriod = filePeriod;
   return {
     buffer: await renderRegistryXlsx(data, { reconciliation: true }),
     fileName: `Сверка_${safeClientName}_${reconciliationPeriod}.xlsx`,

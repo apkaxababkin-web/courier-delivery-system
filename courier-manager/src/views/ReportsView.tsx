@@ -1894,8 +1894,8 @@ export default function ReportsView() {
                             type="button"
                             disabled={downloadingFile === url}
                             onClick={() => void openProtectedFile(url, {
-                              mode: 'open',
-                              fallbackName: `${label}_${preview.number}.pdf`,
+                              mode: 'download',
+                              fallbackName: `${label}_${preview.number}_${preview.clientName}_${formatDate(preview.periodFrom)}-${formatDate(preview.periodTo)}.pdf`,
                             })}
                             className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-50"
                           >
@@ -2636,8 +2636,8 @@ export default function ReportsView() {
                                         type="button"
                                         disabled={downloadingFile === url}
                                         onClick={() => void openProtectedFile(url, {
-                                          mode: 'open',
-                                          fallbackName: `${label}_${document.number}.pdf`,
+                                          mode: 'download',
+                                          fallbackName: `${label}_${document.number}_${document.clientName}_${formatDate(document.periodFrom)}-${formatDate(document.periodTo)}.pdf`,
                                         })}
                                         className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
                                       >
@@ -2814,8 +2814,8 @@ export default function ReportsView() {
                                               type="button"
                                               disabled={downloadingFile === url}
                                               onClick={() => void openProtectedFile(url, {
-                                                mode: 'open',
-                                                fallbackName: `${label}_${document.number}.pdf`,
+                                                mode: 'download',
+                                                fallbackName: `${label}_${document.number}_${document.clientName}_${formatDate(document.periodFrom)}-${formatDate(document.periodTo)}.pdf`,
                                               })}
                                               className="text-xs font-semibold text-slate-600 underline decoration-dotted hover:text-slate-900 disabled:opacity-50"
                                             >

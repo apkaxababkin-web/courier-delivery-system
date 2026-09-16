@@ -14,6 +14,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import * as db from "../db";
 import { broadcastLive } from "./liveEvents";
+import { formatDateRu } from "../../shared/billing-format";
 import {
   attachDocumentFile,
   billingDocumentsDirectory,
@@ -315,7 +316,13 @@ export function registerBillingRoutes(app: Express) {
       const contentType = kind === "registry"
         ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         : "application/pdf";
-      const baseName = `Документ_${document.number}_${kind}`;
+      const safeClientName = safeFileName(document.clientName || "Клиент");
+      const filePeriod = `${formatDateRu(document.periodFrom)}-${formatDateRu(document.periodTo)}`;
+      const baseName = kind === "invoice"
+        ? `Счет_${document.number}_${safeClientName}_${filePeriod}`
+        : kind === "act"
+          ? `Акт_${document.number}_${safeClientName}_${filePeriod}`
+          : `Реестр_${document.number}_${safeClientName}_${filePeriod}`;
       const extension = kind === "registry" ? ".xlsx" : ".pdf";
 
       res.setHeader("Content-Type", contentType);
