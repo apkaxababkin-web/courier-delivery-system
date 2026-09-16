@@ -29,6 +29,7 @@ import {
   documentHistory,
   getDocument,
   releaseDocumentRequests,
+  rollbackDocument,
   issueDocumentSet,
   listDocuments,
   previewDocumentSet,
@@ -782,6 +783,272 @@ describe("перевыставление после аннулирования",
   });
 });
 
+describe("откат счёта", () => {
+  beforeEach(async () => {
+    current = await seed({
+      requests: [
+        { key: "a", requestType: "delivery", status: "completed", placesCount: 3, deliveryFee: 1100, checked: true, date: "2026-08-17" },
+        { key: "b", requestType: "movement", status: "completed", placesCount: 1, deliveryFee: 700, checked: true, date: "2026-08-18" },
+      ],
+    });
+  });
+
+  it("откатывает выставленный документ и возвращает все заявки в сверку", async () => {
+    const issued = await issueDocumentSet(
+      current!.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current!.managerId,
+      "2026-09-01",
+    );
+
+    const result = await rollbackDocument(
+      issued.id,
+      current!.managerId,
+      "Исправляем состав счёта",
+    );
+
+    expect(result.documentId).toBe(issued.id);
+    expect(result.releasedRequestIds.sort((a, b) => a - b)).toEqual(
+      [current!.byKey.a.id, current!.byKey.b.id].sort((a, b) => a - b),
+    );
+
+    const document = await getDocument(issued.id);
+    expect(document?.status).toBe("cancelled");
+    expect(document?.voidReason).toBe("Исправляем состав счёта");
+    expect(document?.voidedAt).not.toBeNull();
+    expect(document?.activeRequestsCount).toBe(0);
+
+    const persistedDocument = await current!.db`
+      SELECT "voidedByManagerId"
+        FROM "billingDocuments"
+       WHERE "id" = ${issued.id}
+    `;
+    expect(Number(persistedDocument[0].voidedByManagerId)).toBe(current!.managerId);
+    expect(document?.requestsReleased).toBe(true);
+
+    const composition = await current!.db`
+      SELECT "requestId", "amount", "active", "releasedAt",
+             "releasedByManagerId", "releaseNote"
+        FROM "billingDocumentRequests"
+       WHERE "billingDocumentId" = ${issued.id}
+       ORDER BY "requestId"
+    `;
+
+    expect(composition).toHaveLength(2);
+    expect(composition.every((row) => row.active === false)).toBe(true);
+    expect(composition.every((row) => row.releasedAt !== null)).toBe(true);
+    expect(composition.every((row) => Number(row.releasedByManagerId) === current!.managerId)).toBe(true);
+    expect(composition.every((row) => row.releaseNote === "Исправляем состав счёта")).toBe(true);
+
+    const overview = await buildClientBillingOverview(
+      current!.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+    );
+    expect(overview.counts.billed).toBe(0);
+
+    const preview = await previewDocumentSet(
+      current!.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      "2026-09-02",
+    );
+    expect(preview.ready).toBe(true);
+    expect(preview.blockedRequestIds).toEqual([]);
+  });
+
+  it("откатывает оплаченный документ и полностью снимает отметку оплаты", async () => {
+    const issued = await issueDocumentSet(
+      current!.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current!.managerId,
+      "2026-09-01",
+    );
+
+    await setDocumentPaid(
+      issued.id,
+      current!.managerId,
+      true,
+      "Платёжное поручение №12",
+    );
+
+    const paid = await getDocument(issued.id);
+    expect(paid?.status).toBe("paid");
+    expect(paid?.paidAt).not.toBeNull();
+    expect(paid?.paidByManagerId).toBe(current!.managerId);
+    expect(paid?.paymentComment).toBe("Платёжное поручение №12");
+
+    await rollbackDocument(
+      issued.id,
+      current!.managerId,
+      "Оплата отмечена ошибочно, исправляем счёт",
+    );
+
+    const rolledBack = await getDocument(issued.id);
+    expect(rolledBack?.status).toBe("cancelled");
+    expect(rolledBack?.paidAt).toBeNull();
+    expect(rolledBack?.paidByManagerId).toBeNull();
+    expect(rolledBack?.paymentComment).toBeNull();
+    expect(rolledBack?.activeRequestsCount).toBe(0);
+  });
+
+  it("пишет единое атомарное событие rolled_back с исходным статусом и составом", async () => {
+    const issued = await issueDocumentSet(
+      current!.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current!.managerId,
+      "2026-09-01",
+    );
+    await setDocumentPaid(issued.id, current!.managerId, true, "Оплачено");
+
+    await rollbackDocument(
+      issued.id,
+      current!.managerId,
+      "Возвращаем на сверку",
+    );
+
+    const history = await documentHistory(issued.id);
+    expect(history.map((entry) => entry.kind)).toEqual([
+      "issued",
+      "payment_set",
+      "rolled_back",
+    ]);
+
+    const event = history.find((entry) => entry.kind === "rolled_back")!;
+    expect(event.managerId).toBe(current!.managerId);
+    expect(event.managerName).toBe("Тестовый менеджер");
+    expect(event.note).toBe("Возвращаем на сверку");
+
+    const details = event.details as {
+      number: string;
+      previousStatus: string;
+      totalAmount: number;
+      requestsCount: number;
+      releasedCount: number;
+      releasedRequestIds: number[];
+    };
+
+    expect(details.number).toBe(issued.number);
+    expect(details.previousStatus).toBe("paid");
+    expect(details.totalAmount).toBe(1800);
+    expect(details.requestsCount).toBe(2);
+    expect(details.releasedCount).toBe(2);
+    expect(details.releasedRequestIds.sort((a, b) => a - b)).toEqual(
+      [current!.byKey.a.id, current!.byKey.b.id].sort((a, b) => a - b),
+    );
+  });
+
+  it("не позволяет откатить один документ второй раз и не портит историю", async () => {
+    const issued = await issueDocumentSet(
+      current!.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current!.managerId,
+      "2026-09-01",
+    );
+
+    await rollbackDocument(issued.id, current!.managerId, "Первый откат");
+
+    await expect(
+      rollbackDocument(issued.id, current!.managerId, "Повторный откат"),
+    ).rejects.toThrow("уже откатан");
+
+    const links = await current!.db`
+      SELECT "active", "releaseNote"
+        FROM "billingDocumentRequests"
+       WHERE "billingDocumentId" = ${issued.id}
+    `;
+    expect(links).toHaveLength(2);
+    expect(links.every((row) => row.active === false)).toBe(true);
+    expect(links.every((row) => row.releaseNote === "Первый откат")).toBe(true);
+
+    const history = await documentHistory(issued.id);
+    expect(history.filter((entry) => entry.kind === "rolled_back")).toHaveLength(1);
+  });
+
+  it("после отката выставляет новый счёт обычным способом и не переиспользует старый номер", async () => {
+    current = await seed({
+      requests: [
+        {
+          key: "a",
+          requestType: "delivery",
+          status: "completed",
+          placesCount: 1,
+          deliveryFee: 1100,
+          checked: true,
+          date: "2026-08-17",
+        },
+      ],
+    });
+
+    const original = await issueDocumentSet(
+      current.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current.managerId,
+      "2026-09-01",
+    );
+    expect(original.number).toBe("1");
+
+    await rollbackDocument(
+      original.id,
+      current.managerId,
+      "Исправляем счёт перед повторным выставлением",
+    );
+
+    const replacement = await issueDocumentSet(
+      current.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current.managerId,
+      "2026-09-02",
+    );
+
+    expect(replacement.number).toBe("2");
+    expect(replacement.id).not.toBe(original.id);
+    expect(replacement.replacesDocumentId).toBeNull();
+
+    const oldDocument = await getDocument(original.id);
+    expect(oldDocument?.status).toBe("cancelled");
+
+    const newDocument = await getDocument(replacement.id);
+    expect(newDocument?.status).toBe("issued");
+
+    const oldHistory = await documentHistory(original.id);
+    expect(oldHistory.map((entry) => entry.kind)).toEqual([
+      "issued",
+      "rolled_back",
+    ]);
+
+    const newHistory = await documentHistory(replacement.id);
+    expect(newHistory.map((entry) => entry.kind)).toEqual(["issued"]);
+  });
+
+  it("не принимает пустую причину и ничего не изменяет", async () => {
+    const issued = await issueDocumentSet(
+      current!.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current!.managerId,
+      "2026-09-01",
+    );
+
+    await expect(
+      rollbackDocument(issued.id, current!.managerId, "   "),
+    ).rejects.toThrow("Укажите причину отката");
+
+    const document = await getDocument(issued.id);
+    expect(document?.status).toBe("issued");
+    expect(document?.activeRequestsCount).toBe(2);
+
+    const history = await documentHistory(issued.id);
+    expect(history.map((entry) => entry.kind)).toEqual(["issued"]);
+  });
+});
+
 describe("реквизиты клиента: ОГРН и почтовый адрес", () => {
   it("попадают в snapshot документа и не обязательны для выставления", async () => {
     current = await seed({
@@ -1137,6 +1404,53 @@ describe("миграции", () => {
        WHERE table_name = 'clients' AND column_name IN ('ogrn','postalAddress')`;
     expect(columns[0].n).toBe(2);
   });
+
+  it("0018 разрешает событие rolled_back и применяется повторно", async () => {
+    current = await seed({
+      requests: [
+        {
+          key: "a",
+          requestType: "delivery",
+          status: "completed",
+          placesCount: 1,
+          deliveryFee: 1100,
+          checked: true,
+          date: "2026-08-17",
+        },
+      ],
+    });
+
+    const { readMigration } = await import("./helpers/testDb");
+    const migration = readMigration("0018_billing_rollback_event.sql");
+
+    // Миграция уже применена при создании test DB.
+    // Повторные применения тоже должны быть безопасны.
+    await current.db.unsafe(migration);
+    await current.db.unsafe(migration);
+
+    const document = await issueDocumentSet(
+      current.clientId,
+      PERIOD_FROM,
+      PERIOD_TO,
+      current.managerId,
+      "2026-09-01",
+    );
+
+    await rollbackDocument(
+      document.id,
+      current.managerId,
+      "Проверка миграции 0018",
+    );
+
+    const history = await documentHistory(document.id);
+    const rollbackEvents = history.filter(
+      (entry) => entry.kind === "rolled_back",
+    );
+
+    expect(rollbackEvents).toHaveLength(1);
+    expect(rollbackEvents[0].note).toBe("Проверка миграции 0018");
+  });
+
 });
 
 describe("изоляция тестовой базы", () => {

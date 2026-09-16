@@ -111,7 +111,8 @@ export type BillingDocumentEventKind =
   | "requests_released" // its requests were returned for re-billing
   | "replaced_by"       // annulled set: another set took over its requests
   | "payment_set"       // marked as paid
-  | "payment_cleared";  // payment mark removed
+  | "payment_cleared"   // payment mark removed
+  | "rolled_back";      // set rolled back and its requests returned to review
 
 /** Append one lifecycle event. Never throws into the caller's flow. */
 async function recordDocumentEvent(input: {
@@ -389,10 +390,10 @@ export async function renderPreviewFile(
   const suffix = `${number}_${dateIso}`;
 
   if (kind === "invoice") {
-    return { buffer: await renderInvoicePdf(data), fileName: `Счет_${suffix}.pdf`, contentType: "application/pdf" };
+    return { buffer: await renderInvoicePdf(data, documentOverlays("invoice", resolveDocumentImages({}, settings))), fileName: `Счет_${suffix}.pdf`, contentType: "application/pdf" };
   }
   if (kind === "act") {
-    return { buffer: await renderActPdf(data), fileName: `Акт_${suffix}.pdf`, contentType: "application/pdf" };
+    return { buffer: await renderActPdf(data, documentOverlays("act", resolveDocumentImages({}, settings))), fileName: `Акт_${suffix}.pdf`, contentType: "application/pdf" };
   }
   return { buffer: await renderRegistryXlsx(data), fileName: `Реестр_${suffix}.xlsx`, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
 }
@@ -507,8 +508,8 @@ export async function issueDocumentSet(
   const issuedImages = resolveDocumentImages({}, settings);
   const data = await buildData(clientId, from, to, dateIso, settings, billable, number, issuedImages);
   const [invoice, act, registry] = await Promise.all([
-    renderInvoicePdf(data),
-    renderActPdf(data),
+    renderInvoicePdf(data, documentOverlays("invoice", issuedImages)),
+    renderActPdf(data, documentOverlays("act", issuedImages)),
     renderRegistryXlsx(data),
   ]);
 
@@ -823,6 +824,128 @@ export async function voidDocument(documentId: number, managerId: number, reason
     note: reason,
     details: { number: document.number, totalAmount: document.totalAmount, requestsCount: document.requestsCount },
   });
+}
+
+
+export interface RolledBackDocument {
+  documentId: number;
+  releasedRequestIds: number[];
+}
+
+/**
+ * Roll back an issued/paid billing set in one transaction.
+ *
+ * The document itself and its historical request membership are retained for
+ * audit. Active request links are released so the requests can be reviewed and
+ * billed again. A paid document is returned to a non-active cancelled state and
+ * its payment mark is cleared.
+ *
+ * "cancelled" is an internal persistence status here; the manager UI calls this
+ * operation "Откатить счёт".
+ */
+export async function rollbackDocument(
+  documentId: number,
+  managerId: number,
+  reason: string,
+): Promise<RolledBackDocument> {
+  const conn = await db.getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const cleanReason = String(reason ?? "").trim();
+  if (!cleanReason) {
+    throw new BillingDocumentError("Укажите причину отката", 400);
+  }
+
+  const result = await conn.transaction(async (tx: any) => {
+    /*
+     * Lock the document and its active memberships. This prevents two managers
+     * from rolling back the same set concurrently and keeps document state,
+     * released memberships and the audit event atomic.
+     */
+    const lockedDocumentRows = rows(await tx.execute(sql`
+      SELECT "id", "status", "number", "requestsCount", "totalAmount"
+        FROM "billingDocuments"
+       WHERE "id" = ${documentId}
+       FOR UPDATE
+    `));
+
+    const lockedDocument = lockedDocumentRows[0];
+    if (!lockedDocument) {
+      throw new BillingDocumentError("Документ не найден", 404);
+    }
+    if (String(lockedDocument.status) === "cancelled") {
+      throw new BillingDocumentError("Документ уже откатан", 400);
+    }
+
+    const activeRows = rows(await tx.execute(sql`
+      SELECT "requestId"
+        FROM "billingDocumentRequests"
+       WHERE "billingDocumentId" = ${documentId}
+         AND "active"
+       ORDER BY "requestId"
+       FOR UPDATE
+    `));
+    const requestIds = activeRows.map((row) => Number(row.requestId));
+
+    await tx
+      .update(billingDocuments)
+      .set({
+        status: "cancelled",
+        paidAt: null,
+        paidByManagerId: null,
+        paymentComment: null,
+        voidedAt: new Date(),
+        voidedByManagerId: managerId,
+        voidReason: cleanReason,
+        updatedAt: new Date(),
+      })
+      .where(eq(billingDocuments.id, documentId));
+
+    if (requestIds.length > 0) {
+      await tx
+        .update(billingDocumentRequests)
+        .set({
+          active: false,
+          releasedAt: new Date(),
+          releasedByManagerId: managerId,
+          releaseNote: cleanReason,
+        })
+        .where(sql`${billingDocumentRequests.billingDocumentId} = ${documentId} AND ${billingDocumentRequests.active} = true`);
+    }
+
+    const managerRows = rows(await tx.execute(sql`
+      SELECT "name"
+        FROM "managers"
+       WHERE "id" = ${managerId}
+       LIMIT 1
+    `));
+    const managerName = managerRows[0]?.name == null
+      ? null
+      : String(managerRows[0].name);
+
+    await tx.insert(billingDocumentEvents).values({
+      billingDocumentId: documentId,
+      kind: "rolled_back",
+      managerId,
+      managerName,
+      note: cleanReason,
+      details: JSON.stringify({
+        number: String(lockedDocument.number),
+        previousStatus: String(lockedDocument.status),
+        totalAmount: Number(lockedDocument.totalAmount),
+        requestsCount: Number(lockedDocument.requestsCount),
+        releasedCount: requestIds.length,
+        releasedRequestIds: requestIds,
+      }),
+    });
+
+    return requestIds;
+  });
+
+  return {
+    documentId,
+    releasedRequestIds: result,
+  };
 }
 
 export interface ReleasedDocumentRequests {

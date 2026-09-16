@@ -16,8 +16,7 @@ import {
   issueDocumentSet,
   getBillingDocuments,
   setBillingDocumentPaid,
-  voidBillingDocument,
-  releaseBillingDocument,
+  rollbackBillingDocument,
   getBillingDocumentHistory,
   uploadPaymentProof,
   removeBillingDocumentFile,
@@ -719,6 +718,8 @@ export default function ReportsView() {
   const [tariffsSaving, setTariffsSaving] = useState(false);
   const [documents, setDocuments] = useState<BillingDocumentRow[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
+  /** Rolled-back documents stay available for audit without cluttering the active list. */
+  const [showRolledBackDocuments, setShowRolledBackDocuments] = useState(false);
   const [documentSettings, setDocumentSettings] = useState<DocumentSettingsDto | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** Object URLs of the loaded signature/stamp previews (revoked on change/close). */
@@ -735,11 +736,8 @@ export default function ReportsView() {
     statusLabel: string;
     reviewNote: string;
   } | null>(null);
-  const [voidDraft, setVoidDraft] = useState<{ id: number; number: string; reason: string } | null>(null);
-  /** Annulled document whose requests are about to be released for re-issuing. */
-  const [releaseDraft, setReleaseDraft] = useState<{ id: number; number: string; note: string } | null>(null);
-  /** Annulled document the next document set will replace. */
-  const [replacesDocumentId, setReplacesDocumentId] = useState<number | null>(null);
+  /** Document that is about to be rolled back to reconciliation. */
+  const [rollbackDraft, setRollbackDraft] = useState<{ id: number; number: string; reason: string } | null>(null);
   /** Audit trail of the selected document. */
   const [historyDraft, setHistoryDraft] = useState<{ number: string; entries: BillingDocumentHistoryEntry[] } | null>(null);
   const [isBillingLoading, setIsBillingLoading] = useState(false);
@@ -976,18 +974,13 @@ export default function ReportsView() {
         dateFrom,
         dateTo,
         preview?.documentDateIso,
-        replacesDocumentId ?? undefined,
       );
       if (result.ok && result.document) {
         setBillingNotice(
-          replacesDocumentId
-            ? `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован взамен аннулированного: `
-              + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`
-            : `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован: `
-              + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`,
+          `Комплект №${result.document.number} от ${result.document.documentDateText} сформирован: `
+            + `${result.document.requestsCount} заявок на ${Number(result.document.totalAmount).toFixed(2)} ₽`,
         );
         setPreview(null);
-        setReplacesDocumentId(null);
         setClientSection('documents');
       } else {
         setBillingNotice(result.reason ?? 'Комплект пока сформировать нельзя');
@@ -1000,6 +993,9 @@ export default function ReportsView() {
       setIsIssuing(false);
     }
   }
+
+  const activeDocuments = documents.filter((document) => document.status !== 'cancelled');
+  const rolledBackDocuments = documents.filter((document) => document.status === 'cancelled');
 
   async function loadDocuments() {
     setDocumentsLoading(true);
@@ -1045,33 +1041,6 @@ export default function ReportsView() {
       void loadDocuments();
     } catch (paymentError) {
       setError(paymentError instanceof Error ? paymentError.message : 'Не удалось изменить статус оплаты');
-    }
-  }
-
-  /** Release the requests of an annulled document so the period can be re-issued. */
-  async function releaseRequests(document: BillingDocumentRow, note: string) {
-    setError('');
-    try {
-      const result = await releaseBillingDocument(document.id, note || undefined);
-      if (result.ok) {
-        const count = result.releasedRequestIds?.length ?? 0;
-        setBillingNotice(
-          count > 0
-            ? `Заявки документа №${document.number} освобождены (${count}). Их можно выставить заново.`
-            : `У документа №${document.number} нет удержанных заявок`,
-        );
-        // The next issued set will replace this annulled document.
-        setReplacesDocumentId(document.id);
-        setClientSection('review');
-        setPreview(null);
-        void loadPreview();
-      } else {
-        setBillingNotice(result.reason ?? 'Не удалось освободить заявки');
-      }
-      void loadDocuments();
-      setBillingRefreshVersion((version) => version + 1);
-    } catch (releaseError) {
-      setError(releaseError instanceof Error ? releaseError.message : 'Не удалось освободить заявки');
     }
   }
 
@@ -1130,15 +1099,28 @@ export default function ReportsView() {
     }
   }
 
-  async function annulDocument(document: BillingDocumentRow, reason: string) {
+  async function rollbackDocument(document: BillingDocumentRow, reason: string) {
     setError('');
+    setBillingNotice('');
     try {
-      await voidBillingDocument(document.id, reason);
-      setBillingNotice(`Документ №${document.number} аннулирован`);
-      void loadDocuments();
+      const result = await rollbackBillingDocument(document.id, reason);
+      if (!result.ok) {
+        setError(result.reason ?? 'Не удалось откатить счёт');
+        return;
+      }
+
+      const releasedCount = result.releasedRequestIds?.length ?? 0;
+      setRollbackDraft(null);
+      setPreview(null);
+      setBillingNotice(
+        `Счёт №${document.number} откатан. `
+          + `В сверку возвращено заявок: ${releasedCount}.`,
+      );
+      setClientSection('review');
       setBillingRefreshVersion((version) => version + 1);
-    } catch (voidError) {
-      setError(voidError instanceof Error ? voidError.message : 'Не удалось аннулировать документ');
+      void loadDocuments();
+    } catch (rollbackError) {
+      setError(rollbackError instanceof Error ? rollbackError.message : 'Не удалось откатить счёт');
     }
   }
 
@@ -1769,7 +1751,7 @@ export default function ReportsView() {
                   <button
                     key={client.id ?? 'without-client'}
                     type="button"
-                    onClick={() => { setSelectedClientId(client.id); setReplacesDocumentId(null); setPreview(null); }}
+                    onClick={() => { setSelectedClientId(client.id); setPreview(null); }}
                     className="flex min-h-[56px] w-full items-center justify-between bg-white px-5 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                   >
                     <span className="truncate pr-4">
@@ -1802,7 +1784,7 @@ export default function ReportsView() {
                         <input
                           type="date"
                           value={dateFrom}
-                          onChange={(event) => { setDateFrom(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
+                          onChange={(event) => { setDateFrom(event.target.value); setPreview(null); }}
                           className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                         />
                       </div>
@@ -1817,7 +1799,7 @@ export default function ReportsView() {
                         <input
                           type="date"
                           value={dateTo}
-                          onChange={(event) => { setDateTo(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
+                          onChange={(event) => { setDateTo(event.target.value); setPreview(null); }}
                           className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                         />
                       </div>
@@ -1833,7 +1815,7 @@ export default function ReportsView() {
                 <div className="flex min-w-0 items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => { setSelectedClientId('all'); setReplacesDocumentId(null); setPreview(null); }}
+                    onClick={() => { setSelectedClientId('all'); setPreview(null); }}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
                     title="Назад к клиентам"
                   >
@@ -1960,24 +1942,6 @@ export default function ReportsView() {
                     </div>
                   </div>
 
-                  {/* Re-issue context: which annulled document this set replaces. */}
-                  {replacesDocumentId && (
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      <span>
-                        Комплект выставляется взамен аннулированного документа №
-                        {documents.find((item) => item.id === replacesDocumentId)?.number ?? replacesDocumentId}.
-                        Освобождённые заявки можно включить снова.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setReplacesDocumentId(null)}
-                        className="font-semibold underline decoration-dotted hover:text-amber-950"
-                      >
-                        Не связывать с аннулированным
-                      </button>
-                    </div>
-                  )}
-
                   {(preview.blockedRequestIds?.length ?? 0) > 0 && (
                     <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
                       <div className="font-semibold">
@@ -1987,14 +1951,13 @@ export default function ReportsView() {
                         {(preview.blockingDocuments ?? []).map((item) => (
                           <span key={item.documentId} className="mr-3 inline-block">
                             №{item.number}
-                            {item.status === 'cancelled' ? ' (аннулирован)' : item.status === 'paid' ? ' (оплачен)' : ' (действует)'}
+                            {item.status === 'cancelled' ? ' (откатан)' : item.status === 'paid' ? ' (оплачен)' : ' (действует)'}
                             {item.documentDate ? ` от ${formatDate(item.documentDate)}` : ''}
                           </span>
                         ))}
                       </div>
                       <div className="mt-1">
-                        Чтобы выставить эти заявки заново, освободите их на вкладке «Счета и акты»
-                        у аннулированного документа.
+                        Чтобы вернуть эти заявки в сверку, откатите счёт на вкладке «Счета и акты».
                       </div>
                     </div>
                   )}
@@ -2154,13 +2117,15 @@ export default function ReportsView() {
                     Счета этого клиента
                   </div>
                   <div className="divide-y divide-slate-100">
-                    {billingOverview.documents.map((document) => (
+                    {billingOverview.documents
+                      .filter((document) => document.status !== 'cancelled')
+                      .map((document) => (
                       <div key={document.id} className="flex items-center justify-between px-5 py-3 text-sm">
                         <span className="font-medium text-slate-800">
                           №{document.number} · {formatDate(String(document.periodFrom))} — {formatDate(String(document.periodTo))}
                         </span>
                         <span className="text-slate-600">
-                          {document.requestsCount} заявок · {Number(document.totalAmount).toFixed(2)} ₽ · {document.status === 'paid' ? 'оплачен' : document.status === 'cancelled' ? 'отменён' : 'выставлен'}
+                          {document.requestsCount} заявок · {Number(document.totalAmount).toFixed(2)} ₽ · {document.status === 'paid' ? 'оплачен' : document.status === 'cancelled' ? 'откатан' : 'выставлен'}
                         </span>
                       </div>
                     ))}
@@ -2180,7 +2145,7 @@ export default function ReportsView() {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(event) => { setDateFrom(event.target.value); setReplacesDocumentId(null); setPreview(null); }}
+                onChange={(event) => { setDateFrom(event.target.value); setPreview(null); }}
                 className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
               />
             </div>
@@ -2700,9 +2665,11 @@ export default function ReportsView() {
 
                   {documentsLoading ? (
                     <div className="px-5 py-6 text-sm text-slate-500">Загрузка…</div>
-                  ) : documents.length === 0 ? (
+                  ) : activeDocuments.length === 0 && rolledBackDocuments.length === 0 ? (
                     <div className="px-5 py-6 text-sm text-slate-500">Комплектов пока нет.</div>
                   ) : (
+                    <>
+                    {activeDocuments.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[1180px] text-sm">
                         <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.06em] text-slate-500">
@@ -2719,7 +2686,7 @@ export default function ReportsView() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {documents.map((document) => (
+                          {activeDocuments.map((document) => (
                             <tr key={document.id} className="align-top">
                               <td className="px-3 py-2 font-semibold text-slate-950">{document.number}</td>
                               <td className="px-3 py-2 text-slate-600">{document.documentDateText || formatDate(document.documentDate)}</td>
@@ -2735,7 +2702,7 @@ export default function ReportsView() {
                                       ? 'border-slate-200 bg-slate-50 text-slate-500'
                                       : 'border-amber-200 bg-amber-50 text-amber-700'
                                 }`}>
-                                  {document.status === 'paid' ? 'Оплачено' : document.status === 'cancelled' ? 'Аннулирован' : 'Ожидает оплаты'}
+                                  {document.status === 'paid' ? 'Оплачено' : document.status === 'cancelled' ? 'Откатан' : 'Ожидает оплаты'}
                                 </span>
                                 {document.voidReason && (
                                   <div className="mt-1 text-[11px] text-slate-500">{document.voidReason}</div>
@@ -2743,7 +2710,7 @@ export default function ReportsView() {
                                 {document.status === 'cancelled' && (
                                   <div className="mt-1 text-[11px] text-slate-500">
                                     {document.requestsReleased
-                                      ? 'Заявки освобождены для перевыставления'
+                                      ? 'Заявки возвращены в сверку'
                                       : `Заявки удерживаются: ${document.activeRequestsCount ?? 0}`}
                                   </div>
                                 )}
@@ -2830,44 +2797,18 @@ export default function ReportsView() {
                                           }}
                                         />
                                       </label>
-                                      {document.status !== 'cancelled' && document.status !== 'paid' && (
+                                      {document.status !== 'cancelled' && (
                                         <button
                                           type="button"
-                                          onClick={() => setVoidDraft({ id: document.id, number: document.number, reason: '' })}
+                                          onClick={() => setRollbackDraft({
+                                            id: document.id,
+                                            number: document.number,
+                                            reason: '',
+                                          })}
                                           className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 px-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
                                         >
                                           <Ban className="h-3.5 w-3.5" />
-                                          Аннулировать
-                                        </button>
-                                      )}
-
-                                      {/* Annulled document: free its requests, then re-issue the period. */}
-                                      {document.status === 'cancelled' && (document.activeRequestsCount ?? 0) > 0 && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setReleaseDraft({ id: document.id, number: document.number, note: '' })}
-                                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-                                        >
-                                          <RefreshCw className="h-3.5 w-3.5" />
-                                          Освободить заявки ({document.activeRequestsCount})
-                                        </button>
-                                      )}
-                                      {document.status === 'cancelled' && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setReplacesDocumentId(document.id);
-                                            setClientSection('review');
-                                            setPreview(null);
-                                            setBillingNotice(
-                                              `Документ №${document.number} будет указан как заменённый. `
-                                              + 'Проверьте период и выставите комплект заново.',
-                                            );
-                                          }}
-                                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-                                        >
-                                          <FileSpreadsheet className="h-3.5 w-3.5" />
-                                          Перевыставить
+                                          Откатить счёт
                                         </button>
                                       )}
                                     </div>
@@ -2910,6 +2851,94 @@ export default function ReportsView() {
                         </tbody>
                       </table>
                     </div>
+                    ) : (
+                      <div className="px-5 py-5 text-sm text-slate-500">
+                        Действующих счетов пока нет.
+                      </div>
+                    )}
+
+                    {rolledBackDocuments.length > 0 && (
+                      <div className="border-t border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setShowRolledBackDocuments((value) => !value)}
+                          className="flex w-full items-center justify-between px-5 py-3 text-left text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          <span>Откатанные счета ({rolledBackDocuments.length})</span>
+                          <span className="text-xs text-slate-400">
+                            {showRolledBackDocuments ? 'Скрыть' : 'Показать'}
+                          </span>
+                        </button>
+
+                        {showRolledBackDocuments && (
+                          <div className="overflow-x-auto border-t border-slate-100">
+                            <table className="w-full min-w-[900px] text-sm">
+                              <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.06em] text-slate-500">
+                                <tr>
+                                  <th className="px-3 py-2 font-semibold">№</th>
+                                  <th className="px-3 py-2 font-semibold">Дата</th>
+                                  <th className="px-3 py-2 font-semibold">Клиент</th>
+                                  <th className="px-3 py-2 font-semibold">Период</th>
+                                  <th className="px-3 py-2 font-semibold">Сумма</th>
+                                  <th className="px-3 py-2 font-semibold">Причина</th>
+                                  <th className="px-3 py-2 font-semibold">Архив</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {rolledBackDocuments.map((document) => (
+                                  <tr key={document.id} className="align-top bg-slate-50/40">
+                                    <td className="px-3 py-2 font-semibold text-slate-700">{document.number}</td>
+                                    <td className="px-3 py-2 text-slate-600">
+                                      {document.documentDateText || formatDate(document.documentDate)}
+                                    </td>
+                                    <td className="px-3 py-2 text-slate-700">{document.clientName}</td>
+                                    <td className="px-3 py-2 text-slate-600">
+                                      {formatDate(document.periodFrom)} — {formatDate(document.periodTo)}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-slate-700">
+                                      {Number(document.totalAmount).toFixed(2)} ₽
+                                    </td>
+                                    <td className="px-3 py-2 text-xs text-slate-600">
+                                      {document.voidReason || '—'}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex flex-wrap gap-2">
+                                        {([['invoice', 'Счёт'], ['act', 'Акт'], ['registry', 'Реестр']] as const).map(([kind, label]) => {
+                                          const url = billingDocumentFileUrl(document.id, kind);
+                                          const isPdf = kind !== 'registry';
+                                          return (
+                                            <button
+                                              key={kind}
+                                              type="button"
+                                              disabled={downloadingFile === url}
+                                              onClick={() => void openProtectedFile(url, {
+                                                mode: isPdf ? 'open' : 'download',
+                                                fallbackName: `${label}_${document.number}.${isPdf ? 'pdf' : 'xlsx'}`,
+                                              })}
+                                              className="text-xs font-semibold text-slate-600 underline decoration-dotted hover:text-slate-900 disabled:opacity-50"
+                                            >
+                                              {label}
+                                            </button>
+                                          );
+                                        })}
+                                        <button
+                                          type="button"
+                                          onClick={() => void openHistory(document)}
+                                          className="text-xs font-semibold text-slate-600 underline decoration-dotted hover:text-slate-900"
+                                        >
+                                          История
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    </>
                   )}
                 </div>
               )}
@@ -2989,84 +3018,64 @@ export default function ReportsView() {
         </div>
       </Modal>
 
-      {/* Annul a document: the record stays, nothing is deleted. */}
-      <Modal isOpen={Boolean(voidDraft)} onClose={() => setVoidDraft(null)}>
-        <div className="w-[min(520px,calc(100vw-32px))] rounded-2xl bg-white p-5 shadow-2xl">
-          <div className="text-base font-semibold text-slate-950">
-            Аннулировать документ №{voidDraft?.number}?
-          </div>
-          <div className="mt-1 text-xs text-slate-500">
-            Документ останется в истории со статусом «Аннулирован». Заявки не будут удалены.
-          </div>
-          <label className="mt-4 block text-xs font-medium text-slate-600">
-            Причина аннулирования
-            <textarea
-              value={voidDraft?.reason ?? ''}
-              onChange={(event) => setVoidDraft((current) => current ? { ...current, reason: event.target.value } : current)}
-              rows={3}
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setVoidDraft(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-              Отмена
-            </button>
-            <button
-              type="button"
-              disabled={!voidDraft?.reason.trim()}
-              onClick={() => { const draft = voidDraft!; setVoidDraft(null); const document = documents.find((d) => d.id === draft.id); if (document) void annulDocument(document, draft.reason); }}
-              className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
-            >
-              Аннулировать
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Release the requests of an annulled document so the period can be re-issued. */}
-      <Modal isOpen={Boolean(releaseDraft)} onClose={() => setReleaseDraft(null)}>
+      {/* Roll back a document atomically and return its requests to reconciliation. */}
+      <Modal isOpen={Boolean(rollbackDraft)} onClose={() => setRollbackDraft(null)}>
         <div className="w-[min(560px,calc(100vw-32px))] rounded-2xl bg-white p-5 shadow-2xl">
           <div className="text-base font-semibold text-slate-950">
-            Освободить заявки документа №{releaseDraft?.number}?
+            Откатить счёт №{rollbackDraft?.number}?
           </div>
-          <div className="mt-1 text-xs text-slate-500">
-            Аннулированный документ и его состав останутся в истории навсегда: номер, сумма, файлы и
-            состав заявок сохраняются. Освобождённые заявки станут доступны для нового комплекта.
+          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Счёт останется в истории и его номер больше не будет использоваться.
+            Отметка об оплате будет снята, а все заявки этого счёта вернутся в сверку.
           </div>
+
           <label className="mt-4 block text-xs font-medium text-slate-600">
-            Комментарий к освобождению
+            Причина отката
             <textarea
-              value={releaseDraft?.note ?? ''}
-              onChange={(event) => setReleaseDraft((current) => current ? { ...current, note: event.target.value } : current)}
+              value={rollbackDraft?.reason ?? ''}
+              onChange={(event) => setRollbackDraft(
+                (current) => current ? { ...current, reason: event.target.value } : current
+              )}
               rows={3}
+              placeholder="Например: исправление состава или суммы счёта"
               className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Например: перевыставляем с исправленной суммой"
             />
           </label>
+
           <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setReleaseDraft(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            <button
+              type="button"
+              onClick={() => setRollbackDraft(null)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
               Отмена
             </button>
             <button
               type="button"
-              onClick={() => { const draft = releaseDraft!; setReleaseDraft(null); const document = documents.find((d) => d.id === draft.id); if (document) void releaseRequests(document, draft.note); }}
-              className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+              disabled={!rollbackDraft?.reason.trim()}
+              onClick={() => {
+                const draft = rollbackDraft;
+                if (!draft) return;
+                const document = documents.find((item) => item.id === draft.id);
+                if (document) void rollbackDocument(document, draft.reason);
+              }}
+              className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
             >
-              Освободить заявки
+              Откатить счёт
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* Audit trail of one document: issued, annulled, released, replaced. */}
+      {/* Audit trail of one document, including legacy events and unified rollback. */}
       <Modal isOpen={Boolean(historyDraft)} onClose={() => setHistoryDraft(null)}>
         <div className="max-h-[80vh] w-[min(680px,calc(100vw-32px))] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
           <div className="text-base font-semibold text-slate-950">
             История документа №{historyDraft?.number}
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Записи не удаляются: видно, кто и когда выставил, аннулировал, освободил заявки и какой
-            документ заменил этот.
+            Записи не удаляются: видно, кто и когда выставил документ, отметил оплату или откатил счёт.
+            Старые операции аннулирования и перевыставления также сохраняются в истории.
           </div>
           <div className="mt-4 space-y-2">
             {(historyDraft?.entries ?? []).length === 0 && (
@@ -3081,6 +3090,7 @@ export default function ReportsView() {
                 replaced_by: 'Заменён другим документом',
                 payment_set: 'Отмечена оплата',
                 payment_cleared: 'Оплата снята',
+                rolled_back: 'Счёт откатан',
               };
               const details = entry.details ?? {};
               const replacedBy = typeof details.replacedByNumber === 'string' ? details.replacedByNumber : null;

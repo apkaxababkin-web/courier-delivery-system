@@ -1061,7 +1061,7 @@ export interface DocumentPreview {
 /** One lifecycle event of a document set (append-only audit trail). */
 export interface BillingDocumentHistoryEntry {
   id: number;
-  kind: 'issued' | 'reissued' | 'voided' | 'requests_released' | 'replaced_by' | 'payment_set' | 'payment_cleared';
+  kind: 'issued' | 'reissued' | 'voided' | 'requests_released' | 'replaced_by' | 'payment_set' | 'payment_cleared' | 'rolled_back';
   managerId: number | null;
   managerName: string | null;
   note: string | null;
@@ -1070,6 +1070,13 @@ export interface BillingDocumentHistoryEntry {
 }
 
 export interface ReleaseDocumentResult {
+  ok: boolean;
+  reason?: string;
+  documentId?: number;
+  releasedRequestIds?: number[];
+}
+
+export interface RollbackDocumentResult {
   ok: boolean;
   reason?: string;
   documentId?: number;
@@ -1248,6 +1255,18 @@ export async function setBillingDocumentPaid(
   comment?: string,
 ): Promise<void> {
   await trpcPost('billing.setPaid', { documentId, paid, comment }, { success: true });
+}
+
+/** Roll back a document and return all of its requests to reconciliation atomically. */
+export async function rollbackBillingDocument(
+  documentId: number,
+  reason: string,
+): Promise<RollbackDocumentResult> {
+  return await trpcPost(
+    'billing.rollbackDocument',
+    { documentId, reason },
+    { ok: false, reason: 'Сервер не ответил' },
+  );
 }
 
 /** Annul a document with a reason (never a silent delete). */

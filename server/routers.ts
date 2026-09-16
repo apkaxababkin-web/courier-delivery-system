@@ -1591,6 +1591,34 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    /**
+     * Roll back a billing document in one atomic operation:
+     * clear payment state, deactivate the document and return its requests
+     * to reconciliation while preserving the old document and its history.
+     */
+    rollbackDocument: managerProcedure
+      .input(z.object({
+        documentId: z.number().int().positive(),
+        reason: z.string().trim().min(1).max(2000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { rollbackDocument, BillingDocumentError } = await import("./_core/billingDocumentService");
+        try {
+          const result = await rollbackDocument(
+            input.documentId,
+            ctx.managerId,
+            input.reason,
+          );
+          broadcastLive("requests_changed");
+          return { ok: true as const, ...result };
+        } catch (error) {
+          if (error instanceof BillingDocumentError) {
+            return { ok: false as const, reason: error.message };
+          }
+          throw error;
+        }
+      }),
+
     voidDocument: managerProcedure
       .input(z.object({
         documentId: z.number().int().positive(),
