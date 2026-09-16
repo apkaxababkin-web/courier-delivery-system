@@ -143,7 +143,7 @@ export async function renderActPdf(data:DocumentSetData,images?:DocumentOverlays
   txt(d,"Исполнитель",30.6,389.5,75,{size:8.0});
   line(d,90.3,408.4,297.0,408.4,.5); txt(d,data.seller.directorName||data.seller.name,220,389.5,77,{size:8.0,align:"right"});
   txt(d,"Заказчик",315,389.5,55,{size:8.0});
-  line(d,359.1,408.4,564.6,408.4,.5); txt(d,data.buyer.signatoryName||data.buyer.name,410,389.5,154,{size:8.0,align:"right"});
+  line(d,359.1,408.4,564.6,408.4,.5); txt(d,data.buyer.name,410,389.5,154,{size:8.0,align:"right"});
   txt(d,"подпись",150,411.0,80,{size:SMALL,align:"center"}); txt(d,"подпись",420,411.0,80,{size:SMALL,align:"center"});
   overlay(d,images); return collect(d);
 }

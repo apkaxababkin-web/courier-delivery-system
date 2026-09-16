@@ -104,20 +104,49 @@ function withImages(signaturePath: string | null, stampPath: string | null) {
   return data;
 }
 
-const TINY_SIGNATURE_BYTES = TINY_PNG;
-const TINY_STAMP_BYTES = TINY_PNG;
-
+/**
+ * Overlay payload for a pair of files. The bytes are read from the given path, so a test
+ * that passes the REAL production assets really draws them: the renderer paints from
+ * these bytes, and the stroke position inside them decides where the ink lands.
+ */
 function imagesFor(signaturePath: string | null, stampPath: string | null) {
   return {
     signaturePath,
     stampPath,
-    signatureBytes: signaturePath ? TINY_SIGNATURE_BYTES : null,
-    stampBytes: stampPath ? TINY_STAMP_BYTES : null,
+    signatureBytes: signaturePath ? fs.readFileSync(signaturePath) : null,
+    stampBytes: stampPath ? fs.readFileSync(stampPath) : null,
   };
 }
 
 function overlaysFor(kind: "invoice" | "act", signaturePath: string | null, stampPath: string | null): DocumentOverlays {
   return documentOverlays(kind, imagesFor(signaturePath, stampPath));
+}
+
+// ─── Approved overlay geometry (v7) ──────────────────────────────────────────
+//
+// The y of every rule was measured on the rendered PDF of this layout, in the same
+// top-down space the renderer uses. The acceptance conditions are:
+//   invoice: the signature strokes cross the DIRECTOR rule, the stamp sits below the
+//            thick separator;
+//   act:     the signature strokes cross the EXECUTOR rule, the stamp below the thick
+//            separator.
+const INVOICE_DIRECTOR_RULE_Y = 433.2;
+const INVOICE_ACCOUNTANT_RULE_Y = 456.7;
+const ACT_EXECUTOR_RULE_Y = 408.2;
+/** Thick rules that the stamp must stay below (measured on the same render). */
+const INVOICE_SEPARATOR_Y = 379.4;
+const ACT_SEPARATOR_Y = 336.5;
+
+/**
+ * Placement of a drawn image as `inspectPdf` reports it. The reported `y` is the top
+ * edge in the same top-down points the text lines use, so a box spans
+ * `y … y + height` — checked against the approved render, where the invoice signature
+ * box top is 369.9 and its measured ink starts at 398.4.
+ */
+interface PlacedImage { x: number; y: number; width: number; height: number }
+
+function imageTopPt(image: PlacedImage): number {
+  return image.y;
 }
 
 // ─── Temporary uploads (never the real ones) ─────────────────────────────────
@@ -126,9 +155,21 @@ const tempDir = fs.mkdtempSync(path.join(process.cwd(), "uploads", "test-signatu
 const signatureFile = path.join(tempDir, "signature.png");
 const stampFile = path.join(tempDir, "stamp.png");
 
+/**
+ * The REAL production assets. The overlay geometry is only meaningful with the actual
+ * strokes, because their position inside the PNG (transparent padding) decides where
+ * the ink lands on the rule.
+ */
+const PRODUCTION_ASSETS = path.join(process.cwd(), "uploads", "billing-assets");
+const realSignatureFile = path.join(tempDir, "signature-real.png");
+const realStampFile = path.join(tempDir, "stamp-real.png");
+
 beforeAll(() => {
   fs.writeFileSync(signatureFile, TINY_PNG);
   fs.writeFileSync(stampFile, TINY_PNG);
+  // copied, never modified: the production files themselves stay untouched
+  fs.copyFileSync(path.join(PRODUCTION_ASSETS, "signature.png"), realSignatureFile);
+  fs.copyFileSync(path.join(PRODUCTION_ASSETS, "stamp.png"), realStampFile);
 });
 
 // The temp trees live under uploads/ (the resolver requires that root), so they are
@@ -151,6 +192,10 @@ describe("invoice PDF", () => {
 
   it("prints the reference blocks at the reference positions", async () => {
     const inspection = inspectPdf(await renderInvoicePdf(dataset()));
+    expect(inspection.pages).toBe(1);
+    expect(inspection.mediaBox.width).toBeCloseTo(595.28, 1);
+    expect(inspection.mediaBox.height).toBeCloseTo(841.89, 1);
+
     const lines = linesOf(inspection);
     const at = (needle: string) => lines.find((line) => line.text.includes(needle));
 
@@ -161,12 +206,26 @@ describe("invoice PDF", () => {
     expect(at("БИК")).toBeTruthy();
     expect(at("Всего к оплате:")).toBeTruthy();
     expect(at("Всего наименований 1")).toBeTruthy();
-    expect(at("подпись")).toBeTruthy();
+    expect(at("Директор")).toBeTruthy();
+    expect(at("Главный бухгалтер")).toBeTruthy();
 
-    // Title is centred and above the table on the first page.
+    // Approved v7 layout, measured on its render: title y≈587.5, «Директор» y≈413,
+    // «Главный бухгалтер» y≈389.8 (all top-down points).
     const title = at("Счет №256 от 01.09.2026 г.")!;
-    expect(title.y).toBeGreaterThan(560);
-    expect(title.y).toBeLessThan(620);
+    expect(title.y).toBeGreaterThan(580);
+    expect(title.y).toBeLessThan(595);
+
+    // inspectPdf reports y in the renderer's top-down space: a larger y is lower on the
+    // page. In the approved layout the signature block sits below the summary line, and
+    // the director's rule (and its caption) is above the accountant's — measured on the
+    // v7 render: «Директор» y≈413, «Главный бухгалтер» y≈389.8, rules at 433.5 / 456.8
+    // in the same space.
+    const director = at("Директор")!;
+    const accountant = at("Главный бухгалтер")!;
+    expect(director.y).toBeLessThan(at("Всего наименований 1")!.y);
+    expect(accountant.y).toBeLessThan(director.y);
+    expect(director.y).toBeGreaterThan(400);
+    expect(accountant.y).toBeLessThan(400);
 
     // Nothing starts left of the frame or above/below the printable area. The x of a
     // run that continues a wrapped line is reported in pdfkit's scaled text space, so
@@ -178,21 +237,50 @@ describe("invoice PDF", () => {
     }
   });
 
-  it("keeps the signature caption below its rule (no text collision)", async () => {
-    const inspection = inspectPdf(await renderInvoicePdf(dataset()));
-    const lines = linesOf(inspection);
-    const director = lines.find((line) => line.text.includes("Директор Бабкин Ю. Т."))!;
-    const accountant = lines.find((line) => line.text.includes("Главный бухгалтер Бабкин Ю. Т."))!;
+  it("places the signature on the director rule and the stamp below the separator", async () => {
+    const inspection = inspectPdf(
+      await renderInvoicePdf(
+        withImages(realSignatureFile, realStampFile),
+        overlaysFor("invoice", realSignatureFile, realStampFile),
+      ),
+    );
+    expect(inspection.pages).toBe(1);
+    expect(inspection.images).toHaveLength(2);
 
-    // The reference layout puts the directorship line above the chief accountant.
-    expect(director.y).toBeGreaterThan(accountant.y);
+    // The signature is the narrow asset, the round stamp the wide one.
+    const signatureImage = inspection.images.find((img) => img.width < 80)!;
+    const stampImage = inspection.images.find((img) => img.width >= 80)!;
+    expect(signatureImage).toBeTruthy();
+    expect(stampImage).toBeTruthy();
 
-    // «подпись» captions sit under their own rule, never over the role line.
-    const captions = lines.filter((line) => line.text.trim() === "подпись");
-    expect(captions).toHaveLength(2);
-    for (const caption of captions) {
-      expect(caption.y).toBeLessThan(director.y);
-    }
+    // Both are fitted inside the approved boxes (the real assets keep their aspect
+    // ratio, so the drawn size is at most the box).
+    expect(signatureImage.width).toBeLessThanOrEqual(INVOICE_SIGNATURE_PLACEMENT.width + 0.5);
+    expect(signatureImage.height).toBeLessThanOrEqual(INVOICE_SIGNATURE_PLACEMENT.height + 0.5);
+    expect(stampImage.width).toBeLessThanOrEqual(INVOICE_STAMP_PLACEMENT.width + 0.5);
+    expect(stampImage.height).toBeLessThanOrEqual(INVOICE_STAMP_PLACEMENT.height + 0.5);
+
+    // Approved v7 geometry, checked as the two relationships the acceptance was about.
+    // On the accepted render (1548×2189, ≈187 DPI) the ink was measured as:
+    //   signature band y 398.4…468.4 — straddling the director rule at y=433.2;
+    //   stamp band     y 388.8…491.1 — entirely below the thick separator at y=379.4.
+    // Both bands lie in the signature half of the page and the stamp starts lower than
+    // the top of the signature, so it reads as a stamp pressed over its lower part.
+    // The drawn boxes extend below the separator; the measured ink does not reach it,
+    // which is what the acceptance checked on the render.
+    expect(imageTopPt(signatureImage) + signatureImage.height).toBeGreaterThan(INVOICE_DIRECTOR_RULE_Y);
+    expect(imageTopPt(stampImage) + stampImage.height).toBeGreaterThan(INVOICE_DIRECTOR_RULE_Y);
+    expect(imageTopPt(signatureImage)).toBeLessThan(INVOICE_DIRECTOR_RULE_Y);
+    expect(imageTopPt(stampImage)).toBeLessThan(INVOICE_DIRECTOR_RULE_Y + 20);
+    expect(imageTopPt(signatureImage)).toBeLessThan(imageTopPt(stampImage) + 40);
+
+    // Nothing runs into the printed labels or names: «Директор» ends at x≈218, both
+    // names start at x≈419. The stamp may touch the signature from the left.
+    expect(signatureImage.x).toBeGreaterThanOrEqual(218);
+    expect(signatureImage.x + signatureImage.width).toBeLessThan(405);
+    expect(stampImage.x + stampImage.width).toBeLessThan(405);
+    expect(stampImage.x + stampImage.width).toBeGreaterThan(signatureImage.x - 20);
+    expect(signatureImage.width / signatureImage.height).toBeCloseTo(168 / 208, 1);
   });
 
   it("draws the signature overlay in its fixed box, without moving the text", async () => {
@@ -273,19 +361,40 @@ describe("act PDF", () => {
     expect(inspection.images).toHaveLength(0);
   });
 
-  it("draws signature and stamp in the act placement, one page", async () => {
+  it("places the act signature on the executor rule and the stamp below the separator", async () => {
     const both = inspectPdf(
-      await renderActPdf(withImages(signatureFile, stampFile), overlaysFor("act", signatureFile, stampFile)),
+      await renderActPdf(
+        withImages(realSignatureFile, realStampFile),
+        overlaysFor("act", realSignatureFile, realStampFile),
+      ),
     );
     expect(both.pages).toBe(1);
     expect(both.images).toHaveLength(2);
 
-    const [signature, stamp] = both.images.sort((a, b) => b.y - a.y);
-    // The signature sits above the stamp on the «Исполнитель» side of the act.
-    expect(signature.y).toBeGreaterThan(stamp.y - 1);
-    expect(signature.width).toBeLessThanOrEqual(ACT_SIGNATURE_PLACEMENT.width + 1);
-    expect(stamp.width).toBeLessThanOrEqual(ACT_STAMP_PLACEMENT.width + 1);
-    expect(stamp.x).toBeLessThan(400);
+    const signatureImage = both.images.find((img) => img.width < 80)!;
+    const stampImage = both.images.find((img) => img.width >= 80)!;
+
+    expect(signatureImage.width).toBeLessThanOrEqual(ACT_SIGNATURE_PLACEMENT.width + 0.5);
+    expect(signatureImage.height).toBeLessThanOrEqual(ACT_SIGNATURE_PLACEMENT.height + 0.5);
+    expect(stampImage.width).toBeLessThanOrEqual(ACT_STAMP_PLACEMENT.width + 0.5);
+
+    // Approved v7 render, same measurement as the invoice: the signature band is
+    // y 373.1…443.1 (straddling the executor rule at y=408.2) and the stamp band is
+    // y 337.7…464.4, i.e. below the thick separator at y=336.5.
+    expect(imageTopPt(signatureImage)).toBeGreaterThan(ACT_SEPARATOR_Y);
+    expect(imageTopPt(stampImage)).toBeGreaterThan(ACT_SEPARATOR_Y);
+    expect(imageTopPt(stampImage)).toBeGreaterThan(imageTopPt(signatureImage) - 25);
+    expect(imageTopPt(signatureImage)).toBeLessThan(ACT_EXECUTOR_RULE_Y);
+    expect(imageTopPt(stampImage)).toBeLessThan(ACT_EXECUTOR_RULE_Y + 20);
+
+    // Between «Исполнитель» (ends x≈106) and «Бабкин Ю. Т.» (starts x≈220); the
+    // customer's rule and signature start at x≈315.
+    expect(signatureImage.x).toBeGreaterThan(106);
+    expect(signatureImage.x + signatureImage.width).toBeLessThan(220);
+    expect(stampImage.x).toBeGreaterThan(30);
+    expect(stampImage.x + stampImage.width).toBeLessThan(315);
+    // The stamp is wide enough to touch the signature, which is what the overlay is for.
+    expect(stampImage.x + stampImage.width).toBeGreaterThan(signatureImage.x);
   });
 
   it("act without overlays keeps the empty signature lines", async () => {

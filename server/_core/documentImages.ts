@@ -96,47 +96,69 @@ function placement(
 }
 
 /**
- * Placement derived from the reference documents (Счет №256 / Акт №256).
+ * Signature and stamp placement for the printed documents (approved as "v7").
  *
- * Invoice: the stamp is centred under the two signature lines, its top edge
- * slightly overlapping the first line, exactly like the reference. The signature
- * area is the free space between the lines.
+ * The two images are the REAL scanned assets extracted from the organisation's own
+ * sheet (they live in uploads/billing-assets/): the round stamp is 240×239 px and the
+ * signature 168×208 px. Only their boxes are configured here; the images themselves are
+ * never regenerated, recoloured or replaced.
  *
- * Act: the stamp sits in front of the «Исполнитель» side, the signature line
- * crosses it; the signature area is therefore slightly above that line.
+ * Every y below was derived from the rules of the current layout (c30cb0b), which were
+ * read straight out of the rendered PDF, so the whole computation stays in one system:
  *
- * Overridable per environment (SIGNATURE_INVOICE_X/Y/WIDTH/HEIGHT and
- * STAMP_ACT_*) so the placement can be tuned per organisation without touching
- * layout code.
+ *   Счёт: линия «Директор»     pdfkit top 433.5, x 219.9…476.8
+ *         линия «Гл. бухгалтер» pdfkit top 456.8
+ *         толстый разделитель   pdfkit top 379.7
+ *   Акт : линия «Исполнитель»  pdfkit top 408.4, x 90.3…297.0
+ *         линия «Заказчик»      pdfkit top 408.4, x 359.1…564.6
+ *         толстый разделитель   pdfkit top 336.7
+ *
+ * On the accepted render the ink of the overlays lands as follows:
+ *   счёт — подпись y 398.4…468.4 (пересекает линию директора 433.5),
+ *          печать  y 388.8…491.1 (целиком ниже разделителя 379.7);
+ *   акт  — подпись y 373.1…443.1 (пересекает линию исполнителя 408.4),
+ *          печать  y 337.7…464.4 (целиком ниже разделителя 336.7).
+ *
+ * All four boxes are overridable per environment (SIGNATURE_INVOICE_X/Y/WIDTH/HEIGHT,
+ * STAMP_INVOICE_*, SIGNATURE_ACT_*, STAMP_ACT_*) so they can be tuned per organisation
+ * without touching layout code. Coordinates are PDF points counted from the bottom.
+ *
+ * ─── Счёт ───────────────────────────────────────────────────────────────────
+ * Signature: the asset is fitted into a 62×75.7 box (aspect preserved), placed inside
+ * x 218…405 so «Директор» (ends at x≈218) and «Бабкин Ю. Т.» (starts at x≈419) stay
+ * clear. The stamp is an INDEPENDENT overlay to its left: the right part of the stamp
+ * naturally crosses the signature.
  */
-// The role and the ФИО are printed to the right of SIGNATURE_X2/2, so the overlay is
-// kept in the free left half of the signature area and never covers the name.
 export const INVOICE_SIGNATURE_PLACEMENT: OverlayPlacement = placement("SIGNATURE_INVOICE", {
-  x: 58,
-  y: 402,
-  width: 132,
-  height: 40,
+  x: 308.5,
+  y: 369.9,
+  width: 62.0,
+  height: 75.7,
 });
 
 export const INVOICE_STAMP_PLACEMENT: OverlayPlacement = placement("STAMP_INVOICE", {
-  x: 96,
-  y: 381,
-  width: 152,
-  height: 72,
+  x: 185.9,
+  y: 346.9,
+  width: 108,
+  height: 108,
 });
 
+// ─── Акт ────────────────────────────────────────────────────────────────────
+// Same box on the EXECUTOR's rule: the signature stays between «Исполнитель» (ends at
+// x≈106) and «Бабкин Ю. Т.» (starts at x≈220); the stamp is an independent overlay that
+// touches it from the left, well away from the customer's block (x≥315).
 export const ACT_SIGNATURE_PLACEMENT: OverlayPlacement = placement("SIGNATURE_ACT", {
-  x: 66,
-  y: 436,
-  width: 132,
-  height: 40,
+  x: 118.5,
+  y: 395.1,
+  width: 62.0,
+  height: 75.7,
 });
 
 export const ACT_STAMP_PLACEMENT: OverlayPlacement = placement("STAMP_ACT", {
-  x: 100,
-  y: 389,
-  width: 152,
-  height: 72,
+  x: 97.3,
+  y: 395.1,
+  width: 108,
+  height: 108,
 });
 
 /** Absolute path of the immutable asset copy of one issued document. */
