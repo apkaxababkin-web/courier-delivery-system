@@ -395,7 +395,15 @@ export async function renderPreviewFile(
   if (kind === "act") {
     return { buffer: await renderActPdf(data, documentOverlays("act", resolveDocumentImages({}, settings))), fileName: `Акт_${suffix}.pdf`, contentType: "application/pdf" };
   }
-  return { buffer: await renderRegistryXlsx(data), fileName: `Реестр_${suffix}.xlsx`, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+  const safeClientName = data.buyer.name
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim() || "Клиент";
+  const reconciliationPeriod = `${formatDateRu(from)}-${formatDateRu(to)}`;
+  return {
+    buffer: await renderRegistryXlsx(data, { reconciliation: true }),
+    fileName: `Сверка_${safeClientName}_${reconciliationPeriod}.xlsx`,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
 }
 
 /** Allocate the next document number atomically (row lock on the settings row). */

@@ -19,12 +19,16 @@ function thin(): Partial<ExcelJS.Borders> {
   return { top: side, left: side, bottom: side, right: side };
 }
 
-export async function renderRegistryXlsx(data: DocumentSetData): Promise<Buffer> {
+export async function renderRegistryXlsx(
+  data: DocumentSetData,
+  options: { reconciliation?: boolean } = {},
+): Promise<Buffer> {
+  const reconciliation = options.reconciliation === true;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "МИГ · Расчёты";
   workbook.created = new Date(`${data.documentDateIso}T00:00:00.000Z`);
 
-  const sheet = workbook.addWorksheet("Реестр", {
+  const sheet = workbook.addWorksheet(reconciliation ? "Сверка" : "Реестр", {
     pageSetup: {
       paperSize: 9, // A4
       orientation: "portrait",
@@ -52,7 +56,7 @@ export async function renderRegistryXlsx(data: DocumentSetData): Promise<Buffer>
   // Title, client and period.
   sheet.mergeCells(1, 1, 1, columnCount);
   const title = sheet.getCell(1, 1);
-  title.value = "Реестр выполненных заявок";
+  title.value = reconciliation ? "Сверка выполненных заявок" : "Реестр выполненных заявок";
   title.font = { bold: true, size: 14 };
   title.alignment = { horizontal: "left" };
   sheet.getRow(1).height = 22;
@@ -76,7 +80,9 @@ export async function renderRegistryXlsx(data: DocumentSetData): Promise<Buffer>
   sheet.getCell(4, 1).font = { size: 11 };
 
   sheet.mergeCells(5, 1, 5, columnCount);
-  sheet.getCell(5, 1).value = `Счёт №${data.number} от ${data.documentDateText} г. · заявок: ${data.requestsCount}`;
+  sheet.getCell(5, 1).value = reconciliation
+    ? `Заявок: ${data.requestsCount}`
+    : `Счёт №${data.number} от ${data.documentDateText} г. · заявок: ${data.requestsCount}`;
   sheet.getCell(5, 1).font = { size: 10, color: { argb: "FF475569" } };
 
   // Header row.

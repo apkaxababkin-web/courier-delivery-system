@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 /**
  * End-to-end tests of the client financial cycle against a real PostgreSQL
  * database (created and dropped by tests/helpers/testDb.ts).
@@ -408,7 +409,16 @@ describe("предпросмотр", () => {
     expect(act.buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(registry.buffer.subarray(0, 2).toString("latin1")).toBe("PK");
     expect(invoice.fileName).toContain("Счет_1_2026-09-01");
-    expect(registry.fileName).toContain("Реестр_1_2026-09-01");
+    expect(registry.fileName).toBe("Сверка_ООО «Клиент Тест»_16.08.2026-31.08.2026.xlsx");
+
+    const reconciliationWorkbook = new ExcelJS.Workbook();
+    await reconciliationWorkbook.xlsx.load(registry.buffer);
+    const reconciliationSheet = reconciliationWorkbook.getWorksheet("Сверка");
+    expect(reconciliationSheet).toBeDefined();
+    expect(reconciliationSheet!.getCell("A1").value).toBe("Сверка выполненных заявок");
+    const reconciliationCountText = String(reconciliationSheet!.getCell("A5").value);
+    expect(reconciliationCountText).toMatch(/^Заявок: \d+$/);
+    expect(reconciliationCountText).not.toContain("Счёт №");
 
     const documents = await current!.db`SELECT count(*)::int AS n FROM "billingDocuments"`;
     expect(documents[0].n).toBe(0);
