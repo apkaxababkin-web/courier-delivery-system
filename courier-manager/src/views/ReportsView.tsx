@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays, Search, Download, FileSpreadsheet, ArrowLeft, Pencil, RefreshCw,
-  FileText, ScrollText, Table2, Wallet, Ban, Paperclip, CheckCircle2, AlertTriangle, Settings2,
+  FileText, ScrollText, Wallet, Ban, Paperclip, CheckCircle2, AlertTriangle, Settings2,
 } from 'lucide-react';
 import {
   getAllClients,
@@ -165,112 +165,6 @@ function statusClass(status: Request['status']) {
   }
 
   return 'border-slate-200 bg-slate-50 text-slate-700';
-}
-
-
-function exportBillingXlsx(
-  client: Client,
-  requests: Request[],
-  dateFrom: string,
-  dateTo: string,
-) {
-  const checkedRequests = requests.filter((request) => Boolean(request.billingCheckedAt));
-
-  const total = checkedRequests.reduce(
-    (sum, request) => sum + Number(request.deliveryFee ?? 0),
-    0,
-  );
-
-  const rows: (string | number)[][] = [
-    ['РАСЧЁТ ЗА ВЫПОЛНЕННЫЕ РАБОТЫ'],
-    [],
-    ['Клиент', client.name],
-    ['Юридическое наименование', client.legalName || client.name],
-    ['ИНН', client.inn || ''],
-    ['КПП', client.kpp || ''],
-    ['Юридический адрес', client.legalAddress || client.address || ''],
-    ['Период', `${formatDate(dateFrom)} — ${formatDate(dateTo)}`],
-    [],
-    [
-      'Дата выполнения',
-      '№ заявки',
-      'Клиент',
-      'Отправитель',
-      'Получатель',
-      'Откуда',
-      'Куда',
-      'Курьер',
-      'Мест',
-      'Стоимость доставки',
-      'Комментарий',
-    ],
-    ...checkedRequests.map((request) => [
-      formatDate(getRequestDate(request)),
-      request.id,
-      client.name,
-      requestSender(request),
-      requestRecipient(request),
-      requestFromAddress(request),
-      requestToAddress(request),
-      request.courierName || '',
-      request.placesCount ?? '',
-      Number(request.deliveryFee ?? 0),
-      request.comments || '',
-    ]),
-    [],
-    ['', '', '', '', '', '', '', '', 'ИТОГО', total, ''],
-  ];
-
-  const worksheet = XLSX.utils.aoa_to_sheet(rows);
-
-  worksheet['!cols'] = [
-    { wch: 18 },
-    { wch: 12 },
-    { wch: 28 },
-    { wch: 24 },
-    { wch: 24 },
-    { wch: 35 },
-    { wch: 35 },
-    { wch: 24 },
-    { wch: 8 },
-    { wch: 22 },
-    { wch: 45 },
-  ];
-
-  const titleCell = worksheet['A1'];
-  if (titleCell) {
-    titleCell.s = {
-      font: { bold: true, sz: 16 },
-      alignment: { horizontal: 'center' },
-    };
-  }
-
-  const headerRow = 10;
-  for (let column = 0; column < 11; column += 1) {
-    const cell = XLSX.utils.encode_cell({
-      r: headerRow - 1,
-      c: column,
-    });
-
-    if (worksheet[cell]) {
-      worksheet[cell].s = {
-        font: { bold: true },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-      };
-    }
-  }
-
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Расчёт');
-
-  const safeClientName = client.name
-    .replace(/[\\/:*?"<>|]/g, '_')
-    .trim() || 'client';
-
-  XLSX.writeFile(
-    workbook,
-    `Расчёт_${safeClientName}_${dateFrom}_${dateTo}.xlsx`,
-  );
 }
 
 
@@ -1861,15 +1755,27 @@ export default function ReportsView() {
                   {clientSection === 'review' && (
                   <button
                     type="button"
-                    disabled={checkedBillingRequests.length === 0}
-                    onClick={() =>
-                      exportBillingXlsx(
-                        selectedClient,
-                        checkedBillingRequests,
+                    disabled={
+                      checkedBillingRequests.length === 0 ||
+                      downloadingFile === billingPreviewUrl(
+                        Number(selectedClientId),
                         dateFrom,
                         dateTo,
+                        'registry',
                       )
                     }
+                    onClick={() => {
+                      const url = billingPreviewUrl(
+                        Number(selectedClientId),
+                        dateFrom,
+                        dateTo,
+                        'registry',
+                      );
+                      void openProtectedFile(url, {
+                        mode: 'download',
+                        fallbackName: `Сверка_${selectedClient.name}_${dateFrom}_${dateTo}.xlsx`,
+                      });
+                    }}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Download className="h-4 w-4" />
@@ -1980,18 +1886,16 @@ export default function ReportsView() {
                       {([
                         ['invoice', 'Счёт', FileText],
                         ['act', 'Акт', ScrollText],
-                        ['registry', 'Реестр', Table2],
                       ] as const).map(([kind, label, Icon]) => {
                         const url = billingPreviewUrl(Number(selectedClientId), dateFrom, dateTo, kind, preview.documentDateIso);
-                        const isPdf = kind !== 'registry';
                         return (
                           <button
                             key={kind}
                             type="button"
                             disabled={downloadingFile === url}
                             onClick={() => void openProtectedFile(url, {
-                              mode: isPdf ? 'open' : 'download',
-                              fallbackName: `${label}_${preview.number}.${isPdf ? 'pdf' : 'xlsx'}`,
+                              mode: 'open',
+                              fallbackName: `${label}_${preview.number}.pdf`,
                             })}
                             className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-50"
                           >
@@ -2724,17 +2628,16 @@ export default function ReportsView() {
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-wrap gap-2">
-                                  {([['invoice', 'Счёт', FileText], ['act', 'Акт', ScrollText], ['registry', 'Реестр', Table2]] as const).map(([kind, label, Icon]) => {
+                                  {([['invoice', 'Счёт', FileText], ['act', 'Акт', ScrollText]] as const).map(([kind, label, Icon]) => {
                                     const url = billingDocumentFileUrl(document.id, kind);
-                                    const isPdf = kind !== 'registry';
                                     return (
                                       <button
                                         key={kind}
                                         type="button"
                                         disabled={downloadingFile === url}
                                         onClick={() => void openProtectedFile(url, {
-                                          mode: isPdf ? 'open' : 'download',
-                                          fallbackName: `${label}_${document.number}.${isPdf ? 'pdf' : 'xlsx'}`,
+                                          mode: 'open',
+                                          fallbackName: `${label}_${document.number}.pdf`,
                                         })}
                                         className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
                                       >
@@ -2903,17 +2806,16 @@ export default function ReportsView() {
                                     </td>
                                     <td className="px-3 py-2">
                                       <div className="flex flex-wrap gap-2">
-                                        {([['invoice', 'Счёт'], ['act', 'Акт'], ['registry', 'Реестр']] as const).map(([kind, label]) => {
+                                        {([['invoice', 'Счёт'], ['act', 'Акт']] as const).map(([kind, label]) => {
                                           const url = billingDocumentFileUrl(document.id, kind);
-                                          const isPdf = kind !== 'registry';
                                           return (
                                             <button
                                               key={kind}
                                               type="button"
                                               disabled={downloadingFile === url}
                                               onClick={() => void openProtectedFile(url, {
-                                                mode: isPdf ? 'open' : 'download',
-                                                fallbackName: `${label}_${document.number}.${isPdf ? 'pdf' : 'xlsx'}`,
+                                                mode: 'open',
+                                                fallbackName: `${label}_${document.number}.pdf`,
                                               })}
                                               className="text-xs font-semibold text-slate-600 underline decoration-dotted hover:text-slate-900 disabled:opacity-50"
                                             >
