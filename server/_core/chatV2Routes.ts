@@ -14,7 +14,29 @@ type ChatActor = {
   name: string;
 };
 
-const CHAT_REACTION_EMOJIS = new Set(["✅", "❌", "⚠️", "🚀", "🎯", "💡", "📌", "📦", "⏳", "🛠️"]);
+// Reaction palette agreed for the consolidated mobile build.
+// The legacy set is kept as a superset so that reactions created by already
+// released clients can still be toggled off (otherwise removing an old
+// reaction would fail with 400 "Недоступная реакция").
+export const CHAT_REACTION_EMOJIS = new Set([
+  "❤️", "🔥", "😂", "🤩", "😍", "🎉", "💯", "👏", "👍", "🤝", "👀", "🤯",
+  "✅", "❌", "⚠️", "🚀", "🎯", "💡", "📌", "📦", "⏳", "🛠️",
+]);
+
+/** The 12 emojis offered by the consolidated mobile chat UI. */
+export const CHAT_REACTION_PALETTE = [
+  "❤️", "🔥", "😂", "🤩", "😍", "🎉", "💯", "👏", "👍", "🤝", "👀", "🤯",
+] as const;
+
+/** Emojis kept only so that older clients can still remove their reaction. */
+export const CHAT_REACTION_LEGACY = [
+  "✅", "❌", "⚠️", "🚀", "🎯", "💡", "📌", "📦", "⏳", "🛠️",
+] as const;
+
+/** Shared validation used by the reaction route (exported for tests). */
+export function isAllowedReactionEmoji(value: unknown): boolean {
+  return CHAT_REACTION_EMOJIS.has(String(value ?? "").trim());
+}
 
 class ChatV2HttpError extends Error {
   constructor(
@@ -50,7 +72,7 @@ function messageText(value: unknown): string {
 
 function reactionEmoji(value: unknown): string {
   const emoji = String(value ?? "").trim();
-  if (!CHAT_REACTION_EMOJIS.has(emoji)) {
+  if (!isAllowedReactionEmoji(emoji)) {
     throw new ChatV2HttpError(400, "Недоступная реакция");
   }
   return emoji;
