@@ -1023,6 +1023,97 @@ export interface BillingDocumentRow {
   createdAt: string;
 }
 
+export interface SmartTariffSelectionExample {
+  id: number;
+  requestType: string | null;
+  fromAddress: string;
+  toAddress: string;
+  weekday: number | null;
+  placesCount: number;
+  currentPrice: number | null;
+  quoteSource: string | null;
+}
+
+export interface SmartTariffSelectionPreview {
+  clientId: number;
+  requestIds: number[];
+  selectedCount: number;
+  matchedCount: number;
+  eligibleCount: number;
+  protectedCount: number;
+  eligibleByWeekday: Record<number, number>;
+  protectedByWeekday: Record<number, number>;
+  commonRequestType: string | null;
+  commonFromAddress: string | null;
+  commonToAddress: string | null;
+  weekdays: number[];
+  suggestedWeekdays: string | null;
+  sameRequestType: boolean;
+  sameFromAddress: boolean;
+  sameToAddress: boolean;
+  canCreateRouteRule: boolean;
+  examples: SmartTariffSelectionExample[];
+}
+
+export interface SmartTariffRule {
+  id: number;
+  clientId: number;
+  name: string;
+  requestType: string | null;
+  fromAddressNormalized: string | null;
+  toAddressNormalized: string | null;
+  weekdays: string | null;
+  firstPlacePrice: string | number;
+  nextPlacePrice: string | number;
+  priority: number;
+  isActive: boolean;
+  createdByManagerId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSmartTariffInput {
+  clientId: number;
+  requestIds: number[];
+  name: string;
+  firstPlacePrice: number;
+  nextPlacePrice: number;
+  daysMode?: 'selected' | 'weekdays' | 'weekend' | 'all';
+  weekdays?: number[];
+  priority?: number;
+  applyExisting?: boolean;
+}
+
+export interface CreateSmartTariffResult {
+  rule: SmartTariffRule;
+  preview: SmartTariffSelectionPreview;
+  recalculation: {
+    calculated: number;
+    unresolved: number;
+    skipped: number;
+  } | null;
+}
+
+export interface UpdateSmartTariffInput {
+  clientId: number;
+  ruleId: number;
+  name: string;
+  firstPlacePrice: number;
+  nextPlacePrice: number;
+  weekdays?: number[] | null;
+  priority?: number;
+  applyExisting?: boolean;
+}
+
+export interface UpdateSmartTariffResult {
+  rule: SmartTariffRule;
+  recalculation: {
+    calculated: number;
+    unresolved: number;
+    skipped: number;
+  } | null;
+}
+
 export interface BillingOverview {
   requests: BillingReviewRequest[];
   counts: BillingCounts;
@@ -1142,6 +1233,83 @@ const EMPTY_BILLING_COUNTS: BillingCounts = {
  * the period (completed, cancelled and unfinished), the manager decisions already
  * taken, and exactly why the period is not ready for documents.
  */
+/** Analyse selected reconciliation requests before creating a tariff rule. */
+export async function previewSmartTariff(
+  clientId: number,
+  requestIds: number[],
+): Promise<SmartTariffSelectionPreview> {
+  return await trpcGet<SmartTariffSelectionPreview>(
+    'billing.smartTariffPreview',
+    { clientId, requestIds },
+  );
+}
+
+/** All smart tariff rules of a client, including disabled rules. */
+export async function getSmartTariffs(
+  clientId: number,
+): Promise<SmartTariffRule[]> {
+  return await trpcGet<SmartTariffRule[]>(
+    'billing.smartTariffs',
+    { clientId },
+    [],
+  );
+}
+
+/** Create a smart tariff from selected reconciliation requests. */
+export async function createSmartTariff(
+  input: CreateSmartTariffInput,
+): Promise<CreateSmartTariffResult> {
+  const result = await trpcPost<CreateSmartTariffResult | null>(
+    'billing.createSmartTariff',
+    { ...input },
+    null,
+  );
+
+  if (
+    !result
+    || !result.rule
+    || !Number.isFinite(Number(result.rule.id))
+    || !result.preview
+  ) {
+    throw new Error('Сервер вернул некорректный ответ при создании тарифа');
+  }
+
+  return result;
+}
+
+/** Edit an existing smart tariff without changing its route/type. */
+export async function updateSmartTariff(
+  input: UpdateSmartTariffInput,
+): Promise<UpdateSmartTariffResult> {
+  const result = await trpcPost<UpdateSmartTariffResult | null>(
+    'billing.updateSmartTariff',
+    { ...input },
+    null,
+  );
+
+  if (
+    !result
+    || !result.rule
+    || !Number.isFinite(Number(result.rule.id))
+  ) {
+    throw new Error('Сервер вернул некорректный ответ при обновлении тарифа');
+  }
+
+  return result;
+}
+
+/** Disable a smart tariff without deleting its history. */
+export async function disableSmartTariff(
+  clientId: number,
+  ruleId: number,
+): Promise<void> {
+  await trpcPost(
+    'billing.disableSmartTariff',
+    { clientId, ruleId },
+    { success: true },
+  );
+}
+
 export async function getBillingOverview(
   clientId: number,
   dateFrom: string,

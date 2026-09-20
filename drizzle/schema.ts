@@ -489,6 +489,65 @@ export const clientPoints = pgTable("clientPoints", {
 export type ClientPoint = typeof clientPoints.$inferSelect;
 export type InsertClientPoint = typeof clientPoints.$inferInsert;
 
+// ─── Client Smart Tariff Rules ────────────────────────────────────────────────
+
+/**
+ * Configurable billing rules learned from real client requests.
+ *
+ * These rules complement clientTariffs; they do not replace the existing
+ * base tariff card. A rule may be as broad as "all delivery requests" or as
+ * specific as one route on selected weekdays.
+ *
+ * Matching priority is resolved server-side: the most specific matching rule
+ * wins. A manual request price always has higher priority than any rule.
+ */
+export const clientTariffRules = pgTable("clientTariffRules", {
+  id: serial("id").primaryKey(),
+  clientId: integer("clientId").notNull(),
+
+  /** Human-readable manager label, e.g. "Ключевская → Аэропорт". */
+  name: varchar("name", { length: 255 }).notNull(),
+
+  /**
+   * Optional existing request type. NULL means any request type.
+   * We intentionally do not create new request types for tariff variations.
+   */
+  requestType: varchar("requestType", { length: 50 }),
+
+  /**
+   * Route matching.
+   * Point IDs are preferred when a request can be tied to a saved client point.
+   * Normalized addresses are kept as a fallback for legacy/free-text requests.
+   */
+  fromAddressNormalized: text("fromAddressNormalized"),
+  toAddressNormalized: text("toAddressNormalized"),
+
+  /**
+   * ISO weekdays encoded as comma-separated numbers:
+   * 1=Mon ... 7=Sun. NULL means every day.
+   * Examples: "1,2,3,4,5" or "6,7".
+   */
+  weekdays: varchar("weekdays", { length: 20 }),
+
+  /** Price for the first place and for every additional place. */
+  firstPlacePrice: decimal("firstPlacePrice", { precision: 10, scale: 2 }).notNull(),
+  nextPlacePrice: decimal("nextPlacePrice", { precision: 10, scale: 2 }).default("0").notNull(),
+
+  /** More specific rules win; priority is an explicit tie-breaker. */
+  priority: integer("priority").default(0).notNull(),
+
+  /** Rules can be temporarily disabled without deleting their history. */
+  isActive: boolean("isActive").default(true).notNull(),
+
+  createdByManagerId: integer("createdByManagerId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type ClientTariffRule = typeof clientTariffRules.$inferSelect;
+export type InsertClientTariffRule = typeof clientTariffRules.$inferInsert;
+
+
 // ─── Client Regular Clients Table ────────────────────────────────────────────
 
 export const clientRegularClients = pgTable("clientRegularClients", {
@@ -672,6 +731,16 @@ export const requests = pgTable("requests", {
    * 'manual_fee' (a manager corrected it). NULL for legacy rows.
    */
   quoteSource: varchar("quoteSource", { length: 20 }),
+  /**
+   * Smart tariff rule that produced the current automatic amount.
+   * NULL for base tariffs, manual prices and legacy rows.
+   */
+  quoteTariffRuleId: integer("quoteTariffRuleId"),
+  /**
+   * Immutable JSON snapshot of the smart rule actually applied to this request.
+   * Kept even if the rule is later edited or disabled.
+   */
+  quoteTariffSnapshot: text("quoteTariffSnapshot"),
 
   // Billing review
   /**

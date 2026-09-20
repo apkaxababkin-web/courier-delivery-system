@@ -29,6 +29,7 @@ const MIGRATIONS = [
   "0016_billing_reissue_and_client_ogrn.sql",
   "0017_document_signature_stamp_snapshot.sql",
   "0018_billing_rollback_event.sql",
+  "0020_client_smart_tariff_rules.sql",
 ].map((name) => path.join(REPO_ROOT, "drizzle", "migrations", name));
 
 /**

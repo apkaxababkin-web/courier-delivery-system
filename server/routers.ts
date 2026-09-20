@@ -1366,6 +1366,102 @@ export const appRouter = router({
   // ─── Billing ────────────────────────────────────────────────────────────────
   billing: router({
     /**
+     * Analyse requests selected in the reconciliation table and return only
+     * attributes that are common to every selected request.
+     */
+    smartTariffPreview: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        requestIds: z.array(z.number().int().positive()).min(1).max(500),
+      }))
+      .query(async ({ input }) => {
+        const { previewSmartTariffSelection } = await import("./_core/smartTariffs");
+        return await previewSmartTariffSelection(input.clientId, input.requestIds);
+      }),
+
+    /** Active and disabled smart tariff rules of one client. */
+    smartTariffs: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+      }))
+      .query(async ({ input }) => {
+        const { listSmartTariffs } = await import("./_core/smartTariffs");
+        return await listSmartTariffs(input.clientId);
+      }),
+
+    /**
+     * Create a persistent client tariff from selected real requests.
+     * Manual prices / verified / billed requests remain protected by the
+     * existing requestQuote recalculation path.
+     */
+    createSmartTariff: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        requestIds: z.array(z.number().int().positive()).min(1).max(500),
+        name: z.string().trim().min(1).max(255),
+        firstPlacePrice: z.number().finite().nonnegative(),
+        nextPlacePrice: z.number().finite().nonnegative(),
+        daysMode: z.enum(["selected", "weekdays", "weekend", "all"]).optional(),
+        weekdays: z.array(z.number().int().min(1).max(7)).max(7).optional(),
+        priority: z.number().int().min(-100000).max(100000).optional(),
+        applyExisting: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { createSmartTariffFromSelection } = await import("./_core/smartTariffs");
+
+        const result = await createSmartTariffFromSelection({
+          ...input,
+          createdByManagerId: ctx.managerId,
+        });
+
+        broadcastLive("requests_changed");
+        return result;
+      }),
+
+    /**
+     * Edit prices/days/name of an existing smart tariff.
+     * Route and request type remain unchanged.
+     */
+    updateSmartTariff: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        ruleId: z.number().int().positive(),
+        name: z.string().trim().min(1).max(255),
+        firstPlacePrice: z.number().finite().nonnegative(),
+        nextPlacePrice: z.number().finite().nonnegative(),
+        weekdays: z
+          .array(z.number().int().min(1).max(7))
+          .min(1)
+          .max(7)
+          .nullable()
+          .optional(),
+        priority: z.number().int().min(-100000).max(100000).optional(),
+        applyExisting: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { updateSmartTariff } = await import("./_core/smartTariffs");
+
+        const result = await updateSmartTariff(input);
+
+        broadcastLive("requests_changed");
+        return result;
+      }),
+
+    /** Disable a smart tariff without destroying its history. */
+    disableSmartTariff: managerProcedure
+      .input(z.object({
+        clientId: z.number().int().positive(),
+        ruleId: z.number().int().positive(),
+      }))
+      .mutation(async ({ input }) => {
+        const { disableSmartTariff } = await import("./_core/smartTariffs");
+
+        await disableSmartTariff(input.clientId, input.ruleId);
+
+        return { success: true };
+      }),
+
+    /**
      * Review workspace for one client and period. Shows EVERY request of the period
      * (completed, cancelled, pending, assigned, in_progress), its price state, the
      * manager decision for non-completed ones, and exactly why the period is not
@@ -1427,6 +1523,7 @@ export const appRouter = router({
         const outcomes = await quoteClientRequests(input.clientId, {
           from: input.dateFrom,
           to: input.dateTo,
+          repriceAutomatic: true,
         });
 
         broadcastLive("requests_changed");
@@ -1450,7 +1547,9 @@ export const appRouter = router({
         }
 
         const { applyQuoteForRequest } = await import("./_core/requestQuote");
-        const outcome = await applyQuoteForRequest(request as never, { force: true });
+        const outcome = await applyQuoteForRequest(request as never, {
+          repriceAutomatic: true,
+        });
 
         broadcastLive("requests_changed", { requestId: input.requestId });
 

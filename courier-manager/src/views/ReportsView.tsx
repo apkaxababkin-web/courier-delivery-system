@@ -9,6 +9,11 @@ import {
   getAllMails,
   getPartners,
   getBillingOverview,
+  previewSmartTariff,
+  createSmartTariff,
+  updateSmartTariff,
+  getSmartTariffs,
+  disableSmartTariff,
   recalcClientQuotes,
   recalcRequestQuote,
   setBillingReviewDecision,
@@ -619,6 +624,33 @@ export default function ReportsView() {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [tariffs, setTariffs] = useState<ClientTariffsDto | null>(null);
   const [tariffsSaving, setTariffsSaving] = useState(false);
+
+  /** Requests selected as real examples for a recurring client tariff rule. */
+  const [smartTariffSelectedIds, setSmartTariffSelectedIds] = useState<number[]>([]);
+  const [smartTariffPreview, setSmartTariffPreview] = useState<Awaited<ReturnType<typeof previewSmartTariff>> | null>(null);
+  const [smartTariffRules, setSmartTariffRules] = useState<Awaited<ReturnType<typeof getSmartTariffs>>>([]);
+  const [smartTariffLoading, setSmartTariffLoading] = useState(false);
+  const [smartTariffSaving, setSmartTariffSaving] = useState(false);
+  const [smartTariffDisablingId, setSmartTariffDisablingId] = useState<number | null>(null);
+  const [smartTariffEditDraft, setSmartTariffEditDraft] = useState<{
+    ruleId: number;
+    name: string;
+    firstPlacePrice: string;
+    nextPlacePrice: string;
+    daysMode: 'weekdays' | 'weekend' | 'all' | 'custom';
+    weekdays: number[];
+    priority: number;
+    fromAddress: string | null;
+    toAddress: string | null;
+    requestType: string | null;
+  } | null>(null);
+  const [smartTariffEditSaving, setSmartTariffEditSaving] = useState(false);
+  const [smartTariffDraft, setSmartTariffDraft] = useState<{
+    name: string;
+    firstPlacePrice: string;
+    nextPlacePrice: string;
+    daysMode: 'selected' | 'weekdays' | 'weekend' | 'all';
+  } | null>(null);
   const [documents, setDocuments] = useState<BillingDocumentRow[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   /** Rolled-back documents stay available for audit without cluttering the active list. */
@@ -784,7 +816,18 @@ export default function ReportsView() {
     setIsBillingLoading(true);
     setBillingNotice('');
 
-    if (clientSection === 'tariffs') void loadTariffs(selectedClientId);
+    if (clientSection === 'tariffs') {
+      void loadTariffs(selectedClientId);
+      void getSmartTariffs(selectedClientId)
+        .then((rows) => {
+          if (!cancelled) setSmartTariffRules(rows);
+        })
+        .catch((loadError) => {
+          if (!cancelled) {
+            setError(loadError instanceof Error ? loadError.message : 'Не удалось загрузить индивидуальные тарифы');
+          }
+        });
+    }
     if (clientSection === 'documents') void loadDocuments();
 
     void getBillingOverview(selectedClientId, dateFrom, dateTo)
@@ -809,6 +852,301 @@ export default function ReportsView() {
     };
   }, [selectedClientId, dateFrom, dateTo, billingRefreshVersion, clientSection]);
 
+
+  /** A tariff sample belongs only to the current client and reconciliation period. */
+  useEffect(() => {
+    setSmartTariffSelectedIds([]);
+    setSmartTariffPreview(null);
+    setSmartTariffDraft(null);
+  }, [selectedClientId, dateFrom, dateTo]);
+
+  function toggleSmartTariffRequest(requestId: number) {
+    setSmartTariffSelectedIds((current) =>
+      current.includes(requestId)
+        ? current.filter((id) => id !== requestId)
+        : [...current, requestId],
+    );
+  }
+
+  async function openSmartTariffBuilder() {
+    if (typeof selectedClientId !== 'number' || smartTariffSelectedIds.length === 0) return;
+
+    setSmartTariffLoading(true);
+    setError('');
+    setBillingNotice('');
+
+    try {
+      const data = await previewSmartTariff(selectedClientId, smartTariffSelectedIds);
+      setSmartTariffPreview(data);
+
+      const from = data.commonFromAddress || '';
+      const to = data.commonToAddress || '';
+      const routeName = from && to
+        ? `${from} → ${to}`
+        : data.commonRequestType
+          ? `Тариф: ${data.commonRequestType}`
+          : 'Индивидуальный тариф';
+
+      setSmartTariffDraft({
+        name: routeName,
+        firstPlacePrice: '',
+        nextPlacePrice: '',
+        daysMode: 'all',
+      });
+    } catch (previewError) {
+      setError(
+        previewError instanceof Error
+          ? previewError.message
+          : 'Не удалось проанализировать выбранные заявки',
+      );
+    } finally {
+      setSmartTariffLoading(false);
+    }
+  }
+
+  function smartTariffPreviewCounts() {
+    if (!smartTariffPreview || !smartTariffDraft) {
+      return { matched: 0, eligible: 0, protected: 0 };
+    }
+
+    let days: number[] | null;
+
+    switch (smartTariffDraft.daysMode) {
+      case 'weekdays':
+        days = [1, 2, 3, 4, 5];
+        break;
+      case 'weekend':
+        days = [6, 7];
+        break;
+      case 'selected':
+        days = smartTariffPreview.weekdays.length > 0
+          ? smartTariffPreview.weekdays
+          : null;
+        break;
+      case 'all':
+      default:
+        days = null;
+        break;
+    }
+
+    if (days === null) {
+      return {
+        matched: smartTariffPreview.matchedCount,
+        eligible: smartTariffPreview.eligibleCount,
+        protected: smartTariffPreview.protectedCount,
+      };
+    }
+
+    const eligible = days.reduce(
+      (sum, day) => sum + (smartTariffPreview.eligibleByWeekday[day] ?? 0),
+      0,
+    );
+
+    const protectedCount = days.reduce(
+      (sum, day) => sum + (smartTariffPreview.protectedByWeekday[day] ?? 0),
+      0,
+    );
+
+    return {
+      matched: eligible + protectedCount,
+      eligible,
+      protected: protectedCount,
+    };
+  }
+
+  async function saveSmartTariffRule() {
+    if (
+      typeof selectedClientId !== 'number'
+      || !smartTariffDraft
+      || !smartTariffPreview
+    ) return;
+
+    const first = Number(String(smartTariffDraft.firstPlacePrice).replace(',', '.'));
+    const next = Number(String(smartTariffDraft.nextPlacePrice).replace(',', '.'));
+
+    if (!smartTariffDraft.name.trim()) {
+      setError('Укажите название тарифа');
+      return;
+    }
+
+    if (!Number.isFinite(first) || first < 0 || !Number.isFinite(next) || next < 0) {
+      setError('Укажите корректную стоимость первого и следующего места');
+      return;
+    }
+
+    setSmartTariffSaving(true);
+    setError('');
+    setBillingNotice('');
+
+    try {
+      const result = await createSmartTariff({
+        clientId: selectedClientId,
+        requestIds: smartTariffSelectedIds,
+        name: smartTariffDraft.name.trim(),
+        firstPlacePrice: first,
+        nextPlacePrice: next,
+        daysMode: smartTariffDraft.daysMode,
+        applyExisting: true,
+      });
+
+      setBillingNotice(
+        result.recalculation
+          ? `Тариф «${result.rule.name}» сохранён. Пересчитано заявок: ${result.recalculation.calculated}, без цены: ${result.recalculation.unresolved}, пропущено: ${result.recalculation.skipped}.`
+          : `Тариф «${result.rule.name}» сохранён.`,
+      );
+
+      setSmartTariffSelectedIds([]);
+      setSmartTariffPreview(null);
+      setSmartTariffDraft(null);
+
+      const rules = await getSmartTariffs(selectedClientId);
+      setSmartTariffRules(rules);
+      setBillingRefreshVersion((version) => version + 1);
+      void loadData();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Не удалось сохранить тариф');
+    } finally {
+      setSmartTariffSaving(false);
+    }
+  }
+
+  function parseSmartTariffWeekdays(value: string | null): number[] {
+    if (!value) return [];
+    return value
+      .split(',')
+      .map((part) => Number(part.trim()))
+      .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7)
+      .sort((a, b) => a - b);
+  }
+
+  function smartTariffDaysLabel(value: string | null): string {
+    const days = parseSmartTariffWeekdays(value);
+    if (days.length === 0) return 'Все дни';
+    if (days.join(',') === '1,2,3,4,5') return 'Пн–Пт';
+    if (days.join(',') === '6,7') return 'Сб–Вс';
+
+    const labels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    return days.map((day) => labels[day - 1]).join(', ');
+  }
+
+  function openSmartTariffEditor(rule: (typeof smartTariffRules)[number]) {
+    const weekdays = parseSmartTariffWeekdays(rule.weekdays);
+    const key = weekdays.join(',');
+
+    setError('');
+    setBillingNotice('');
+    setSmartTariffEditDraft({
+      ruleId: rule.id,
+      name: rule.name,
+      firstPlacePrice: String(rule.firstPlacePrice),
+      nextPlacePrice: String(rule.nextPlacePrice),
+      daysMode:
+        weekdays.length === 0
+          ? 'all'
+          : key === '1,2,3,4,5'
+            ? 'weekdays'
+            : key === '6,7'
+              ? 'weekend'
+              : 'custom',
+      weekdays,
+      priority: Number(rule.priority ?? 0),
+      fromAddress: rule.fromAddressNormalized,
+      toAddress: rule.toAddressNormalized,
+      requestType: rule.requestType,
+    });
+  }
+
+  async function saveSmartTariffEdit() {
+    if (typeof selectedClientId !== 'number' || !smartTariffEditDraft) return;
+
+    const first = Number(String(smartTariffEditDraft.firstPlacePrice).replace(',', '.'));
+    const next = Number(String(smartTariffEditDraft.nextPlacePrice).replace(',', '.'));
+
+    if (!smartTariffEditDraft.name.trim()) {
+      setError('Укажите название тарифа');
+      return;
+    }
+
+    if (!Number.isFinite(first) || first < 0 || !Number.isFinite(next) || next < 0) {
+      setError('Укажите корректную стоимость первого и следующего места');
+      return;
+    }
+
+    let weekdays: number[] | null;
+    switch (smartTariffEditDraft.daysMode) {
+      case 'weekdays':
+        weekdays = [1, 2, 3, 4, 5];
+        break;
+      case 'weekend':
+        weekdays = [6, 7];
+        break;
+      case 'custom':
+        weekdays = smartTariffEditDraft.weekdays;
+        if (weekdays.length === 0) {
+          setError('Выберите хотя бы один день недели');
+          return;
+        }
+        break;
+      case 'all':
+      default:
+        weekdays = null;
+        break;
+    }
+
+    setSmartTariffEditSaving(true);
+    setError('');
+    setBillingNotice('');
+
+    try {
+      const result = await updateSmartTariff({
+        clientId: selectedClientId,
+        ruleId: smartTariffEditDraft.ruleId,
+        name: smartTariffEditDraft.name.trim(),
+        firstPlacePrice: first,
+        nextPlacePrice: next,
+        weekdays,
+        priority: smartTariffEditDraft.priority,
+        applyExisting: true,
+      });
+
+      setBillingNotice(
+        result.recalculation
+          ? `Тариф «${result.rule.name}» обновлён. Пересчитано заявок: ${result.recalculation.calculated}, без цены: ${result.recalculation.unresolved}, пропущено: ${result.recalculation.skipped}.`
+          : `Тариф «${result.rule.name}» обновлён.`,
+      );
+
+      setSmartTariffEditDraft(null);
+      const rules = await getSmartTariffs(selectedClientId);
+      setSmartTariffRules(rules);
+      setBillingRefreshVersion((version) => version + 1);
+      void loadData();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Не удалось обновить тариф');
+    } finally {
+      setSmartTariffEditSaving(false);
+    }
+  }
+
+  async function turnOffSmartTariff(ruleId: number) {
+    if (typeof selectedClientId !== 'number') return;
+
+    setSmartTariffDisablingId(ruleId);
+    setError('');
+
+    try {
+      await disableSmartTariff(selectedClientId, ruleId);
+      setSmartTariffRules(await getSmartTariffs(selectedClientId));
+      setBillingNotice('Индивидуальный тариф отключён. Уже выставленные и ручные цены не изменены.');
+    } catch (disableError) {
+      setError(
+        disableError instanceof Error
+          ? disableError.message
+          : 'Не удалось отключить тариф',
+      );
+    } finally {
+      setSmartTariffDisablingId(null);
+    }
+  }
 
   /** Switch the client section and keep the tab strip in view. */
   function openClientSection(section: 'review' | 'tariffs' | 'documents') {
@@ -1732,45 +2070,6 @@ export default function ReportsView() {
 
           {selectedClient && (
             <>
-              {(clientSection === 'review' || clientSection === 'documents') && (
-                <div
-                  data-testid="client-period"
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">
-                        Дата от
-                      </span>
-                      <div className="relative">
-                        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="date"
-                          value={dateFrom}
-                          onChange={(event) => { setDateFrom(event.target.value); setPreview(null); }}
-                          className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-                        />
-                      </div>
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">
-                        Дата до
-                      </span>
-                      <div className="relative">
-                        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="date"
-                          value={dateTo}
-                          onChange={(event) => { setDateTo(event.target.value); setPreview(null); }}
-                          className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-                        />
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              )}
-
               <div
                 data-testid="client-header"
                 className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
@@ -1791,8 +2090,30 @@ export default function ReportsView() {
                         : clientSection === 'tariffs' ? 'Тарифы клиента'
                           : 'Счета и акты клиента'}
                     </div>
-                    <div className="truncate text-lg font-semibold text-slate-950">
-                      {selectedClient.name}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <div className="truncate text-lg font-semibold text-slate-950">
+                        {selectedClient.name}
+                      </div>
+
+                      {(clientSection === 'review' || clientSection === 'documents') && (
+                        <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                          <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(event) => { setDateFrom(event.target.value); setPreview(null); }}
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-slate-400"
+                            aria-label="Дата от"
+                          />
+                          <span>—</span>
+                          <input
+                            type="date"
+                            value={dateTo}
+                            onChange={(event) => { setDateTo(event.target.value); setPreview(null); }}
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-slate-400"
+                            aria-label="Дата до"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1999,6 +2320,8 @@ export default function ReportsView() {
                 </div>
               )}
 
+              {clientSection === 'review' && (
+                <>
               {/* Why the document can or cannot be issued. */}
               {issueBlockers.length > 0 ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -2013,8 +2336,14 @@ export default function ReportsView() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  Все заявки периода проверены — счёт можно выставить ({reviewSummary.checked} заявок на {checkedBillingTotal.toFixed(2)} ₽).
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <span className="font-semibold">✓ Готово к выставлению</span>
+                  <span className="text-emerald-700">
+                    · {reviewSummary.checked} заявок · {checkedBillingTotal.toLocaleString('ru-RU', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })} ₽
+                  </span>
                 </div>
               )}
 
@@ -2024,128 +2353,54 @@ export default function ReportsView() {
                 </div>
               )}
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="text-xs font-medium text-slate-500">
-                    Заявок за период
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+                <div>
+                  <span className="text-slate-500">Заявок </span>
+                  <span className="font-semibold text-slate-950">
                     {billingOverview?.counts.total ?? reviewSummary.checked + reviewSummary.ready + reviewSummary.unpriced + reviewSummary.billed}
-                  </div>
+                  </span>
                 </div>
 
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                  <div className="text-xs font-medium text-emerald-700">
-                    Проверено
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-emerald-800">
-                    {reviewSummary.checked}
-                  </div>
+                <div>
+                  <span className="text-slate-500">Проверено </span>
+                  <span className="font-semibold text-emerald-700">{reviewSummary.checked}</span>
                 </div>
 
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                  <div className="text-xs font-medium text-amber-700">
-                    Ожидает проверки
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-amber-800">
+                <div>
+                  <span className="text-slate-500">Ожидают проверки </span>
+                  <span className={`font-semibold ${reviewSummary.ready > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
                     {reviewSummary.ready}
-                  </div>
+                  </span>
                 </div>
 
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
-                  <div className="text-xs font-medium text-rose-700">
-                    Без стоимости
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-rose-800">
+                <div>
+                  <span className="text-slate-500">Без стоимости </span>
+                  <span className={`font-semibold ${reviewSummary.unpriced > 0 ? 'text-rose-700' : 'text-slate-700'}`}>
                     {reviewSummary.unpriced}
-                  </div>
+                  </span>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="text-xs font-medium text-slate-500">
-                    Уже в счетах
+                {reviewSummary.billed > 0 && (
+                  <div>
+                    <span className="text-slate-500">Уже в счетах </span>
+                    <span className="font-semibold text-slate-700">{reviewSummary.billed}</span>
                   </div>
-                  <div className="mt-2 text-2xl font-semibold text-slate-950">
-                    {reviewSummary.billed}
-                  </div>
+                )}
+
+                <div className="ml-auto">
+                  <span className="text-slate-500">К выставлению </span>
+                  <span className="font-semibold text-slate-950">
+                    {checkedBillingTotal.toLocaleString('ru-RU', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })} ₽
+                  </span>
                 </div>
               </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="text-xs font-medium text-slate-500">
-                    Сумма готовых к выставлению (проверенные)
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-slate-950">
-                    {checkedBillingTotal.toFixed(2)} ₽
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="text-xs font-medium text-slate-500">
-                    Сумма проверенных и ожидающих проверки
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-slate-950">
-                    {(billingOverview?.readyAmount ?? reviewSummary.checkedAmount).toFixed(2)} ₽
-                  </div>
-                </div>
-              </div>
-
-              {billingOverview && billingOverview.documents.length > 0 && (
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-200 px-5 py-3 text-sm font-semibold text-slate-950">
-                    Счета этого клиента
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {billingOverview.documents
-                      .filter((document) => document.status !== 'cancelled')
-                      .map((document) => (
-                      <div key={document.id} className="flex items-center justify-between px-5 py-3 text-sm">
-                        <span className="font-medium text-slate-800">
-                          №{document.number} · {formatDate(String(document.periodFrom))} — {formatDate(String(document.periodTo))}
-                        </span>
-                        <span className="text-slate-600">
-                          {document.requestsCount} заявок · {Number(document.totalAmount).toFixed(2)} ₽ · {document.status === 'paid' ? 'оплачен' : document.status === 'cancelled' ? 'откатан' : 'выставлен'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Requests of the period with their state and manual price. */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              Дата от
-            </span>
-            <div className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(event) => { setDateFrom(event.target.value); setPreview(null); }}
-                className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-              />
-            </div>
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              Дата до
-            </span>
-            <div className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(event) => setDateTo(event.target.value)}
-                className="h-11 rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-              />
-            </div>
-          </label>
-
           <label className="block min-w-0 flex-1">
             <span className="mb-1 block text-xs font-medium text-slate-500">
               Поиск
@@ -2167,66 +2422,6 @@ export default function ReportsView() {
         </div>
       </div>
 
-      {clientSection === 'review' && (
-      <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Заявок</div>
-          <div className="mt-1 text-xl font-semibold text-slate-950">
-            {visibleRequests.length}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-          <div className="text-xs font-medium text-emerald-700">Проверено</div>
-          <div className="mt-1 text-xl font-semibold text-emerald-800">
-            {reviewSummary.checked}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="text-xs font-medium text-amber-700">Не проверено</div>
-          <div className="mt-1 text-xl font-semibold text-amber-800">
-            {reviewSummary.unchecked}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Сумма</div>
-          <div className="mt-1 text-xl font-semibold text-slate-950">
-            {reviewSummary.totalAmount.toLocaleString('ru-RU', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })} ₽
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedClientId('all');
-            setSearch('');
-          }}
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
-          title="Назад к клиентам"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-
-        <div className="min-w-0">
-          <div className="text-xs font-medium text-slate-500">
-            Сверка клиента
-          </div>
-          <div className="truncate text-lg font-semibold text-slate-950">
-            {selectedClientId === null
-              ? 'Без клиента'
-              : selectedClient?.name ?? 'Клиент'}
-          </div>
-        </div>
-      </div>
-
       {error && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
@@ -2240,11 +2435,46 @@ export default function ReportsView() {
         </div>
       )}
 
+      {typeof selectedClientId === 'number' && smartTariffSelectedIds.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold text-sky-950">
+              Выбрано заявок: {smartTariffSelectedIds.length}
+            </div>
+            <div className="mt-0.5 text-xs text-sky-700">
+              Выберите несколько одинаковых маршрутов — система найдёт общие признаки и предложит правило.
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSmartTariffSelectedIds([])}
+              className="h-9 rounded-xl border border-sky-200 bg-white px-3 text-xs font-semibold text-sky-700 hover:bg-sky-100"
+            >
+              Снять выбор
+            </button>
+
+            <button
+              type="button"
+              disabled={smartTariffLoading}
+              onClick={() => void openSmartTariffBuilder()}
+              className="h-9 rounded-xl bg-sky-700 px-4 text-xs font-semibold text-white hover:bg-sky-800 disabled:cursor-wait disabled:opacity-50"
+            >
+              {smartTariffLoading ? 'Анализируем…' : 'Настроить тариф'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] table-fixed text-sm">
+          <table className="w-full min-w-[1330px] table-fixed text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.06em] text-slate-500">
               <tr>
+                <th className="w-[48px] px-2 py-2.5 text-center font-semibold" title="Выбрать заявки как образцы тарифа">
+                  Тариф
+                </th>
                 <th className="w-[105px] px-3 py-2.5 font-semibold">Дата</th>
                 <th className="w-[65px] px-3 py-2.5 font-semibold">№</th>
                 <th className="w-[180px] px-3 py-2.5 font-semibold">Клиент</th>
@@ -2261,13 +2491,13 @@ export default function ReportsView() {
             <tbody className="divide-y divide-slate-100">
               {isLoading || isBillingLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
                     Загрузка заявок…
                   </td>
                 </tr>
               ) : visibleRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
                     За выбранный период заявок нет
                   </td>
                 </tr>
@@ -2285,6 +2515,28 @@ export default function ReportsView() {
                             : 'bg-amber-50/40 hover:bg-amber-50/70'
                     }`}
                   >
+                    <td className="px-2 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={smartTariffSelectedIds.includes(request.id)}
+                        onChange={() => toggleSmartTariffRequest(request.id)}
+                        disabled={
+                          typeof selectedClientId !== 'number'
+                          || request.clientId !== selectedClientId
+                          || billingStateOf(request) === 'billed'
+                          || billingStateOf(request) === 'decided_not_billable'
+                        }
+                        title={
+                          billingStateOf(request) === 'billed'
+                            ? 'Заявка уже включена в счёт'
+                            : billingStateOf(request) === 'decided_not_billable'
+                              ? 'Эта заявка исключена из расчёта'
+                              : 'Использовать заявку как образец индивидуального тарифа'
+                        }
+                        className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      />
+                    </td>
+
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                       {formatDate(getRequestDate(request))}
                     </td>
@@ -2514,31 +2766,45 @@ export default function ReportsView() {
                     </td>
 
                     <td className="whitespace-nowrap px-3 py-2">
-                      <button
-                        type="button"
-                        disabled={savingRequestId === request.id || billingStateOf(request) === 'billed'}
-                        title={
-                          billingStateOf(request) === 'billed'
-                            ? 'Заявка уже включена в счёт'
-                            : 'Отметить стоимость как проверенную'
-                        }
-                        onClick={() => {
-                          void toggleBillingChecked(request);
-                        }}
-                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                          billingStateOf(request) === 'billed'
-                            ? 'border-slate-200 bg-slate-50 text-slate-500'
-                            : request.billingCheckedAt
+                      {billingStateOf(request) === 'billed' ? (
+                        <span className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-500">
+                          В счёте
+                        </span>
+                      ) : billingStateOf(request) === 'decided_not_billable' ? (
+                        <span
+                          className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-500"
+                          title="Для этой заявки проверка стоимости не требуется"
+                        >
+                          Не требуется
+                        </span>
+                      ) : billingStateOf(request) === 'ready' || billingStateOf(request) === 'checked' ? (
+                        <button
+                          type="button"
+                          disabled={savingRequestId === request.id}
+                          title={
+                            billingStateOf(request) === 'checked'
+                              ? 'Снять отметку проверки'
+                              : 'Отметить стоимость как проверенную'
+                          }
+                          onClick={() => {
+                            void toggleBillingChecked(request);
+                          }}
+                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
+                            billingStateOf(request) === 'checked'
                               ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                               : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                        }`}
-                      >
-                        {billingStateOf(request) === 'billed'
-                          ? 'В счёте'
-                          : request.billingCheckedAt
-                            ? 'Проверено'
-                            : 'Не проверено'}
-                      </button>
+                          }`}
+                        >
+                          {billingStateOf(request) === 'checked' ? 'Проверено' : 'Не проверено'}
+                        </button>
+                      ) : (
+                        <span
+                          className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-400"
+                          title="Сначала нужно разобраться с состоянием заявки"
+                        >
+                          Не требуется
+                        </span>
+                      )}
                     </td>
 
 
@@ -2631,6 +2897,106 @@ export default function ReportsView() {
                       </div>
                     </div>
                   )}
+
+                  <div className="mt-6 border-t border-slate-200 pt-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-950">
+                          Индивидуальные правила
+                        </div>
+                        <div className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+                          Правила создаются из реальных заявок во вкладке «Сверка».
+                          Они дополняют базовый тариф клиента и не заменяют его.
+                          Ручная стоимость заявки имеет приоритет.
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        {smartTariffRules.filter((rule) => rule.isActive).length} активных
+                      </div>
+                    </div>
+
+                    {smartTariffRules.length === 0 ? (
+                      <div className="mt-4 rounded-xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-500">
+                        Индивидуальных правил пока нет. Выберите похожие заявки в «Сверке» и нажмите «Настроить тариф».
+                      </div>
+                    ) : (
+                      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="w-full min-w-[900px] text-sm">
+                          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-[0.05em] text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2 font-semibold">Правило</th>
+                              <th className="px-3 py-2 font-semibold">Маршрут</th>
+                              <th className="px-3 py-2 font-semibold">Дни</th>
+                              <th className="px-3 py-2 text-right font-semibold">1 место</th>
+                              <th className="px-3 py-2 text-right font-semibold">Следующее</th>
+                              <th className="px-3 py-2 font-semibold">Статус</th>
+                              <th className="px-3 py-2 font-semibold"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {smartTariffRules.map((rule) => (
+                              <tr key={rule.id} className={rule.isActive ? '' : 'bg-slate-50/70 text-slate-400'}>
+                                <td className="px-3 py-2">
+                                  <div className="font-semibold text-slate-800">{rule.name}</div>
+                                  {rule.requestType && (
+                                    <div className="mt-0.5 text-[11px] text-slate-500">{rule.requestType}</div>
+                                  )}
+                                </td>
+                                <td className="max-w-[360px] px-3 py-2 text-xs text-slate-600">
+                                  <div className="truncate" title={rule.fromAddressNormalized ?? ''}>
+                                    {rule.fromAddressNormalized || 'Любой адрес'}
+                                  </div>
+                                  <div className="truncate text-slate-400" title={rule.toAddressNormalized ?? ''}>
+                                    → {rule.toAddressNormalized || 'любой адрес'}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-xs text-slate-600">
+                                  {smartTariffDaysLabel(rule.weekdays)}
+                                </td>
+                                <td className="px-3 py-2 text-right font-semibold text-slate-800">
+                                  {Number(rule.firstPlacePrice).toLocaleString('ru-RU')} ₽
+                                </td>
+                                <td className="px-3 py-2 text-right text-slate-700">
+                                  {Number(rule.nextPlacePrice).toLocaleString('ru-RU')} ₽
+                                </td>
+                                <td className="px-3 py-2">
+                                  <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${
+                                    rule.isActive
+                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                      : 'border-slate-200 bg-slate-50 text-slate-500'
+                                  }`}>
+                                    {rule.isActive ? 'Активен' : 'Отключён'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {rule.isActive && (
+                                    <div className="flex justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openSmartTariffEditor(rule)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                        Редактировать
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={smartTariffDisablingId === rule.id}
+                                        onClick={() => void turnOffSmartTariff(rule.id)}
+                                        className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"
+                                      >
+                                        {smartTariffDisablingId === rule.id ? 'Отключаем…' : 'Отключить'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2921,20 +3287,391 @@ export default function ReportsView() {
                 </div>
               )}
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="font-semibold text-slate-950">
-                  Сверка клиента
-                </div>
-                <div className="mt-1 text-sm text-slate-500">
-                  Стоимость рассчитывается на сервере автоматически при завершении заявки. В Excel попадут заявки со статусом «Проверено» за выбранный период.
-                </div>
-              </div>
             </>
           )}
         </div>
       ) : (
         <PartnerReconciliation />
       )}
+
+      {/* Edit an existing smart tariff without changing its route/type. */}
+      <Modal
+        isOpen={Boolean(smartTariffEditDraft)}
+        onClose={() => {
+          if (smartTariffEditSaving) return;
+          setSmartTariffEditDraft(null);
+        }}
+      >
+        <div className="w-[min(680px,calc(100vw-32px))] rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="text-lg font-semibold text-slate-950">Редактировать тариф</div>
+          <div className="mt-1 text-xs text-slate-500">
+            Маршрут и тип заявки остаются неизменными. После сохранения пересчитаются только незакрытые автоматические стоимости.
+          </div>
+
+          {smartTariffEditDraft && (
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Откуда</div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">
+                    {smartTariffEditDraft.fromAddress || 'Любой адрес'}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Куда</div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">
+                    {smartTariffEditDraft.toAddress || 'Любой адрес'}
+                  </div>
+                </div>
+              </div>
+
+              {smartTariffEditDraft.requestType && (
+                <div className="mt-2 text-xs text-slate-500">
+                  Тип заявки: <span className="font-semibold text-slate-700">{smartTariffEditDraft.requestType}</span>
+                </div>
+              )}
+
+              <label className="mt-4 block text-xs font-medium text-slate-600">
+                Название тарифа
+                <input
+                  value={smartTariffEditDraft.name}
+                  onChange={(event) => setSmartTariffEditDraft({
+                    ...smartTariffEditDraft,
+                    name: event.target.value,
+                  })}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
+              </label>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-slate-600">
+                  Первое место, ₽
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={smartTariffEditDraft.firstPlacePrice}
+                    onChange={(event) => setSmartTariffEditDraft({
+                      ...smartTariffEditDraft,
+                      firstPlacePrice: event.target.value,
+                    })}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-right text-sm font-semibold text-slate-900 outline-none focus:border-slate-400"
+                  />
+                </label>
+
+                <label className="block text-xs font-medium text-slate-600">
+                  Каждое следующее место, ₽
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={smartTariffEditDraft.nextPlacePrice}
+                    onChange={(event) => setSmartTariffEditDraft({
+                      ...smartTariffEditDraft,
+                      nextPlacePrice: event.target.value,
+                    })}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-right text-sm font-semibold text-slate-900 outline-none focus:border-slate-400"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4">
+                <div className="text-xs font-medium text-slate-600">Когда действует</div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                  {([
+                    ['all', 'Все дни'],
+                    ['weekdays', 'Пн–Пт'],
+                    ['weekend', 'Сб–Вс'],
+                    ['custom', 'Выбрать дни'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setSmartTariffEditDraft({
+                        ...smartTariffEditDraft,
+                        daysMode: value,
+                      })}
+                      className={`h-9 rounded-xl border px-2 text-xs font-semibold transition ${
+                        smartTariffEditDraft.daysMode === value
+                          ? 'border-sky-300 bg-sky-50 text-sky-800'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {smartTariffEditDraft.daysMode === 'custom' && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((label, index) => {
+                      const day = index + 1;
+                      const active = smartTariffEditDraft.weekdays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const weekdays = active
+                              ? smartTariffEditDraft.weekdays.filter((value) => value !== day)
+                              : [...smartTariffEditDraft.weekdays, day].sort((a, b) => a - b);
+
+                            setSmartTariffEditDraft({
+                              ...smartTariffEditDraft,
+                              weekdays,
+                            });
+                          }}
+                          className={`h-9 min-w-10 rounded-xl border px-2 text-xs font-semibold ${
+                            active
+                              ? 'border-sky-300 bg-sky-50 text-sky-800'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                Уже включённые в счёт, проверенные и вручную изменённые суммы останутся без изменений.
+              </div>
+
+              <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  disabled={smartTariffEditSaving}
+                  onClick={() => setSmartTariffEditDraft(null)}
+                  className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={smartTariffEditSaving}
+                  onClick={() => void saveSmartTariffEdit()}
+                  className="h-10 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-50"
+                >
+                  {smartTariffEditSaving ? 'Сохраняем…' : 'Сохранить изменения'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Create a recurring client tariff from selected real requests. */}
+      <Modal
+        isOpen={Boolean(smartTariffDraft && smartTariffPreview)}
+        onClose={() => {
+          if (smartTariffSaving) return;
+          setSmartTariffDraft(null);
+          setSmartTariffPreview(null);
+        }}
+      >
+        <div className="w-[min(760px,calc(100vw-32px))] rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="text-lg font-semibold text-slate-950">Настроить тариф</div>
+          <div className="mt-1 text-xs text-slate-500">
+            На основе {smartTariffPreview?.selectedCount ?? 0} выбранных заявок
+          </div>
+
+          {smartTariffPreview && smartTariffDraft && (
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Откуда</div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">
+                    {smartTariffPreview.commonFromAddress || 'В выбранных заявках адреса различаются'}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Куда</div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">
+                    {smartTariffPreview.commonToAddress || 'В выбранных заявках адреса различаются'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span className={`rounded-lg border px-2 py-1 font-semibold ${
+                  smartTariffPreview.sameRequestType
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                }`}>
+                  Тип: {smartTariffPreview.commonRequestType || 'различается'}
+                </span>
+
+                <span className={`rounded-lg border px-2 py-1 font-semibold ${
+                  smartTariffPreview.sameFromAddress && smartTariffPreview.sameToAddress
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                }`}>
+                  Маршрут: {smartTariffPreview.canCreateRouteRule ? 'совпадает' : 'есть различия'}
+                </span>
+              </div>
+
+              {!smartTariffPreview.canCreateRouteRule && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                  У выбранных заявок различаются тип или маршрут. Такое правило может получиться слишком широким.
+                  Лучше закрыть окно и выбрать заявки одного маршрута.
+                </div>
+              )}
+
+              {smartTariffPreview.canCreateRouteRule && (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Выбрано
+                      </div>
+                      <div className="mt-0.5 text-lg font-semibold text-slate-900">
+                        {smartTariffPreview.selectedCount}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Совпадает
+                      </div>
+                      <div className="mt-0.5 text-lg font-semibold text-slate-900">
+                        {smartTariffPreviewCounts().matched}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+                        Пересчитается
+                      </div>
+                      <div className="mt-0.5 text-lg font-semibold text-emerald-700">
+                        {smartTariffPreviewCounts().eligible}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Защищено
+                      </div>
+                      <div className="mt-0.5 text-lg font-semibold text-slate-700">
+                        {smartTariffPreviewCounts().protected}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 border-t border-slate-200 pt-2 text-[11px] leading-4 text-slate-500">
+                    Показано точное количество для выбранного маршрута, типа заявки и режима дней.
+                    Ручные, уже проверенные и включённые в счёт суммы не изменяются.
+                  </div>
+                </div>
+              )}
+
+              <label className="mt-4 block text-xs font-medium text-slate-600">
+                Название тарифа
+                <input
+                  value={smartTariffDraft.name}
+                  onChange={(event) => setSmartTariffDraft({
+                    ...smartTariffDraft,
+                    name: event.target.value,
+                  })}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                  placeholder="Например: Ключевая → Аэропорт"
+                />
+              </label>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-slate-600">
+                  Первое место, ₽
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={smartTariffDraft.firstPlacePrice}
+                    onChange={(event) => setSmartTariffDraft({
+                      ...smartTariffDraft,
+                      firstPlacePrice: event.target.value,
+                    })}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-right text-sm font-semibold text-slate-900 outline-none focus:border-slate-400"
+                    placeholder="0"
+                  />
+                </label>
+
+                <label className="block text-xs font-medium text-slate-600">
+                  Каждое следующее место, ₽
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={smartTariffDraft.nextPlacePrice}
+                    onChange={(event) => setSmartTariffDraft({
+                      ...smartTariffDraft,
+                      nextPlacePrice: event.target.value,
+                    })}
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-right text-sm font-semibold text-slate-900 outline-none focus:border-slate-400"
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4">
+                <div className="text-xs font-medium text-slate-600">Когда действует</div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                  {([
+                    ['all', 'Все дни'],
+                    ['weekdays', 'Пн–Пт'],
+                    ['weekend', 'Сб–Вс'],
+                    ['selected', 'Как в образцах'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setSmartTariffDraft({
+                        ...smartTariffDraft,
+                        daysMode: value,
+                      })}
+                      className={`h-9 rounded-xl border px-2 text-xs font-semibold transition ${
+                        smartTariffDraft.daysMode === value
+                          ? 'border-sky-300 bg-sky-50 text-sky-800'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {smartTariffDraft.daysMode === 'selected' && (
+                  <div className="mt-2 text-xs text-slate-500">
+                    Дни выбранных заявок: {smartTariffPreview.weekdays.length
+                      ? smartTariffPreview.weekdays.join(', ')
+                      : 'не определены'}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  disabled={smartTariffSaving}
+                  onClick={() => {
+                    setSmartTariffDraft(null);
+                    setSmartTariffPreview(null);
+                  }}
+                  className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+
+                <button
+                  type="button"
+                  disabled={smartTariffSaving || !smartTariffPreview.canCreateRouteRule}
+                  onClick={() => void saveSmartTariffRule()}
+                  className="h-10 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {smartTariffSaving ? 'Сохраняем…' : 'Создать тариф'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
 
       {/* Manager decision about a cancelled / unfinished request. */}
       <Modal isOpen={Boolean(decisionDraft)} onClose={() => setDecisionDraft(null)}>

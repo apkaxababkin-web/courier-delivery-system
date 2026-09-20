@@ -67,6 +67,218 @@ export interface QuoteInput {
   tcAddress?: string | null;
   trackingNumber?: string | null;
   clientId?: number | null;
+
+  // Smart tariff matching uses the request snapshots, not mutable directories.
+  senderAddress?: string | null;
+  deliveryAddress?: string | null;
+  recipientAddress?: string | null;
+
+  // completedAt is preferred because billing is based on performed work.
+  // scheduledAt/createdAt are fallbacks for legacy rows.
+  completedAt?: Date | string | null;
+  scheduledAt?: Date | string | null;
+  createdAt?: Date | string | null;
+}
+
+export interface SmartTariffRule {
+  id: number;
+  clientId: number;
+  name: string;
+  requestType: string | null;
+  fromAddressNormalized: string | null;
+  toAddressNormalized: string | null;
+  weekdays: string | null;
+  firstPlacePrice: number;
+  nextPlacePrice: number;
+  priority: number;
+}
+
+export interface SmartTariffMatch {
+  rule: SmartTariffRule;
+  amount: number;
+  firstPlace: number;
+  nextPlace: number;
+  places: number;
+}
+
+/**
+ * Conservative address key used for tariff matching.
+ * We intentionally do not perform fuzzy/geographic matching here: a manager-created
+ * tariff must never silently price a different route.
+ */
+export function normalizeTariffAddress(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("ru-RU")
+    .replace(/ё/g, "е")
+    .replace(/[.,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function requestFromAddress(request: QuoteInput): string {
+  // TC pickup historically stores the origin in tcAddress.
+  return normalizeTariffAddress(request.senderAddress || request.tcAddress);
+}
+
+function requestToAddress(request: QuoteInput): string {
+  return normalizeTariffAddress(request.deliveryAddress || request.recipientAddress);
+}
+
+function dateOfRequest(request: QuoteInput): Date | null {
+  const raw = request.completedAt || request.scheduledAt || request.createdAt;
+  if (!raw) return null;
+  const date = raw instanceof Date ? raw : new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** ISO weekday from the stored business wall-clock timestamp: Monday=1 ... Sunday=7.
+ *
+ * requests.completedAt/scheduledAt/createdAt are PostgreSQL timestamp without time zone.
+ * Their calendar value is already the application's business-local time, so applying an
+ * additional timezone conversion here would shift the stored business day.
+ */
+export function tariffWeekday(request: QuoteInput): number | null {
+  const date = dateOfRequest(request);
+  if (!date) return null;
+  const jsDay = date.getDay();
+  return jsDay === 0 ? 7 : jsDay;
+}
+
+function weekdaySet(value: string | null): Set<number> | null {
+  if (!value?.trim()) return null;
+  const days = value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7);
+  return days.length ? new Set(days) : null;
+}
+
+function smartRuleSpecificity(rule: SmartTariffRule): number {
+  let score = 0;
+  if (rule.requestType) score += 8;
+  if (rule.fromAddressNormalized) score += 4;
+  if (rule.toAddressNormalized) score += 4;
+  if (rule.weekdays) score += 2;
+  return score;
+}
+
+export function smartRuleMatches(rule: SmartTariffRule, request: QuoteInput): boolean {
+  if (request.clientId == null || Number(request.clientId) !== rule.clientId) return false;
+
+  if (rule.requestType && rule.requestType !== request.requestType) return false;
+
+  const from = requestFromAddress(request);
+  const to = requestToAddress(request);
+
+  if (
+    rule.fromAddressNormalized &&
+    normalizeTariffAddress(rule.fromAddressNormalized) !== from
+  ) {
+    return false;
+  }
+
+  if (
+    rule.toAddressNormalized &&
+    normalizeTariffAddress(rule.toAddressNormalized) !== to
+  ) {
+    return false;
+  }
+
+  const allowedDays = weekdaySet(rule.weekdays);
+  if (allowedDays) {
+    const day = tariffWeekday(request);
+    if (day == null || !allowedDays.has(day)) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Select the most specific matching rule.
+ * Explicit priority only breaks ties between rules of equal specificity.
+ */
+export function chooseSmartTariffRule(
+  rules: SmartTariffRule[],
+  request: QuoteInput,
+): SmartTariffRule | null {
+  return rules
+    .filter((rule) => smartRuleMatches(rule, request))
+    .sort((a, b) =>
+      smartRuleSpecificity(b) - smartRuleSpecificity(a) ||
+      b.priority - a.priority ||
+      b.id - a.id
+    )[0] ?? null;
+}
+
+export function computeSmartTariff(
+  rule: SmartTariffRule,
+  request: QuoteInput,
+): SmartTariffMatch | null {
+  const firstPlace = Number(rule.firstPlacePrice);
+  const nextPlaceRaw = Number(rule.nextPlacePrice);
+  const places = Math.max(1, Number(request.placesCount || 1));
+
+  if (!Number.isFinite(firstPlace) || firstPlace < 0) return null;
+
+  const nextPlace =
+    Number.isFinite(nextPlaceRaw) && nextPlaceRaw > 0 ? nextPlaceRaw : 0;
+
+  return {
+    rule,
+    amount: firstPlace + Math.max(0, places - 1) * nextPlace,
+    firstPlace,
+    nextPlace,
+    places,
+  };
+}
+
+export async function loadSmartTariffRules(clientId: number): Promise<SmartTariffRule[]> {
+  const conn = await db.getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const result = await conn.execute(sql`
+    SELECT
+      "id",
+      "clientId",
+      "name",
+      "requestType",
+      "fromAddressNormalized",
+      "toAddressNormalized",
+      "weekdays",
+      "firstPlacePrice",
+      "nextPlacePrice",
+      "priority"
+    FROM "clientTariffRules"
+    WHERE "clientId" = ${clientId}
+      AND "isActive" = true
+    ORDER BY "priority" DESC, "id" DESC
+  `);
+
+  return rowsOf(result).map((row) => ({
+    id: Number(row.id),
+    clientId: Number(row.clientId),
+    name: String(row.name ?? ""),
+    requestType: row.requestType == null ? null : String(row.requestType),
+    fromAddressNormalized:
+      row.fromAddressNormalized == null ? null : String(row.fromAddressNormalized),
+    toAddressNormalized:
+      row.toAddressNormalized == null ? null : String(row.toAddressNormalized),
+    weekdays: row.weekdays == null ? null : String(row.weekdays),
+    firstPlacePrice: Number(row.firstPlacePrice),
+    nextPlacePrice: Number(row.nextPlacePrice),
+    priority: Number(row.priority ?? 0),
+  }));
+}
+
+export async function quoteSmartTariff(
+  request: QuoteInput,
+): Promise<SmartTariffMatch | null> {
+  if (request.clientId == null) return null;
+
+  const rules = await loadSmartTariffRules(Number(request.clientId));
+  const rule = chooseSmartTariffRule(rules, request);
+  return rule ? computeSmartTariff(rule, request) : null;
 }
 
 export type QuoteResult =
@@ -77,6 +289,10 @@ export type QuoteResult =
       firstPlace: number;
       nextPlace: number;
       places: number;
+      /** Smart rule used for this quote; null means legacy/base tariff. */
+      tariffRuleId: number | null;
+      /** Immutable audit snapshot written together with the calculated amount. */
+      tariffRuleSnapshot: string | null;
     }
   | {
       ok: false;
@@ -164,7 +380,16 @@ export function computeQuote(
   const safeNext = Number.isFinite(nextPlace) && nextPlace > 0 ? nextPlace : 0;
   const amount = firstPlace + Math.max(0, places - 1) * safeNext;
 
-  return { ok: true, amount, category, firstPlace, nextPlace: safeNext, places };
+  return {
+    ok: true,
+    amount,
+    category,
+    firstPlace,
+    nextPlace: safeNext,
+    places,
+    tariffRuleId: null,
+    tariffRuleSnapshot: null,
+  };
 }
 
 /** Latest tariff card of a client, or null when the client has none. */
@@ -191,6 +416,34 @@ export async function quoteRequest(request: QuoteInput): Promise<QuoteResult> {
     return computeQuote(request, EMPTY_TARIFF_RATES, false);
   }
 
+  // A client-specific smart rule has priority over the legacy/base tariff card.
+  const smart = await quoteSmartTariff(request);
+  if (smart) {
+    return {
+      ok: true,
+      amount: smart.amount,
+      category: tariffCategoryFor(request),
+      firstPlace: smart.firstPlace,
+      nextPlace: smart.nextPlace,
+      places: smart.places,
+      tariffRuleId: smart.rule.id,
+      tariffRuleSnapshot: JSON.stringify({
+        version: 1,
+        ruleId: smart.rule.id,
+        clientId: smart.rule.clientId,
+        name: smart.rule.name,
+        requestType: smart.rule.requestType,
+        fromAddressNormalized: smart.rule.fromAddressNormalized,
+        toAddressNormalized: smart.rule.toAddressNormalized,
+        weekdays: smart.rule.weekdays,
+        firstPlacePrice: smart.rule.firstPlacePrice,
+        nextPlacePrice: smart.rule.nextPlacePrice,
+        priority: smart.rule.priority,
+      }),
+    };
+  }
+
+  // No smart rule matched: preserve the existing tariff behaviour unchanged.
   const { rates, hasTariffRow } = await loadClientTariffRates(Number(request.clientId));
   return computeQuote(request, rates, hasTariffRow);
 }
@@ -232,7 +485,7 @@ export type QuoteOutcome = {
   status: "calculated" | "skipped" | "unresolved";
   amount?: number;
   reason?: string;
-  preserved?: "checked" | "manual" | "billed" | "not_completed" | "already_calculated";
+  preserved?: "checked" | "manual" | "billed" | "not_completed" | "already_calculated" | "different_tariff_rule";
 };
 
 /**
@@ -241,10 +494,16 @@ export type QuoteOutcome = {
  */
 export async function applyQuoteForRequest(
   request: DeliveryRequest,
-  options: { force?: boolean } = {},
+  options: {
+    force?: boolean;
+    repriceAutomatic?: boolean;
+    onlyTariffRuleId?: number;
+    affectedTariffRuleId?: number;
+  } = {},
 ): Promise<QuoteOutcome> {
   const requestId = Number(request.id);
   const force = options.force === true;
+  const repriceAutomatic = options.repriceAutomatic === true;
 
   if (request.status !== "completed") {
     return { requestId, status: "skipped", preserved: "not_completed" };
@@ -261,12 +520,54 @@ export async function applyQuoteForRequest(
     if (request.quoteSource === "manual_fee") {
       return { requestId, status: "skipped", preserved: "manual" };
     }
-    if (request.quoteCalculatedAt) {
+    if (request.quoteCalculatedAt && !repriceAutomatic) {
       return { requestId, status: "skipped", preserved: "already_calculated" };
+    }
+
+    // Safe repricing is allowed only for prices that were produced by the
+    // tariff engine itself. Legacy/unknown non-null amounts are preserved.
+    if (
+      repriceAutomatic &&
+      request.deliveryFee != null &&
+      request.quoteSource !== "tariff"
+    ) {
+      return { requestId, status: "skipped", preserved: "manual" };
     }
   }
 
   const result = await quoteRequest(request);
+
+  // Targeted smart-tariff repricing is intentionally a no-op unless the
+  // requested rule is the actual winning quote for this request. This prevents
+  // creation of one rule from repricing unrelated automatic client requests.
+  if (
+    options.onlyTariffRuleId !== undefined &&
+    (!result.ok || result.tariffRuleId !== options.onlyTariffRuleId)
+  ) {
+    return {
+      requestId,
+      status: "skipped",
+      preserved: "different_tariff_rule",
+    };
+  }
+
+  // Editing a smart tariff affects two safe groups:
+  // 1) requests for which the edited rule is the winner after the edit;
+  // 2) requests previously stamped with this rule, even if the edit means
+  //    they no longer match it. Those rows must fall back to another smart
+  //    rule, the base tariff, or unresolved instead of keeping a stale price.
+  if (
+    options.affectedTariffRuleId !== undefined &&
+    request.quoteTariffRuleId !== options.affectedTariffRuleId &&
+    (!result.ok || result.tariffRuleId !== options.affectedTariffRuleId)
+  ) {
+    return {
+      requestId,
+      status: "skipped",
+      preserved: "different_tariff_rule",
+    };
+  }
+
   const conn = await db.getDb();
   if (!conn) throw new Error("Database not available");
 
@@ -275,7 +576,14 @@ export async function applyQuoteForRequest(
     // unresolved so it shows up as "requires attention".
     await conn
       .update(requests)
-      .set({ deliveryFee: null, quoteCalculatedAt: null, updatedAt: new Date() })
+      .set({
+        deliveryFee: null,
+        quoteCalculatedAt: null,
+        quoteSource: null,
+        quoteTariffRuleId: null,
+        quoteTariffSnapshot: null,
+        updatedAt: new Date(),
+      })
       .where(eq(requests.id, requestId));
     return { requestId, status: "unresolved", reason: result.reason };
   }
@@ -286,6 +594,8 @@ export async function applyQuoteForRequest(
       deliveryFee: result.amount.toFixed(2),
       quoteCalculatedAt: new Date(),
       quoteSource: "tariff",
+      quoteTariffRuleId: result.tariffRuleId,
+      quoteTariffSnapshot: result.tariffRuleSnapshot,
       updatedAt: new Date(),
     })
     .where(eq(requests.id, requestId));
@@ -299,7 +609,13 @@ export async function markManualPrice(requestId: number): Promise<void> {
   if (!conn) throw new Error("Database not available");
   await conn
     .update(requests)
-    .set({ quoteSource: "manual_fee", quoteCalculatedAt: null, updatedAt: new Date() })
+    .set({
+      quoteSource: "manual_fee",
+      quoteCalculatedAt: null,
+      quoteTariffRuleId: null,
+      quoteTariffSnapshot: null,
+      updatedAt: new Date(),
+    })
     .where(eq(requests.id, requestId));
 }
 
@@ -317,7 +633,13 @@ export async function quoteCompletedRequest(requestId: number): Promise<QuoteOut
 /** Quote every eligible completed request of one client. */
 export async function quoteClientRequests(
   clientId: number,
-  options: { from?: string; to?: string } = {},
+  options: {
+    from?: string;
+    to?: string;
+    repriceAutomatic?: boolean;
+    onlyTariffRuleId?: number;
+    affectedTariffRuleId?: number;
+  } = {},
 ): Promise<QuoteOutcome[]> {
   const conn = await db.getDb();
   if (!conn) throw new Error("Database not available");
@@ -329,7 +651,11 @@ export async function quoteClientRequests(
   const rows = await conn.select().from(requests).where(and(...conditions)).orderBy(requests.id);
   const outcomes: QuoteOutcome[] = [];
   for (const row of rows as DeliveryRequest[]) {
-    outcomes.push(await applyQuoteForRequest(row));
+    outcomes.push(await applyQuoteForRequest(row, {
+      repriceAutomatic: options.repriceAutomatic === true,
+      onlyTariffRuleId: options.onlyTariffRuleId,
+      affectedTariffRuleId: options.affectedTariffRuleId,
+    }));
   }
   return outcomes;
 }
