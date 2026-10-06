@@ -1959,7 +1959,7 @@ export const appRouter = router({
           note: "Заявка создана",
         });
 
-        await syncTaskForRequestId(id);
+        const taskId = await syncTaskForRequestId(id);
 
         const requestForPush = await db.getRequestById(id);
         if (isScheduledForToday(requestForPush?.scheduledAt)) {
@@ -1985,6 +1985,7 @@ export const appRouter = router({
           await sendPushToAllCouriers(push.title, push.body, {
             type: "new_request_available",
             requestId: id,
+            taskId,
             requestType: input.requestType,
           });
 

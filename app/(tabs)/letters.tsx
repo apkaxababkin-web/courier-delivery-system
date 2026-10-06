@@ -7,6 +7,7 @@ import { useCourierAuth } from "@/lib/courier-auth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { parsePhoneField } from "@/lib/phone-utils";
 
 function formatDateTimeInput(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -22,10 +23,6 @@ function parseDateTimeInput(value: string): Date | null {
   return parsed;
 }
 
-function normalizePhoneForDial(phone?: string | null) {
-  if (!phone) return "";
-  return phone.replace(/[^+\d]/g, "");
-}
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
@@ -156,11 +153,11 @@ export default function LettersScreen() {
     return rows;
   }, [mails, search, selectedDate]);
 
-  const callRecipient = async (phone?: string | null) => {
-    const normalizedPhone = normalizePhoneForDial(phone);
-    if (!normalizedPhone) return;
+  const callRecipient = async (dial: string) => {
+    if (!dial) return;
+
     try {
-      await Linking.openURL(`tel:${normalizedPhone}`);
+      await Linking.openURL(`tel:${dial}`);
     } catch (error) {
       console.warn("[Letters] Failed to open dialer", error);
     }
@@ -210,7 +207,7 @@ export default function LettersScreen() {
 
           const mail = item.mail;
           const delivered = isMailDelivered(mail);
-          const hasPhone = Boolean(normalizePhoneForDial(mail.recipientPhone));
+          const recipientPhones = parsePhoneField(mail.recipientPhone);
 
           return (
             <Pressable
@@ -230,10 +227,28 @@ export default function LettersScreen() {
                   <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "900" }}>Письмо №-{mail.waybillNumber}</Text>
                   <Text style={{ color: colors.muted, marginTop: 4, fontSize: 12, fontWeight: "700" }}>{mail.recipientName || "—"}</Text>
                   <Text style={{ color: colors.muted, marginTop: 3, fontSize: 12, fontWeight: "700" }} numberOfLines={1}>{mail.deliveryAddress || "—"}</Text>
-                  {hasPhone && (
-                    <Pressable onPress={() => callRecipient(mail.recipientPhone)}>
-                      <Text style={{ color: colors.primary, marginTop: 5, fontSize: 12, fontWeight: "900" }}>{mail.recipientPhone}</Text>
-                    </Pressable>
+                  {recipientPhones.length > 0 && (
+                    <View style={{ marginTop: 5, gap: 3 }}>
+                      {recipientPhones.map((phone, phoneIndex) => (
+                        <Pressable
+                          key={`${phone.dial}-${phoneIndex}`}
+                          onPress={() => callRecipient(phone.dial)}
+                        >
+                          <Text
+                            style={{
+                              color: colors.primary,
+                              fontSize: 12,
+                              fontWeight: "900",
+                            }}
+                          >
+                            {phone.display}
+                            {phone.extension
+                              ? `  доб. ${phone.extension}`
+                              : ""}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   )}
                 </View>
                 <View style={{ alignItems: "flex-end", gap: 6 }}>

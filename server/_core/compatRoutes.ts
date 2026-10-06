@@ -290,8 +290,93 @@ async function tasksWithRequestType<T extends Pick<Task, "comments">>(
 }
 
 function taskFromRequest(request: DeliveryRequest): InsertTask {
-  const fallbackAddress = request.deliveryAddress || request.recipientAddress || request.senderAddress || request.tcAddress || "Адрес не указан";
-  const fallbackName = request.recipientName || request.recipientCompany || request.senderName || request.senderCompany || "Получатель не указан";
+  const isTransportCompanyRequest = request.requestType === "pickup_from_tc";
+  const isDeliveryToTransportCompany =
+    isTransportCompanyRequest &&
+    String(request.comments || "").includes("получатель → ТК");
+
+  const fallbackAddress =
+    request.deliveryAddress ||
+    request.recipientAddress ||
+    request.senderAddress ||
+    request.tcAddress ||
+    "Адрес не указан";
+
+  const fallbackName =
+    request.recipientName ||
+    request.recipientCompany ||
+    request.senderName ||
+    request.senderCompany ||
+    "Получатель не указан";
+
+  const taskSenderName = isTransportCompanyRequest
+    ? (
+        isDeliveryToTransportCompany
+          ? request.recipientName ||
+            request.recipientCompany ||
+            request.senderName ||
+            request.senderCompany ||
+            "Получатель не указан"
+          : request.tcName || "Транспортная компания"
+      )
+    : request.senderName || request.senderCompany || request.tcName || null;
+
+  const taskSenderAddress = isTransportCompanyRequest
+    ? (
+        isDeliveryToTransportCompany
+          ? request.deliveryAddress ||
+            request.recipientAddress ||
+            request.senderAddress ||
+            null
+          : request.tcAddress || null
+      )
+    : request.senderAddress || request.tcAddress || null;
+
+  const taskSenderPhone = isTransportCompanyRequest
+    ? (
+        isDeliveryToTransportCompany
+          ? request.recipientPhone || request.senderPhone || null
+          : request.senderPhone ?? null
+      )
+    : request.senderPhone ?? null;
+
+  const taskRecipientName = isTransportCompanyRequest
+    ? (
+        isDeliveryToTransportCompany
+          ? request.tcName || "Транспортная компания"
+          : request.recipientName ||
+            request.recipientCompany ||
+            "Получатель не указан"
+      )
+    : fallbackName;
+
+  const taskRecipientAddress = isTransportCompanyRequest
+    ? (
+        isDeliveryToTransportCompany
+          ? request.tcAddress || null
+          : request.deliveryAddress ||
+            request.recipientAddress ||
+            null
+      )
+    : request.recipientAddress ?? null;
+
+  const taskDeliveryAddress = isTransportCompanyRequest
+    ? (
+        isDeliveryToTransportCompany
+          ? request.tcAddress || "Адрес не указан"
+          : request.deliveryAddress ||
+            request.recipientAddress ||
+            "Адрес не указан"
+      )
+    : fallbackAddress;
+
+  const taskRecipientPhone = isTransportCompanyRequest
+    ? (
+        isDeliveryToTransportCompany
+          ? request.senderPhone || null
+          : request.recipientPhone || ""
+      )
+    : request.recipientPhone || request.senderPhone || "";
   const comments = [
     requestMarker(request.id),
     request.description,
@@ -309,14 +394,14 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
     sourceRequestId: request.id,
     status: normalizeTaskStatus(request.status),
     taskType: taskTypeFromRequest(request.requestType),
-    recipientName: fallbackName,
-    recipientPhone: request.recipientPhone || request.senderPhone || "",
-    recipientAddress: request.recipientAddress ?? null,
-    deliveryAddress: fallbackAddress,
+    recipientName: taskRecipientName,
+    recipientPhone: taskRecipientPhone,
+    recipientAddress: taskRecipientAddress,
+    deliveryAddress: taskDeliveryAddress,
     deliveryCity: request.deliveryCity || request.recipientCity || request.senderCity || null,
-    senderName: request.senderName || request.senderCompany || request.tcName || null,
-    senderAddress: request.senderAddress || request.tcAddress || null,
-    senderPhone: request.senderPhone ?? null,
+    senderName: taskSenderName,
+    senderAddress: taskSenderAddress,
+    senderPhone: taskSenderPhone,
     packageDescription: request.packageDescription || request.description || request.callReason || null,
     packageType: request.packageType ?? "small",
     placesCount: request.placesCount ?? null,
@@ -3006,6 +3091,7 @@ export function registerCompatRoutes(app: Express) {
             {
               type: "new_request_available",
               requestId: request.id,
+              taskId,
               requestType: request.requestType,
             },
           );

@@ -282,6 +282,27 @@ export default function TaskListScreen() {
     return `${Math.round(amount).toLocaleString("ru-RU")} ₽`;
   };
 
+  const getPaymentLabel = (item: any) => {
+    const raw =
+      item.paymentAmount ??
+      item.total ??
+      item.price ??
+      item.cost;
+
+    if (raw == null || raw === "") return null;
+
+    const normalized =
+      typeof raw === "string"
+        ? raw.replace(/\s/g, "").replace(",", ".")
+        : raw;
+
+    const amount = Number(normalized);
+
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    return `${Math.round(amount).toLocaleString("ru-RU")} ₽`;
+  };
+
   const getTaskTimeLabel = (item: any) => {
     const from = item.deliveryTimeFrom || item.timeFrom || item.scheduledTimeFrom;
     const to = item.deliveryTimeTo || item.timeTo || item.scheduledTimeTo;
@@ -742,15 +763,32 @@ export default function TaskListScreen() {
                   ) : ""}
                 </Text>
 
-                <Text
-                  style={{
-                    color: item.courierName ? "#0F172A" : "#2563EB",
-                    fontSize: 11,
-                    fontWeight: "800",
-                  }}
-                >
-                  {getCourierLabel(item)}
-                </Text>
+                <View style={{ alignItems: "flex-end" }}>
+                  {getPaymentLabel(item) ? (
+                    <Text
+                      style={{
+                        color: "#0F172A",
+                        fontSize: 11,
+                        fontWeight: "900",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {`Оплата: ${getPaymentLabel(item)}`}
+                    </Text>
+                  ) : null}
+
+                  <Text
+                    style={{
+                      color: item.courierName
+                        ? (item.courierColor || "#0F172A")
+                        : "#2563EB",
+                      fontSize: 11,
+                      fontWeight: "800",
+                    }}
+                  >
+                    {getCourierLabel(item)}
+                  </Text>
+                </View>
               </View>
 
             </TouchableOpacity>

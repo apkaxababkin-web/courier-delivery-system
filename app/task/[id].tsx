@@ -27,6 +27,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { getDisplayRequestId } from "@/shared/request-number";
+import { normalizePhoneForDial } from "@/lib/phone-utils";
 
 type Palette = {
   border: string;
@@ -239,8 +240,16 @@ export default function TaskDetailScreen() {
   };
 
   const handleCallPhone = (phone: string | null | undefined) => {
-    if (!phone) return;
-    Linking.openURL(`tel:${phone.replace(/\s|\(|\)|-/g, "")}`);
+    const dial = normalizePhoneForDial(phone);
+
+    if (!dial) {
+      Alert.alert("Телефон", "Не удалось определить номер телефона");
+      return;
+    }
+
+    Linking.openURL(`tel:${dial}`).catch(() => {
+      Alert.alert("Ошибка", "Не удалось открыть набор номера");
+    });
   };
 
   const handleOpenAttachment = async (attachment: RequestAttachment) => {
@@ -342,6 +351,22 @@ export default function TaskDetailScreen() {
   const taskComment = task.comments || task.specialInstructions || "—";
   const courierComment = task.courierComments || "";
 
+  const isTransportCompanyTask =
+    (task as any).requestType === "pickup_from_tc" ||
+    (task as any).taskType === "pickup_from_tc";
+
+  const isDeliveryToTransportCompany =
+    isTransportCompanyTask &&
+    String(task.comments || "").includes("получатель → ТК");
+
+  const senderSectionTitle = isTransportCompanyTask
+    ? (isDeliveryToTransportCompany ? "Откуда" : "Транспортная компания")
+    : "Отправитель";
+
+  const recipientSectionTitle = isTransportCompanyTask
+    ? (isDeliveryToTransportCompany ? "Транспортная компания" : "Получатель")
+    : "Получатель";
+
   return (
     <ScreenContainer className="p-0">
       <View style={{ backgroundColor: colors.background, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 }}>
@@ -359,7 +384,7 @@ export default function TaskDetailScreen() {
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: 24, gap: 10, backgroundColor: colors.background }} showsVerticalScrollIndicator={false}>
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
-          <SectionTitle colors={colors}>Отправитель</SectionTitle>
+          <SectionTitle colors={colors}>{senderSectionTitle}</SectionTitle>
           <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.senderName || "—"}</Text>
           <ClickableLine value={task.senderAddress} onPress={() => handleOpenMap(task.senderAddress)} />
           <View style={{ height: 5 }} />
@@ -367,7 +392,7 @@ export default function TaskDetailScreen() {
         </GlassCard>
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
-          <SectionTitle colors={colors}>Получатель</SectionTitle>
+          <SectionTitle colors={colors}>{recipientSectionTitle}</SectionTitle>
           <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.recipientName || "—"}</Text>
           <ClickableLine value={task.deliveryAddress} onPress={() => handleOpenMap(task.deliveryAddress)} />
           <View style={{ height: 5 }} />

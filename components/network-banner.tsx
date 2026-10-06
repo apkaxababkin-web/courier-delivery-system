@@ -1,45 +1,49 @@
+import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import { useColors } from "@/hooks/use-colors";
 
 type Props = {
   visible: boolean;
 };
 
 export function NetworkBanner({ visible }: Props) {
-  const colors = useColors();
+  const [dots, setDots] = useState(1);
+
+  useEffect(() => {
+    if (!visible) {
+      setDots(1);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setDots((current) => (current >= 3 ? 1 : current + 1));
+    }, 450);
+
+    return () => clearInterval(timer);
+  }, [visible]);
 
   if (!visible) return null;
 
   return (
     <View
+      pointerEvents="none"
       style={{
-        backgroundColor: "#dc2626",
-        paddingVertical: 10,
-        paddingHorizontal: 14,
+        height: 24,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(100,116,139,0.10)",
         borderBottomWidth: 1,
-        borderBottomColor: "rgba(255,255,255,0.1)",
+        borderBottomColor: "rgba(148,163,184,0.16)",
       }}
     >
       <Text
         style={{
-          color: "white",
-          textAlign: "center",
+          color: "#64748B",
+          fontSize: 11,
           fontWeight: "700",
-          fontSize: 13,
+          letterSpacing: 0.1,
         }}
       >
-        Нет подключения к интернету
-      </Text>
-
-      <Text
-        style={{
-          color: "rgba(255,255,255,0.8)",
-          textAlign: "center",
-          fontSize: 12,
-          marginTop: 2,
-        }}
-      >
-        Данные обновятся автоматически после восстановления сети
+        {`Соединение${".".repeat(dots)}`}
       </Text>
     </View>
   );

@@ -43,7 +43,7 @@ export default function SberbankScreen() {
   const headerHeight = 82;
   const extraRowsHeight = 520;
   const listHeight = Math.max(320, windowHeight - insets.top - insets.bottom - tabBarHeight - headerHeight + extraRowsHeight);
-  const { token } = useCourierAuth();
+  const { token, courier } = useCourierAuth();
   const { isOnline } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
   const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
@@ -53,6 +53,7 @@ export default function SberbankScreen() {
 
   const [selectedDate] = useState(new Date());
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
+  const [filterMode, setFilterMode] = useState<"mine" | "all">("mine");
   const queryInput = token ? { token, date: selectedDate } : skipToken;
 
   const { data: pickupPoints = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(queryInput);
@@ -105,6 +106,22 @@ export default function SberbankScreen() {
       ],
     );
   };
+
+  const visiblePickupPoints = pickupPoints.filter((point: PickupPoint) => {
+    if (filterMode === "all") return true;
+
+    // Free/unpicked points are always visible in "Мои".
+    if (!point.isPicked || !point.courierName) return true;
+
+    const currentName = courier?.name?.trim().toLowerCase();
+    const pointCourierName = point.courierName?.trim().toLowerCase();
+
+    return Boolean(
+      currentName &&
+      pointCourierName &&
+      currentName === pointCourierName
+    );
+  });
 
   const renderPickupPoint = ({ item, index }: { item: PickupPoint; index: number }) => {
     const selected = selectedPointId === item.id;
@@ -194,9 +211,48 @@ export default function SberbankScreen() {
             <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900" }}>{pickedCount} из {pickupPoints.length}</Text>
           </View>
         </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignSelf: "flex-start",
+            backgroundColor: soft,
+            borderRadius: 9,
+            padding: 3,
+            borderWidth: 1,
+            borderColor: border,
+          }}
+        >
+          {(["mine", "all"] as const).map((mode) => {
+            const active = filterMode === mode;
+
+            return (
+              <Pressable
+                key={mode}
+                onPress={() => setFilterMode(mode)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 6,
+                  borderRadius: 7,
+                  backgroundColor: active ? colors.primary : "transparent",
+                }}
+              >
+                <Text
+                  style={{
+                    color: active ? "#FFFFFF" : colors.muted,
+                    fontSize: 11,
+                    fontWeight: "900",
+                  }}
+                >
+                  {mode === "mine" ? "Мои" : "Все"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
-      {pickupPoints.length > 0 ? (
+      {visiblePickupPoints.length > 0 ? (
         <View style={{ height: listHeight, backgroundColor: colors.background, overflow: "hidden" }}>
           <ScrollView
             style={{ flex: 1, alignSelf: "stretch", backgroundColor: colors.background }}
@@ -208,7 +264,7 @@ export default function SberbankScreen() {
             }}
             showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
           >
-            {pickupPoints.map((item: PickupPoint, index: number) => (
+            {visiblePickupPoints.map((item: PickupPoint, index: number) => (
               <View key={item.id.toString()}>
                 {renderPickupPoint({ item, index })}
               </View>

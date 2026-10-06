@@ -46,6 +46,13 @@ function getPushRoute(data: Record<string, unknown> | undefined) {
         ? Number(data.requestId)
         : NaN;
 
+  const taskId =
+    typeof data.taskId === "number"
+      ? data.taskId
+      : typeof data.taskId === "string"
+        ? Number(data.taskId)
+        : NaN;
+
   const conversationId =
     typeof data.conversationId === "number"
       ? data.conversationId
@@ -60,10 +67,16 @@ function getPushRoute(data: Record<string, unknown> | undefined) {
   if (
     (type === "new_request_available" ||
       type === "request_assigned") &&
-    Number.isFinite(requestId) &&
-    requestId > 0
+    (Number.isFinite(taskId) || Number.isFinite(requestId))
   ) {
-    return `/task/${requestId}`;
+    const targetId =
+      Number.isFinite(taskId) && taskId > 0
+        ? taskId
+        : requestId;
+
+    if (targetId > 0) {
+      return `/task/${targetId}`;
+    }
   }
 
   // ----------------------------------------------------------
