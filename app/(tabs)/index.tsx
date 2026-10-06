@@ -43,7 +43,7 @@ export default function TaskListScreen() {
   const router = useRouter();
   const { token, courier, loading: authLoading } = useCourierAuth();
   const { filterMode, setFilterMode } = useFilter();
-  const { isOnline } = useNetworkStatus();
+  const { isOnline, phase: networkPhase } = useNetworkStatus();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -473,7 +473,7 @@ export default function TaskListScreen() {
   if (!token) {
     return (
       <ScreenContainer className="p-6">
-        <NetworkBanner visible={!isOnline} />
+        <NetworkBanner phase={networkPhase} />
         <View style={styles.center}>
           <Text style={{ fontSize: 40 }}>📦</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Войдите в аккаунт</Text>
@@ -485,7 +485,7 @@ export default function TaskListScreen() {
 
   return (
     <ScreenContainer className="p-0">
-      <NetworkBanner visible={!isOnline} />
+      <NetworkBanner phase={networkPhase} />
 
       <HeaderBarV2
         onProfilePress={() => router.push("/profile" as never)}

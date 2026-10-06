@@ -70,7 +70,7 @@ function mailDeliveredDate(mail: any) {
 export default function LettersScreen() {
   const colors = useColors();
   const { token } = useCourierAuth();
-  const { isOnline } = useNetworkStatus();
+  const { isOnline, phase: networkPhase } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
   const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
   const soft = dark ? "rgba(148,163,184,0.07)" : "#F8FAFC";
@@ -172,7 +172,7 @@ export default function LettersScreen() {
 
   return (
     <ScreenContainer className="p-0">
-      <NetworkBanner visible={!isOnline} />
+      <NetworkBanner phase={networkPhase} />
 
       <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, backgroundColor: colors.background }}>
         <Text style={{ fontSize: 12, fontWeight: "900", color: colors.foreground, marginBottom: 12 }}>Письма</Text>

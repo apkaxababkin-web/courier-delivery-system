@@ -1,16 +1,23 @@
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
+import type { NetworkPhase } from "@/hooks/use-network-status";
+
 type Props = {
-  visible: boolean;
+  phase: NetworkPhase;
 };
 
-export function NetworkBanner({ visible }: Props) {
+export function NetworkBanner({ phase }: Props) {
   const [dots, setDots] = useState(1);
+  const visible = phase !== "online";
 
   useEffect(() => {
     if (!visible) {
       setDots(1);
+      return;
+    }
+
+    if (phase !== "connecting") {
       return;
     }
 
@@ -19,9 +26,14 @@ export function NetworkBanner({ visible }: Props) {
     }, 450);
 
     return () => clearInterval(timer);
-  }, [visible]);
+  }, [phase, visible]);
 
   if (!visible) return null;
+
+  const label =
+    phase === "offline"
+      ? "Нет соединения"
+      : `Соединение${".".repeat(dots)}`;
 
   return (
     <View
@@ -43,7 +55,7 @@ export function NetworkBanner({ visible }: Props) {
           letterSpacing: 0.1,
         }}
       >
-        {`Соединение${".".repeat(dots)}`}
+        {label}
       </Text>
     </View>
   );

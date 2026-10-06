@@ -67,16 +67,10 @@ function getPushRoute(data: Record<string, unknown> | undefined) {
   if (
     (type === "new_request_available" ||
       type === "request_assigned") &&
-    (Number.isFinite(taskId) || Number.isFinite(requestId))
+    Number.isFinite(taskId) &&
+    taskId > 0
   ) {
-    const targetId =
-      Number.isFinite(taskId) && taskId > 0
-        ? taskId
-        : requestId;
-
-    if (targetId > 0) {
-      return `/task/${targetId}`;
-    }
+    return `/task/${taskId}`;
   }
 
   // ----------------------------------------------------------

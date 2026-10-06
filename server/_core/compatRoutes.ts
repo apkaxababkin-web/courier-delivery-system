@@ -3253,6 +3253,8 @@ export function registerCompatRoutes(app: Express) {
         try {
           const courier = await db.getCourierById(courierId);
           const request = updated[0] as DeliveryRequest;
+          const linkedTask = await findTaskForRequest(request.id);
+          const pushTaskId = linkedTask?.id ?? null;
 
           console.log("[PUSH] compat request", id);
           console.log("[PUSH] compat courier", courier?.id);
@@ -3291,6 +3293,7 @@ export function registerCompatRoutes(app: Express) {
               {
                 type: "request_assigned",
                 requestId: request.id,
+                ...(pushTaskId ? { taskId: pushTaskId } : {}),
               },
             );
 

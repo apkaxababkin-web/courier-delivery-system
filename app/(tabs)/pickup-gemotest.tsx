@@ -44,7 +44,7 @@ export default function HemotestScreen() {
   const extraRowsHeight = 520;
   const listHeight = Math.max(320, windowHeight - insets.top - insets.bottom - tabBarHeight - headerHeight + extraRowsHeight);
   const { token, courier } = useCourierAuth();
-  const { isOnline } = useNetworkStatus();
+  const { isOnline, phase: networkPhase } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
   const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
   const soft = dark ? "rgba(148,163,184,0.07)" : "#F8FAFC";
@@ -200,7 +200,7 @@ export default function HemotestScreen() {
 
   return (
     <ScreenContainer className="p-0">
-      <NetworkBanner visible={!isOnline} />
+      <NetworkBanner phase={networkPhase} />
 
       <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, backgroundColor: colors.background }}>
         <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 12 }}>

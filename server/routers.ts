@@ -2203,7 +2203,7 @@ export const appRouter = router({
           });
         }
 
-        await syncTaskForRequestId(input.id);
+        const syncedTaskId = await syncTaskForRequestId(input.id);
 
         if (input.courierId) {
           try {
@@ -2247,6 +2247,7 @@ export const appRouter = router({
                 {
                   type: "request_assigned",
                   requestId: request.id,
+                  ...(syncedTaskId ? { taskId: syncedTaskId } : {}),
                 },
               );
 
