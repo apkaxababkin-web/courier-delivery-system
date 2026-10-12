@@ -345,6 +345,23 @@ export const appRouter = router({
       }),
 
     /**
+     * Find an existing task by its linked request ID.
+     * Read-only. Does not create or modify tasks.
+     */
+    byRequestId: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        requestId: z.number().int().positive(),
+      }))
+      .query(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Недействительный токен");
+        await assertCourierAccess(payload.courierId, "tasks");
+
+        return db.getTaskWithCourierByRequestId(input.requestId);
+      }),
+
+    /**
      * Get single task by ID
      */
     byId: publicProcedure

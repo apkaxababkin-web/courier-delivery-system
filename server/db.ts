@@ -662,6 +662,23 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
   });
 }
 
+export async function getTaskWithCourierByRequestId(
+  requestId: number,
+): Promise<TaskWithCourier | null> {
+  const conn = await getDb();
+  if (!conn) throw new Error("Database not available");
+
+  const rows = await conn
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(or(eq(tasks.requestId, requestId), eq(tasks.sourceRequestId, requestId)))
+    .orderBy(desc(tasks.createdAt))
+    .limit(1);
+
+  if (!rows[0]) return null;
+  return getTaskWithCourierById(rows[0].id);
+}
+
 export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCourier | null> {
   const db = await getDb();
   if (!db) return null;

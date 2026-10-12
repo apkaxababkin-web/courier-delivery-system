@@ -1,9 +1,10 @@
+import NetInfo from "@react-native-community/netinfo";
 import Constants from "expo-constants";
 import "@/global.css";
 import { QueryClient, QueryClientProvider, skipToken } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { AppState, Platform } from "react-native";
@@ -237,6 +238,150 @@ function SessionValidator() {
   return null;
 }
 
+function PushNavigationHandler() {
+  const router = useRouter();
+  const { token, loading, isAuthenticated } = useCourierAuth();
+  const utils = trpc.useUtils();
+
+  const pendingResponse = useRef<Notifications.NotificationResponse | null>(null);
+  const lastHandledId = useRef<string | null>(null);
+  const processingRef = useRef(false);
+  const retryRequestedRef = useRef(false);
+  const [pendingVersion, setPendingVersion] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    let active = true;
+
+    const receive = (response: Notifications.NotificationResponse) => {
+      if (!active) return;
+      pendingResponse.current = response;
+      setPendingVersion((v) => v + 1);
+    };
+
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(receive);
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (active && response && !pendingResponse.current) {
+          receive(response);
+        }
+      })
+      .catch((error) =>
+        console.warn("[Push] Failed to read initial response", error),
+      );
+
+    const unsubscribeNetwork = NetInfo.addEventListener((state) => {
+      if (state.isConnected && state.isInternetReachable !== false) {
+        if (pendingResponse.current) {
+          if (processingRef.current) {
+            retryRequestedRef.current = true;
+          } else {
+            setPendingVersion((v) => v + 1);
+          }
+        }
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+      unsubscribeNetwork();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading || !isAuthenticated || !token || processingRef.current) {
+      return;
+    }
+
+    const response = pendingResponse.current;
+    if (!response) return;
+
+    const notificationId = response.notification.request.identifier;
+
+    if (notificationId && notificationId === lastHandledId.current) {
+      pendingResponse.current = null;
+      return;
+    }
+
+    processingRef.current = true;
+
+    void (async () => {
+      let handled = false;
+
+      try {
+        const data = response.notification.request.content.data as
+          | Record<string, unknown>
+          | undefined;
+
+        const isRequestPush =
+          data?.type === "new_request_available" ||
+          data?.type === "request_assigned";
+
+        if (!isRequestPush) {
+          const route = getPushRoute(data);
+          if (route) router.push(route as any);
+          handled = true;
+        } else {
+          const taskId = Number(data?.taskId);
+          const requestId = Number(data?.requestId);
+
+          if (Number.isSafeInteger(taskId) && taskId > 0) {
+            router.push(`/task/${taskId}` as any);
+            handled = true;
+          } else if (Number.isSafeInteger(requestId) && requestId > 0) {
+            const task = await utils.tasks.byRequestId.fetch({
+              token,
+              requestId,
+            });
+
+            if (task?.id) {
+              router.push(`/task/${task.id}` as any);
+            } else {
+              console.warn("[Push] Task not found for request", requestId);
+            }
+
+            handled = true;
+          } else {
+            console.warn("[Push] Invalid taskId and requestId");
+            handled = true;
+          }
+        }
+      } catch (error) {
+        console.warn("[Push] Navigation failed; waiting for retry", error);
+      } finally {
+        if (handled) {
+          if (pendingResponse.current === response) {
+            pendingResponse.current = null;
+          }
+
+          if (notificationId) {
+            lastHandledId.current = notificationId;
+          }
+
+          void Notifications.clearLastNotificationResponseAsync().catch(
+            (error) => console.warn("[Push] Failed to clear response", error),
+          );
+        }
+
+        processingRef.current = false;
+
+        if (retryRequestedRef.current) {
+          retryRequestedRef.current = false;
+          if (pendingResponse.current) {
+            setPendingVersion((v) => v + 1);
+          }
+        }
+      }
+    })();
+  }, [loading, isAuthenticated, token, pendingVersion, router, utils]);
+
+  return null;
+}
+
 export const unstable_settings = {
   anchor: "(tabs)",
 };
@@ -353,71 +498,6 @@ export default function RootLayout() {
     registerPushToken();
   }, []);
 
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-
-    let active = true;
-    let lastHandledNotificationId: string | null = null;
-
-    const handleNotificationResponse = (
-      response: Notifications.NotificationResponse,
-    ) => {
-      if (!active) return;
-
-      const notificationId =
-        response.notification.request.identifier || null;
-
-      if (
-        notificationId &&
-        notificationId === lastHandledNotificationId
-      ) {
-        return;
-      }
-
-      const data = response.notification.request.content.data as
-        | Record<string, unknown>
-        | undefined;
-
-      console.log("[App] Push notification tapped:", data);
-
-      const route = getPushRoute(data);
-
-      if (!route) {
-        console.log("[App] Push has no navigation route:", data);
-        return;
-      }
-
-      lastHandledNotificationId = notificationId;
-
-      console.log("[App] Opening push route:", route);
-      router.push(route as any);
-    };
-
-    // Нажатие, пока приложение уже запущено/в фоне.
-    const subscription =
-      Notifications.addNotificationResponseReceivedListener(
-        handleNotificationResponse,
-      );
-
-    // Нажатие, которым приложение было запущено из закрытого состояния.
-    Notifications.getLastNotificationResponseAsync()
-      .then((response) => {
-        if (response) {
-          handleNotificationResponse(response);
-        }
-      })
-      .catch((error) => {
-        console.warn(
-          "[App] Failed to read last notification response:",
-          error,
-        );
-      });
-
-    return () => {
-      active = false;
-      subscription.remove();
-    };
-  }, [router]);
 
   const providerInitialMetrics = useMemo(() => {
     const metrics = initialWindowMetrics ?? { insets: initialInsets, frame: initialFrame };
@@ -439,6 +519,7 @@ export default function RootLayout() {
             <FilterProvider>
               <CourierAuthProvider>
                 <SessionValidator />
+                <PushNavigationHandler />
                 <AuthRedirect />
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="login" options={{ headerShown: false }} />

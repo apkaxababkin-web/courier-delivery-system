@@ -118,7 +118,7 @@ export default function TaskDetailScreen() {
     soft: dark ? "rgba(148,163,184,0.07)" : "#F8FAFC",
     shadow: dark ? "#020617" : "#94A3B8",
   };
-  const { token } = useCourierAuth();
+  const { token, loading: authLoading } = useCourierAuth();
   const taskId = parseInt(id ?? "0", 10);
   const toast = useToast();
 
@@ -134,7 +134,16 @@ export default function TaskDetailScreen() {
 
   const utils = trpc.useUtils();
 
-  const { data: task, isLoading } = trpc.tasks.byId.useQuery(token ? { token, id: taskId } : skipToken);
+  const {
+    data: task,
+    isLoading,
+    isError,
+    refetch: refetchTask,
+  } = trpc.tasks.byId.useQuery(
+    token && Number.isSafeInteger(taskId) && taskId > 0
+      ? { token, id: taskId }
+      : skipToken,
+  );
   const { data: couriersList } = trpc.couriers.list.useQuery(token ? { token } : skipToken);
 
   useEffect(() => {
@@ -329,7 +338,7 @@ export default function TaskDetailScreen() {
     return calendarGrid;
   };
 
-  if (isLoading) {
+  if (authLoading || (token && isLoading)) {
     return (
       <ScreenContainer className="items-center justify-center">
         <ActivityIndicator size="large" color={colors.primary} />
@@ -337,10 +346,76 @@ export default function TaskDetailScreen() {
     );
   }
 
+  if (!Number.isSafeInteger(taskId) || taskId <= 0) {
+    return (
+      <ScreenContainer className="items-center justify-center">
+        <Text style={{ color: colors.foreground }}>
+          Некорректный номер заявки
+        </Text>
+      </ScreenContainer>
+    );
+  }
+
+  if (!token) {
+    return (
+      <ScreenContainer className="items-center justify-center">
+        <Text style={{ color: colors.foreground, textAlign: "center" }}>
+          Необходимо войти в приложение
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/login")}
+          style={{ marginTop: 16, padding: 12 }}
+        >
+          <Text style={{ color: colors.primary, fontWeight: "700" }}>
+            Войти
+          </Text>
+        </TouchableOpacity>
+      </ScreenContainer>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ScreenContainer className="items-center justify-center">
+        <Text style={{
+          color: colors.foreground,
+          textAlign: "center",
+          fontWeight: "700",
+        }}>
+          Не удалось загрузить заявку
+        </Text>
+        <Text style={{
+          color: colors.muted,
+          textAlign: "center",
+          marginTop: 8,
+          paddingHorizontal: 24,
+        }}>
+          Проверьте соединение с интернетом и попробуйте снова.
+        </Text>
+        <TouchableOpacity
+          onPress={() => void refetchTask()}
+          style={{
+            marginTop: 20,
+            backgroundColor: colors.primary,
+            borderRadius: 10,
+            paddingVertical: 12,
+            paddingHorizontal: 24,
+          }}
+        >
+          <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>
+            Повторить
+          </Text>
+        </TouchableOpacity>
+      </ScreenContainer>
+    );
+  }
+
   if (!task) {
     return (
       <ScreenContainer className="items-center justify-center">
-        <Text className="text-foreground">Заявка не найдена</Text>
+        <Text style={{ color: colors.foreground }}>
+          Заявка не найдена
+        </Text>
       </ScreenContainer>
     );
   }
