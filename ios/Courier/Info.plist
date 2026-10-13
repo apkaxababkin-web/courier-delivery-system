@@ -27,8 +27,8 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>manus20260415204516</string>
-          <string>space.manus.courier.app.t20260415204516</string>
+          <string>manusapp</string>
+          <string>com.couriermig.app</string>
         </array>
       </dict>
     </array>

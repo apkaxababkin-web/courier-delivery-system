@@ -39,9 +39,8 @@ yarn-error.*
 
 app-example
 
-# generated native folders
-/ios
-/android
+# Native projects are part of the production mobile source.
+# Keep generated/local build artifacts and credentials ignored instead.
 
 # IDE
 .vscode/
@@ -96,3 +95,26 @@ backups/
 tmp/
 .pnpm-store/
 build/
+
+
+# Native local/generated artifacts
+/android/.gradle/
+/android/**/build/
+/android/.cxx/
+/android/local.properties
+/android/app/debug.keystore
+/android/app/*.keystore
+/android/app/*.jks
+
+/ios/Pods/
+/ios/build/
+/ios/DerivedData/
+/ios/.xcode.env.local
+/ios/**/*.xcuserstate
+/ios/**/xcuserdata/
+
+# EAS / Apple signing credentials
+.eas-local-credentials/
+*.p12
+*.p8
+*.mobileprovision
