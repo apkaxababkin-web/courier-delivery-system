@@ -4,6 +4,7 @@ import { useColors } from "@/hooks/use-colors";
 import { MaterialIcons } from "@expo/vector-icons";
 
 interface HeaderBarV2Props {
+  title?: string;
   onProfilePress?: () => void;
   onFilterToggle?: (filterMode: "all" | "mine") => void;
   filterMode?: "all" | "mine";
@@ -17,6 +18,7 @@ function isDarkBackground(background: string) {
 }
 
 export function HeaderBarV2({
+  title = "Заявки",
   onFilterToggle,
   filterMode = "all",
   selectedDate = new Date(),
@@ -65,7 +67,7 @@ export function HeaderBarV2({
         </View>
 
         <View style={{ flex: 0.75, alignItems: "center" }}>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", letterSpacing: 0.2 }}>Заявки</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", letterSpacing: 0.2 }}>{title}</Text>
         </View>
 
         <Pressable

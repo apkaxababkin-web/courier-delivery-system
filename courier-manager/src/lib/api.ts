@@ -238,6 +238,10 @@ Promise<ClientPortalHemotestReconciliation> {
   );
 }
 
+export async function getManagerHemotestReconciliation(): Promise<ClientPortalHemotestReconciliation> {
+  return await restJson<ClientPortalHemotestReconciliation>('/api/manager/hemotest/reconciliation/details');
+}
+
 export interface ClientPortalAccount {
   id: number;
   clientId: number;

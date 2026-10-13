@@ -1,34 +1,38 @@
-import { Alert, Pressable, ScrollView, Text, View, Platform, useWindowDimensions } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useFocusEffect, useRouter } from "expo-router";
 import { skipToken } from "@tanstack/react-query";
-import { ScreenContainer } from "@/components/screen-container";
-import { CourierIcon } from "../components/courier-icon";
+import { HeaderBarV2 } from "@/components/header-bar-v2";
 import { NetworkBanner } from "@/components/network-banner";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
-import { useCallback, useState } from "react";
-import * as Haptics from "expo-haptics";
-import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
+import { useCallback, useRef, useState } from "react";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
+import { PickupOperationList } from "@/components/pickup-operation-list";
+import { performSuccessHaptic } from "@/lib/vibration-preference";
+import { DESIGN_PREVIEW_TOKEN, designPreviewPickupPoints } from "@/lib/design-preview";
 
 interface PickupPoint {
   id: number;
   name: string;
   address: string;
+  phone?: string | null;
   isPicked: boolean;
-  pickedAt: Date | null;
-  courierName?: string;
-  courierColor?: string;
-  courierIcon?: string;
+  pickedAt: Date | string | null;
+  isCancelled?: boolean;
+  cancelledAt?: Date | string | null;
+  courierId?: number | null;
+  courierName?: string | null;
 }
 
 function isDarkBackground(background: string) {
   return background.toLowerCase() !== "#f5f3ef" && background.toLowerCase() !== "#ffffff";
 }
 
-function formatTime(date: Date | null) {
+function formatTime(date: Date | string | null) {
   if (!date) return "";
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return "";
@@ -37,240 +41,145 @@ function formatTime(date: Date | null) {
 
 export default function SberbankScreen() {
   const colors = useColors();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
   const tabBarHeight = useBottomTabBarHeight();
-  const headerHeight = 82;
-  const extraRowsHeight = 520;
-  const listHeight = Math.max(320, windowHeight - insets.top - insets.bottom - tabBarHeight - headerHeight + extraRowsHeight);
-  const { token, courier } = useCourierAuth();
-  const { isOnline, phase: networkPhase } = useNetworkStatus();
+  const { token } = useCourierAuth();
+  const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
+  const { phase: networkPhase } = useNetworkStatus();
   const dark = isDarkBackground(colors.background);
   const border = dark ? "rgba(148,163,184,0.18)" : colors.border;
-  const soft = dark ? "rgba(148,163,184,0.07)" : "#F8FAFC";
-  const pickedBg = dark ? "rgba(34,197,94,0.10)" : "#F0FDF4";
-  const selectedBg = dark ? "rgba(59,130,246,0.12)" : "#EFF6FF";
 
   const [selectedDate] = useState(new Date());
-  const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
-  const [filterMode, setFilterMode] = useState<"mine" | "all">("mine");
-  const queryInput = token ? { token, date: selectedDate } : skipToken;
+  const queryInput = token && !isDesignPreview ? { token, date: selectedDate } : skipToken;
 
-  const { data: pickupPoints = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(queryInput);
+  const { data: pickupPointsRaw = [], isLoading, refetch } = trpc.sberbank.pickupPoints.useQuery(queryInput);
+  const pickupPoints = isDesignPreview
+    ? (designPreviewPickupPoints as PickupPoint[])
+    : Array.isArray(pickupPointsRaw) ? (pickupPointsRaw as PickupPoint[]) : [];
+  const { data: pickedCountRaw = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(queryInput);
+  const pickedCount = Number(pickedCountRaw) || pickupPoints.filter((point) => point.isPicked).length;
+  const { data: couriersRaw = [] } = trpc.couriers.list.useQuery(token && !isDesignPreview ? { token } : skipToken);
+  const couriers = Array.isArray(couriersRaw) ? couriersRaw.map((courier: any) => ({ id: Number(courier.id), name: String(courier.name || "Курьер") })).filter((courier) => Number.isFinite(courier.id)) : [];
 
-  const { data: pickedCount = 0, refetch: refetchCount } = trpc.sberbank.pickedCount.useQuery(queryInput);
+  const refreshInFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
+
+  const refreshSberbank = useCallback(async () => {
+    if (!token || isDesignPreview) return;
+    if (refreshInFlightRef.current) {
+      refreshPendingRef.current = true;
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    try {
+      do {
+        refreshPendingRef.current = false;
+        await Promise.all([refetch(), refetchCount()]);
+      } while (refreshPendingRef.current);
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, [token, isDesignPreview, refetch, refetchCount]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSberbank();
+    }, [refreshSberbank])
+  );
 
   useMobileLiveSync({
-    enabled: true,
-    onSync: useCallback(() => {
-      if (!token) return;
-      return Promise.all([refetch(), refetchCount()]);
-    }, [token, refetch, refetchCount]),
+    enabled: !!token && !isDesignPreview,
+    onSync: useCallback((eventType) => {
+      if (eventType === "sberbank_changed" || eventType === "app_active") {
+        return refreshSberbank();
+      }
+    }, [refreshSberbank]),
   });
 
   const toggleMutation = trpc.sberbank.togglePickup.useMutation({
     onSuccess: () => {
-      refetch();
-      refetchCount();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void refreshSberbank();
+      performSuccessHaptic().catch(() => undefined);
     },
   });
 
-  const handleTogglePickup = (point: PickupPoint) => {
-    if (!token || toggleMutation.isPending) return;
-
-    if (!point.isPicked) {
-      setSelectedPointId(point.id);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      toggleMutation.mutate({ token, pointId: point.id, date: selectedDate });
-      return;
-    }
-
-    const cancelPickup = () => {
-      setSelectedPointId(point.id);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      toggleMutation.mutate({ token, pointId: point.id, date: selectedDate });
-    };
-
-    if (Platform.OS === "web") {
-      cancelPickup();
-      return;
-    }
-
-    Alert.alert(
-      "Отменить отметку?",
-      `Точка «${point.name}» снова станет незабранной.`,
-      [
-        { text: "Не отменять", style: "cancel" },
-        { text: "Отменить", style: "destructive", onPress: cancelPickup },
-      ],
-    );
-  };
-
-  const visiblePickupPoints = pickupPoints.filter((point: PickupPoint) => {
-    if (filterMode === "all") return true;
-
-    // Free/unpicked points are always visible in "Мои".
-    if (!point.isPicked || !point.courierName) return true;
-
-    const currentName = courier?.name?.trim().toLowerCase();
-    const pointCourierName = point.courierName?.trim().toLowerCase();
-
-    return Boolean(
-      currentName &&
-      pointCourierName &&
-      currentName === pointCourierName
-    );
+  const cancelMutation = trpc.sberbank.cancelPickup.useMutation({
+    onSuccess: () => {
+      void refreshSberbank();
+      performSuccessHaptic().catch(() => undefined);
+    },
   });
 
-  const renderPickupPoint = ({ item, index }: { item: PickupPoint; index: number }) => {
-    const selected = selectedPointId === item.id;
-    const picked = item.isPicked;
+  const assignMutation = trpc.sberbank.assignPickupCourier.useMutation({
+    onSuccess: () => {
+      void refreshSberbank();
+      performSuccessHaptic().catch(() => undefined);
+    },
+  });
 
-    return (
-      <Pressable
-        onPress={() => handleTogglePickup(item)}
-        style={({ pressed }) => ({
-          backgroundColor: picked ? pickedBg : selected ? selectedBg : colors.surface,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          marginBottom: 8,
-          borderWidth: 1,
-          borderColor: picked ? "rgba(34,197,94,0.28)" : selected ? "rgba(59,130,246,0.34)" : border,
-          opacity: pressed ? 0.78 : 1,
-        })}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <View style={{ width: 24, height: 24, borderRadius: 10, backgroundColor: picked ? "rgba(34,197,94,0.18)" : soft, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: picked ? "rgba(34,197,94,0.38)" : border }}>
-            <Text style={{ color: picked ? "#22C55E" : colors.muted, fontSize: 11, fontWeight: "900" }}>{picked ? "✓" : index + 1}</Text>
-          </View>
+  const handleTogglePickup = (pointId: number) => {
+    if (isDesignPreview) return;
+    if (!token) return;
+    toggleMutation.mutate({ token, pointId, date: selectedDate });
+  };
 
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={{ flex: 1, color: colors.foreground, fontSize: 13, lineHeight: 17 }}
-          >
-            <Text style={{ fontWeight: "900" }}>{item.name}</Text>
-            <Text style={{ fontWeight: "500", color: colors.muted }}> • {item.address}</Text>
-          </Text>
+  const handleCancelPickup = (pointId: number) => {
+    if (isDesignPreview) return;
+    if (!token) return;
+    cancelMutation.mutate({ token, pointId, date: selectedDate });
+  };
 
-          {picked && (
-            <View style={{ maxWidth: 160, alignItems: "flex-end" }}>
-              <Text
-                numberOfLines={1}
-                style={{
-                  color: "#22C55E",
-                  fontSize: 11,
-                  lineHeight: 16,
-                  fontWeight: "900",
-                  textAlign: "right",
-                }}
-              >
-                {formatTime(item.pickedAt)}
-              </Text>
-
-              {item.courierName ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                  <CourierIcon
-                    icon={item.courierIcon}
-                    color={item.courierColor || "#2563EB"}
-                    size={11}
-                  />
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: item.courierColor || "#2563EB",
-                      fontSize: 11,
-                      lineHeight: 16,
-                      fontWeight: "900",
-                    }}
-                  >
-                    {item.courierName}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          )}
-        </View>
-      </Pressable>
-    );
+  const handleAssignCourier = (pointId: number, courierId: number | null) => {
+    if (isDesignPreview) return;
+    if (!token) return;
+    assignMutation.mutate({ token, pointId, date: selectedDate, courierId });
   };
 
   return (
-    <ScreenContainer className="p-0">
+    <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
       <NetworkBanner phase={networkPhase} />
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, backgroundColor: colors.background }}>
-        <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 12 }}>
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={{ fontSize: 20, fontWeight: "900", color: colors.foreground }}>Сбербанк</Text>
-          </View>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, borderWidth: 1, borderColor: border, alignItems: "flex-end" }}>
-            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>Забрано</Text>
-            <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900" }}>{pickedCount} из {pickupPoints.length}</Text>
-          </View>
-        </View>
+      <HeaderBarV2
+        onProfilePress={() => router.push("/profile" as never)}
+        selectedDate={selectedDate}
 
-        <View
-          style={{
-            flexDirection: "row",
-            alignSelf: "flex-start",
-            backgroundColor: soft,
-            borderRadius: 9,
-            padding: 3,
-            borderWidth: 1,
-            borderColor: border,
-          }}
-        >
-          {(["mine", "all"] as const).map((mode) => {
-            const active = filterMode === mode;
+      />
 
-            return (
-              <Pressable
-                key={mode}
-                onPress={() => setFilterMode(mode)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 6,
-                  borderRadius: 7,
-                  backgroundColor: active ? colors.primary : "transparent",
-                }}
-              >
-                <Text
-                  style={{
-                    color: active ? "#FFFFFF" : colors.muted,
-                    fontSize: 11,
-                    fontWeight: "900",
-                  }}
-                >
-                  {mode === "mine" ? "Мои" : "Все"}
-                </Text>
-              </Pressable>
-            );
-          })}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 13, backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: border }}>
+        <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", marginBottom: 8 }}>
+          Забрано <Text style={{ color: colors.foreground, fontWeight: "700" }}>{pickedCount}</Text> из {pickupPoints.length}
+        </Text>
+        <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.surface, overflow: "hidden" }}>
+          <View
+            style={{
+              width: `${pickupPoints.length ? (pickedCount / pickupPoints.length) * 100 : 0}%`,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: colors.primary,
+            }}
+          />
         </View>
       </View>
 
-      {visiblePickupPoints.length > 0 ? (
-        <View style={{ height: listHeight, backgroundColor: colors.background, overflow: "hidden" }}>
-          <ScrollView
-            style={{ flex: 1, alignSelf: "stretch", backgroundColor: colors.background }}
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingTop: 2,
-              paddingBottom: Math.max(insets.bottom + 560, 620),
-              backgroundColor: colors.background,
-            }}
-            showsVerticalScrollIndicator={Platform.OS === "web" ? true : false}
-          >
-            {visiblePickupPoints.map((item: PickupPoint, index: number) => (
-              <View key={item.id.toString()}>
-                {renderPickupPoint({ item, index })}
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+      {pickupPoints.length > 0 ? (
+        <ScrollView
+          style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}
+          contentContainerStyle={{ paddingBottom: Math.max(tabBarHeight + 24, insets.bottom + 32), flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <PickupOperationList
+            points={pickupPoints}
+            couriers={couriers}
+            colors={colors}
+            fallbackName="Точка Сбербанк"
+            disabled={toggleMutation.isPending || cancelMutation.isPending || assignMutation.isPending}
+            onToggle={handleTogglePickup}
+            onCancel={handleCancelPickup}
+            onAssignCourier={handleAssignCourier}
+          />
+        </ScrollView>
       ) : isLoading ? (
         <View className="flex-1 items-center justify-center">
           <Text style={{ color: colors.muted }}>Загрузка...</Text>
@@ -280,6 +189,6 @@ export default function SberbankScreen() {
           <Text style={{ color: colors.muted }}>Нет точек сбора</Text>
         </View>
       )}
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }

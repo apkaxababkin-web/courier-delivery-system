@@ -162,6 +162,9 @@ export default function CouriersView() {
   const [editFormData, setEditFormData] = useState<CourierEditFormData>(emptyEditForm);
   const [resetCourier, setResetCourier] = useState<Courier | null>(null);
   const [resetPassword, setResetPassword] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => { loadCouriers(); }, []);
 
@@ -300,6 +303,7 @@ export default function CouriersView() {
   const openResetModal = (courier: Courier) => {
     setResetCourier(courier);
     setResetPassword(makePassword());
+    setResetError(''); setConfirmReset(false);
   };
 
   const closeResetModal = () => {
@@ -312,6 +316,28 @@ export default function CouriersView() {
     const text = `Новый доступ для курьера ${resetCourier.name}\nЛогин: ${resetCourier.username}\nНовый пароль: ${resetPassword}\nАдрес входа: https://courier.couriermig.ru`;
     await navigator.clipboard.writeText(text);
     alert('Черновик нового доступа скопирован');
+  };
+
+  const applyCourierPassword = async () => {
+    if (!resetCourier || resetBusy) return;
+    if (resetPassword.length < 8 || resetPassword.length > 128) {
+      setResetError('Пароль должен содержать от 8 до 128 символов'); return;
+    }
+    if (!confirmReset) { setConfirmReset(true); return; }
+    setResetBusy(true); setResetError('');
+    try {
+      const response = await managerFetch(`${API_URL}/api/manager/couriers/${resetCourier.id}/password`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: resetPassword }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error?.message || body.error || 'Не удалось сменить пароль');
+      }
+      alert('Пароль курьера успешно изменён. Передайте ему новый пароль.');
+      closeResetModal();
+    } catch (error) { setResetError(error instanceof Error ? error.message : 'Ошибка смены пароля'); }
+    finally { setResetBusy(false); }
   };
 
   const toggleAccessDay = (dayIndex: number) => {
@@ -737,9 +763,11 @@ export default function CouriersView() {
             <div className="mb-5 flex items-center justify-between gap-4"><div><h3 className="text-lg font-semibold tracking-tight text-slate-950">Сброс пароля</h3><p className="mt-1 text-sm text-slate-500">Подготовка нового доступа для {resetCourier.name}.</p></div><button onClick={closeResetModal} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-950"><X size={18} /></button></div>
             <div className="space-y-4">
               <CredentialBox label="Логин" value={resetCourier.username} />
-              <div><label className="mb-2 block text-sm font-medium text-slate-700">Новый пароль</label><div className="flex gap-2"><input value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} className={inputClass} /><button type="button" onClick={() => setResetPassword(makePassword())} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" title="Сгенерировать"><KeyRound className="h-4 w-4" /></button></div></div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500"><p className="font-semibold text-slate-700">UI готов, backend не тронут</p><p className="mt-1">Эта панель готовит новый пароль и текст для передачи курьеру. Реальное применение пароля нужно подключить отдельной backend-ручкой, чтобы не ломать текущую авторизацию.</p></div>
-              <div className="flex gap-3 pt-2"><button type="button" onClick={copyResetDraft} className={`flex-1 ${primaryButtonClass}`}><Copy className="h-4 w-4" />Скопировать</button><button type="button" onClick={closeResetModal} className={`flex-1 ${secondaryButtonClass}`}>Закрыть</button></div>
+              <div><label className="mb-2 block text-sm font-medium text-slate-700">Новый пароль</label><div className="flex gap-2"><input value={resetPassword} onChange={(event) => { setResetPassword(event.target.value); setConfirmReset(false); }} className={inputClass} /><button type="button" onClick={() => { setResetPassword(makePassword()); setConfirmReset(false); }} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" title="Сгенерировать"><KeyRound className="h-4 w-4" /></button></div></div>
+              <p className="text-xs text-slate-500">Генерация и копирование не меняют действующий пароль. Для применения нажмите «Сохранить пароль».</p>
+              {confirmReset && <p role="alert" className="text-sm text-amber-700">После подтверждения прежний пароль перестанет работать.</p>}
+              {resetError && <p role="alert" className="text-sm text-red-600">{resetError}</p>}
+              <div className="flex flex-wrap gap-3 pt-2"><button type="button" disabled={resetBusy} onClick={copyResetDraft} className={primaryButtonClass}><Copy className="h-4 w-4" />Скопировать</button><button type="button" disabled={resetBusy} onClick={applyCourierPassword} className={primaryButtonClass}>{confirmReset ? 'Подтвердить смену пароля' : 'Сохранить пароль'}</button><button type="button" disabled={resetBusy} onClick={closeResetModal} className={secondaryButtonClass}>Закрыть</button></div>
             </div>
           </div>
         </div>, document.body)}

@@ -1,41 +1,100 @@
+import { AppState } from "react-native";
 import {
   ActivityIndicator,
-  AppState,
-  FlatList,
+  Alert,
   Modal,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-
 import { trpc } from "@/lib/trpc";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Swipeable } from "react-native-gesture-handler";
+
 import { NetworkBanner } from "@/components/network-banner";
-import { ScreenContainer } from "@/components/screen-container";
 import { HeaderBarV2 } from "@/components/header-bar-v2";
+import { OperationRow } from "@/components/operation-row";
+import { getApiBaseUrl } from "@/constants/oauth";
 import { useColors } from "@/hooks/use-colors";
 import { useMobileLiveSync } from "@/hooks/use-mobile-live-sync";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { useCourierAuth } from "@/lib/courier-auth";
 import { useFilter } from "@/lib/filter-context";
-import { sortTasks } from "@/lib/task-sorting";
 import { createCourierMobileClient } from "@/shared/mobileCourierClient";
-import { type TaskStatus } from "@/shared/types";
+import { DESIGN_PREVIEW_TOKEN, designPreviewTasks } from "@/lib/design-preview";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Package,
-  MapPin,
-  Clock,
   PackageOpen,
   ArrowLeftRight,
   Nut,
   Truck,
   Mail,
 } from "lucide-react-native";
+import { formatLocalDateWithOptions, toLocalDateKey } from "@/app/lib/local-date";
+
+
+const normalizeCardText = (value?: string | null) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const isSameCardSide = (
+  leftName?: string | null,
+  leftAddress?: string | null,
+  rightName?: string | null,
+  rightAddress?: string | null,
+) => {
+  const left = [normalizeCardText(leftName), normalizeCardText(leftAddress)].filter(Boolean).join("|");
+  const right = [normalizeCardText(rightName), normalizeCardText(rightAddress)].filter(Boolean).join("|");
+
+  return !!left && !!right && left === right;
+};
+
+const getTaskDateKey = (task: any) => {
+  const isDone = task?.status === "completed" || task?.status === "cancelled";
+  const value = isDone
+    ? task.completedAt || task.scheduledAt || task.createdAt
+    : task.scheduledAt || task.createdAt;
+
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return toLocalDateKey(date);
+};
+
+const isActiveBoardTask = (task: any) => task.status !== "completed" && task.status !== "cancelled";
+
+const cleanCardComment = (value?: string | null) => {
+  if (!value) return "";
+
+  return value
+    .split("\n")
+    .map((line) => line.replace(/\[request:\d+\]\s*/gi, "").trim())
+    .filter(Boolean)
+    .filter((line) => !/^Тип заявки:/i.test(line))
+    .filter((line) => !/^Оплата:/i.test(line))
+    .filter((line) => !/^Сумма:/i.test(line))
+    .filter((line) => !/^Направление:/i.test(line))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const getCardDetailLine = (task: any) => {
+  const comment = cleanCardComment(task.comments) || cleanCardComment(task.specialInstructions);
+  if (comment) return comment;
+
+  return task.recipientName || task.senderName || undefined;
+};
 
 
 export default function TaskListScreen() {
@@ -47,6 +106,13 @@ export default function TaskListScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
+  const mobileClient = useMemo(() => createCourierMobileClient(getApiBaseUrl()), []);
+  const isDesignPreview = token === DESIGN_PREVIEW_TOKEN;
+
+  const selectedDateKey = toLocalDateKey(selectedDate);
+  const todayDateKey = toLocalDateKey(new Date());
+  const isSelectedDateToday = selectedDateKey === todayDateKey;
 
   const {
     data: tasksDataRaw,
@@ -56,10 +122,10 @@ export default function TaskListScreen() {
   } = trpc.tasks.all.useQuery(
     {
       token: token!,
-      date: selectedDate.toISOString().slice(0, 10),
+      date: selectedDateKey,
     },
     {
-      enabled: !authLoading && !!token,
+      enabled: !authLoading && !!token && !isDesignPreview,
       staleTime: 0,
       refetchOnMount: "always",
       refetchOnReconnect: true,
@@ -70,27 +136,20 @@ export default function TaskListScreen() {
 
 
   const tasksData = useMemo(() => {
+    if (isDesignPreview) return designPreviewTasks;
     const next = Array.isArray(tasksDataRaw) ? (tasksDataRaw as any[]) : [];
     return next;
-  }, [tasksDataRaw, authLoading, token, isLoading, isRefetchingQuery]);
+  }, [tasksDataRaw, authLoading, token, isLoading, isRefetchingQuery, isDesignPreview]);
 
   useMobileLiveSync({
-    enabled: !!token,
-    onSync: useCallback(() => {
+    enabled: !!token && !isDesignPreview,
+    onSync: useCallback((eventType) => {
       if (!token) return;
-      return refetch();
+      if (eventType === "tasks_changed" || eventType === "requests_changed" || eventType === "app_active") {
+        return refetch();
+      }
     }, [token, refetch]),
   });
-
-  useEffect(() => {
-    if (!token || authLoading) return;
-
-    const timer = setTimeout(() => {
-      refetch();
-    }, 700);
-
-    return () => clearTimeout(timer);
-  }, [token, authLoading, selectedDate, refetch]);
 
   useEffect(() => {
     if (!token) return;
@@ -103,23 +162,31 @@ export default function TaskListScreen() {
     return () => subscription.remove();
   }, [token, refetch]);
 
+  const handleRefresh = useCallback(async () => {
+    if (isDesignPreview) return;
 
-  const isToday = useMemo(() => {
-    const today = new Date();
-    return selectedDate.toDateString() === today.toDateString();
-  }, [selectedDate]);
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, isDesignPreview]);
+
+
+
 
   const filteredTasks = useMemo(() => {
     if (!tasksData.length) {
       return [];
     }
 
-    const selectedDateKey = selectedDate.toISOString().slice(0, 10);
+    const selectedDateKey = toLocalDateKey(selectedDate);
 
     const tasks = tasksData.filter((task: any) => {
-      const taskDateKey = String(task.scheduledAt || task.createdAt || "").slice(0, 10);
+      const taskDateKey = getTaskDateKey(task);
 
-      if (taskDateKey && taskDateKey !== selectedDateKey) {
+      if (taskDateKey !== selectedDateKey) {
         return false;
       }
 
@@ -140,18 +207,80 @@ export default function TaskListScreen() {
     });
 
     return tasks;
-  }, [tasksData, filterMode, courier?.id, courier?.name, selectedDate]);
+  }, [tasksData, filterMode, courier?.id, courier?.name, selectedDate, isSelectedDateToday]);
 
   const sortedTasks = useMemo(() => {
     return [...(filteredTasks as any[])].sort((a: any, b: any) => {
-      const aDone = a.status === "completed" || a.status === "cancelled";
-      const bDone = b.status === "completed" || b.status === "cancelled";
+      const isDone = (task: any) => {
+        const status = String(task.status || task.requestStatus || task.taskStatus || "").toLowerCase();
+        return status === "completed" || status === "done" || status === "finished" || status === "cancelled" || Boolean(task.completedAt);
+      };
+      const aDone = isDone(a);
+      const bDone = isDone(b);
 
       if (aDone !== bDone) return aDone ? 1 : -1;
 
-      return Number(a.id) - Number(b.id);
+      if (aDone && bDone) {
+        return Number(b.id || 0) - Number(a.id || 0);
+      }
+
+      const aCreatedAt = new Date(a.createdAt || 0).getTime();
+      const bCreatedAt = new Date(b.createdAt || 0).getTime();
+      const aTime = Number.isFinite(aCreatedAt) ? aCreatedAt : 0;
+      const bTime = Number.isFinite(bCreatedAt) ? bCreatedAt : 0;
+
+      if (aTime !== bTime) return bTime - aTime;
+      return Number(b.id || 0) - Number(a.id || 0);
     });
   }, [filteredTasks]);
+
+  useEffect(() => {
+    console.log("[TasksScreen] visible state", {
+      tokenPresent: !!token,
+      authLoading,
+      isLoading,
+      raw: tasksData.length,
+      filtered: filteredTasks.length,
+      sorted: sortedTasks.length,
+      selectedDateKey,
+      filterMode,
+    });
+  }, [
+    token,
+    authLoading,
+    isLoading,
+    tasksData.length,
+    filteredTasks.length,
+    sortedTasks.length,
+    selectedDateKey,
+    filterMode,
+  ]);
+
+  const displayNumberByTaskId = useMemo(() => {
+    const selectedKey = toLocalDateKey(selectedDate);
+
+    const dayTasks = (tasksData as any[]).filter((task: any) => {
+      const taskDateKey = getTaskDateKey(task);
+
+      if (taskDateKey !== selectedKey) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const ordered = [...dayTasks].sort((a: any, b: any) => Number(a.id) - Number(b.id));
+    const map = new Map<number, number>();
+
+    ordered.forEach((task: any, index: number) => {
+      const id = Number(task.id);
+      if (Number.isFinite(id)) {
+        map.set(id, index + 1);
+      }
+    });
+
+    return map;
+  }, [tasksData, selectedDate, isSelectedDateToday]);
 
   const myTasksCount = useMemo(() => {
     if (!tasksData.length) return 0;
@@ -169,9 +298,67 @@ export default function TaskListScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (isDesignPreview) return;
       refetch();
-    }, [refetch]),
+    }, [refetch, isDesignPreview]),
   );
+
+  const handleSwipeCompleteTask = useCallback(async (item: any) => {
+    if (isDesignPreview) return;
+
+    if (!token) {
+      Alert.alert("Ошибка", "Нет активной сессии курьера");
+      return;
+    }
+
+    if (item.status === "completed" || item.status === "cancelled") return;
+
+    const taskId = Number(item.id);
+    if (!Number.isFinite(taskId)) {
+      Alert.alert("Ошибка", "Некорректный номер заявки");
+      return;
+    }
+
+    try {
+      setCompletingTaskId(taskId);
+      await mobileClient.setTaskStatus(token, taskId, "completed");
+      await refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось выполнить заявку";
+      Alert.alert("Ошибка", message);
+    } finally {
+      setCompletingTaskId((current) => (current === taskId ? null : current));
+    }
+  }, [isDesignPreview, mobileClient, refetch, token]);
+
+  const renderSwipeCompleteAction = useCallback((item: any) => {
+    const taskId = Number(item.id);
+    const disabled = completingTaskId === taskId;
+
+    return (
+      <View style={{ width: 112, backgroundColor: "#16A34A", justifyContent: "center" }}>
+        <Pressable
+          disabled={disabled}
+          onPress={() => handleSwipeCompleteTask(item)}
+          style={({ pressed }) => ({
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 10,
+            opacity: disabled || pressed ? 0.72 : 1,
+          })}
+        >
+          {disabled ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={{ color: "#fff", fontSize: 12, lineHeight: 16, fontWeight: "800" }}>
+              Выполнено
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    );
+  }, [completingTaskId, handleSwipeCompleteTask]);
 
   const getDaysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -190,10 +377,8 @@ export default function TaskListScreen() {
     if (type === "movement") return "Перемещение";
     if (type === "nuts") return "Орехи";
     if (type === "courier_call") return "Вызов курьера";
-    if (type === "pickup_from_tc") {
-      const comments = String(item.comments || "");
-      return comments.includes("получатель → ТК") ? "Отправка в ТК" : "Получение в ТК";
-    }
+    if (type === "pickup_from_tc") return "ТК";
+    if (type === "simple") return "Заявка";
 
     return "Заявка";
   };
@@ -253,26 +438,39 @@ export default function TaskListScreen() {
   };
 
   const getNutsOrderLines = (item: any) => {
-    return String(item.items || item.packageDescription || item.description || "")
-      .split(/[;\n]+/)
+    return String(item.items || "")
+      .split(";")
       .map((part) => part.trim())
       .filter(Boolean)
       .map((part) => {
-        const legacyMatch = part.match(/^([^(:]+).*?:\s*(\d+)/);
-        if (!legacyMatch) return part;
+        const match = part.match(/^([^(:]+).*?:\s*(\d+)/);
+        if (!match) return part;
 
-        const name = legacyMatch[1].trim().replace(/,/g, ".");
-        const unit = name.toLocaleLowerCase("ru-RU").includes("масло") ? "шт." : "кор.";
-        return `${name} - ${legacyMatch[2]} ${unit}`;
+        return `${match[1].trim()} — ${match[2]} кор.`;
+      });
+  };
+
+  const getNutsOrderItems = (item: any) => {
+    return String(item.items || "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const match = part.match(/^(.+?):\s*(\d+)/);
+        const rawName = (match?.[1] || part).trim();
+        const quantity = match?.[2] || "";
+        const isOil = rawName.toLowerCase().includes("масло") || rawName.toLowerCase().includes("РјР°СЃР»Рѕ");
+        const label = isOil ? "масло" : rawName.replace(/\s*\(.+?\)\s*/g, "").trim();
+
+        return {
+          label,
+          quantity,
+          unit: isOil ? "шт." : "кор.",
+        };
       });
   };
 
   const getNutsSumLabel = (item: any) => {
-    const directAmount = Number(item.paymentAmount ?? item.total ?? item.price ?? item.cost);
-    if (Number.isFinite(directAmount) && directAmount > 0) {
-      return `${Math.round(directAmount).toLocaleString("ru-RU")} ₽`;
-    }
-
     const match = String(item.comments || "").match(/Сумма:\s*([0-9.]+)/);
     if (!match?.[1]) return null;
 
@@ -282,8 +480,9 @@ export default function TaskListScreen() {
     return `${Math.round(amount).toLocaleString("ru-RU")} ₽`;
   };
 
-  const getPaymentLabel = (item: any) => {
+  const getAmountLabel = (item: any) => {
     const raw =
+      item.totalAmount ??
       item.paymentAmount ??
       item.total ??
       item.price ??
@@ -314,6 +513,24 @@ export default function TaskListScreen() {
     return null;
   };
 
+  const isCourierCallTask = (item: any) => {
+    const type = item.requestType || item.taskType;
+    return type === "courier_call";
+  };
+
+  const isSimpleRequestTask = (item: any) => {
+    const type = item.requestType || item.taskType;
+    return type === "simple";
+  };
+
+  const getFooterParts = (item: any) => {
+    return [
+      isNutsTask(item) ? getNutsSumLabel(item) : null,
+      getCourierLabel(item),
+      getTaskTimeLabel(item),
+    ].filter(Boolean);
+  };
+
   const getMainCardInfo = (item: any) => {
     const type = item.requestType || item.taskType;
 
@@ -331,24 +548,28 @@ export default function TaskListScreen() {
 
     if (type === "pickup_from_tc") {
       const isToTc = String(item.comments || "").includes("получатель → ТК");
+      const tcName = item.tcName || item.senderName || item.senderCompany || "Транспортная компания";
+      const tcAddress = item.tcAddress || item.senderAddress || "";
+      const recipientName = item.recipientName || item.recipientCompany || "Получатель";
+      const recipientAddress = item.deliveryAddress || item.recipientAddress || "";
 
       return {
         isNuts: false,
-        leftTitle: isToTc ? "Откуда" : "ТК",
-        leftName: isToTc ? (item.recipientName || "Получатель") : (item.tcName || "ТК"),
-        leftAddress: isToTc ? (item.deliveryAddress || item.recipientAddress || "") : (item.tcAddress || ""),
-        rightTitle: isToTc ? "ТК" : "Куда",
-        rightName: isToTc ? (item.tcName || "ТК") : (item.recipientName || "Получатель"),
-        rightAddress: isToTc ? (item.tcAddress || "") : (item.deliveryAddress || item.recipientAddress || ""),
+        leftTitle: isToTc ? "Откуда" : "",
+        leftName: isToTc ? recipientName : tcName,
+        leftAddress: isToTc ? recipientAddress : tcAddress,
+        rightTitle: isToTc ? "" : "Куда",
+        rightName: isToTc ? tcName : recipientName,
+        rightAddress: isToTc ? tcAddress : recipientAddress,
       };
     }
 
-    if (type === "courier_call") {
+    if (type === "simple") {
       return {
         isNuts: false,
-        leftTitle: "Забрать у",
-        leftName: item.senderCompany || item.senderName || "—",
-        leftAddress: item.senderAddress || "",
+        leftTitle: "Где забрать",
+        leftName: item.senderName || item.recipientName || item.senderCompany || item.recipientCompany || "Заявка",
+        leftAddress: item.senderAddress || item.deliveryAddress || item.recipientAddress || "",
         rightTitle: "",
         rightName: "",
         rightAddress: "",
@@ -366,6 +587,65 @@ export default function TaskListScreen() {
     };
   };
 
+  const getCardTitle = (item: any) =>
+    item.packageDescription || item.senderName || item.recipientName || "Заявка";
+
+  const getCardLines = (item: any) => {
+    const type = item.requestType || item.taskType;
+    const senderAddress = String(item.senderAddress || "").trim();
+    const recipientAddress = String(item.deliveryAddress || item.recipientAddress || "").trim();
+    const managerComment = cleanCardComment(item.comments);
+
+    if (type === "nuts" || type === "warehouse_pickup") {
+      return {
+        title: item.recipientName || "Получатель",
+        line3: recipientAddress || null,
+        line4: String(item.items || "").trim() || null,
+      };
+    }
+
+    if (type === "pickup_from_tc") {
+      const comments = String(item.comments || "").toLowerCase();
+      const recipientToTc = comments.includes("получатель → тк") || comments.includes("получатель -> тк");
+      const tcName = item.tcName || item.senderName || item.senderCompany || "Транспортная компания";
+      const recipientPoint = recipientAddress || item.recipientName || item.recipientCompany || "Получатель";
+
+      return {
+        title: getCardTitle(item),
+        line3: recipientToTc ? recipientPoint : tcName,
+        line4: recipientToTc ? tcName : recipientPoint,
+      };
+    }
+
+    if (type === "courier_call") {
+      return {
+        title: getCardTitle(item),
+        line3: senderAddress || recipientAddress || null,
+        line4: managerComment || null,
+      };
+    }
+
+    if (type === "simple") {
+      const hasTwoAddresses = Boolean(
+        senderAddress &&
+        recipientAddress &&
+        normalizeCardText(senderAddress) !== normalizeCardText(recipientAddress),
+      );
+
+      return {
+        title: getCardTitle(item),
+        line3: senderAddress || recipientAddress || null,
+        line4: hasTwoAddresses ? recipientAddress : managerComment || null,
+      };
+    }
+
+    return {
+      title: getCardTitle(item),
+      line3: senderAddress || null,
+      line4: recipientAddress || null,
+    };
+  };
+
   const getPlacesLabel = (item: any) => {
     const raw = item.placesCount;
 
@@ -375,9 +655,15 @@ export default function TaskListScreen() {
 
     if (!Number.isFinite(count) || count <= 0) return null;
 
-    if (count === 1) return "1 место";
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    const word = mod10 === 1 && mod100 !== 11
+      ? "место"
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? "места"
+        : "мест";
 
-    return `${count} м`;
+    return `${count} ${word}`;
   };
 
   const getCourierLabel = (item: any) => {
@@ -472,29 +758,32 @@ export default function TaskListScreen() {
 
   if (!token) {
     return (
-      <ScreenContainer className="p-6">
-        <NetworkBanner phase={networkPhase} />
-        <View style={styles.center}>
-          <Text style={{ fontSize: 40 }}>📦</Text>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Войдите в аккаунт</Text>
-          <Text style={[styles.emptySubtitle, { color: colors.muted }]}>Перейдите на вкладку «Профиль» и введите логин и пароль</Text>
+      <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
+        <View style={{ flex: 1, minHeight: 0, padding: 24 }}>
+          <NetworkBanner phase={networkPhase} />
+          <View style={styles.center}>
+            <Text style={{ fontSize: 40 }}>📦</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Войдите в аккаунт</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.muted }]}>Перейдите на вкладку «Профиль» и введите логин и пароль</Text>
+          </View>
         </View>
-      </ScreenContainer>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScreenContainer className="p-0">
-      <NetworkBanner phase={networkPhase} />
+    <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
+        <NetworkBanner phase={networkPhase} />
 
-      <HeaderBarV2
-        onProfilePress={() => router.push("/profile" as never)}
-        onFilterToggle={setFilterMode}
-        filterMode={filterMode}
-        selectedDate={selectedDate}
-        onDatePress={() => setShowDatePicker(true)}
-        myTasksCount={myTasksCount}
-      />
+        <HeaderBarV2
+          onProfilePress={() => router.push("/profile" as never)}
+          onFilterToggle={setFilterMode}
+          filterMode={filterMode}
+          selectedDate={selectedDate}
+          onDatePress={() => setShowDatePicker(true)}
+          myTasksCount={myTasksCount}
+        />
 
       <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={() => setShowDatePicker(false)}>
@@ -507,7 +796,7 @@ export default function TaskListScreen() {
                 <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "800" }}>‹</Text>
               </TouchableOpacity>
               <Text style={{ fontSize: 12, fontWeight: "800", color: colors.foreground }}>
-                {selectedDate.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
+                {formatLocalDateWithOptions(selectedDate, { month: "long", year: "numeric" }, "")}
               </Text>
               <TouchableOpacity onPress={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}>
                 <Text style={{ fontSize: 24, color: colors.primary, fontWeight: "800" }}>›</Text>
@@ -527,7 +816,7 @@ export default function TaskListScreen() {
             <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 10, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4, fontWeight: "700" }}>Выбранная дата:</Text>
               <Text style={{ fontSize: 12, fontWeight: "800", color: colors.foreground }}>
-                {selectedDate.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                {formatLocalDateWithOptions(selectedDate, { weekday: "long", year: "numeric", month: "long", day: "numeric" }, "")}
               </Text>
             </View>
 
@@ -543,261 +832,110 @@ export default function TaskListScreen() {
         </Pressable>
       </Modal>
 
-      {isLoading && sortedTasks.length === 0 ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : (
-        <FlatList
-          data={sortedTasks as any}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ paddingTop: 20, paddingHorizontal: 12, paddingBottom: 220, backgroundColor: colors.background }}
-          showsVerticalScrollIndicator={false}
-          ListFooterComponent={<View style={{ height: 260 }} />}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={{ fontSize: 48 }}>📋</Text>
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {isToday ? "Нет заявок" : "Нет заявок на эту дату"}
-              </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                {isToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
-              </Text>
-            </View>
-          }
-          renderItem={({ item, index }) => {
-            return (
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={() => router.push(`/task/${item.id}` as never)}
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: 10,
-                padding: 10,
-                marginBottom: 10,
-                borderWidth: 1,
-                borderColor: "#E5E7EB",
-                minHeight: 104,
-              }}
+        {isLoading && sortedTasks.length === 0 ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
+          <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
+            <ScrollView
+              style={{ flex: 1, backgroundColor: colors.background }}
+              contentContainerStyle={{ paddingTop: 0, paddingHorizontal: 0, paddingBottom: 160 }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={colors.primary}
+                  colors={[colors.primary]}
+                />
+              }
+              showsVerticalScrollIndicator={false}
             >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View style={{ flex: 1, paddingRight: 12, flexDirection: "row", alignItems: "center" }}>
-                  <Text style={{ color: "#0F172A", fontSize: 14, fontWeight: "900" }}>
-                    {index + 1}
+              {sortedTasks.length === 0 ? (
+                <View style={styles.center}>
+                  <Text style={{ fontSize: 48 }}>📋</Text>
+                  <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                    {isSelectedDateToday ? "Нет заявок" : "Нет заявок на эту дату"}
                   </Text>
-                  {(() => {
-                    const Icon = getTaskTypeIcon(item);
-                    const typeColor = getTaskTypeColor(item);
-
-                    return (
-                      <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 7 }}>
-                        <Icon size={14} color={typeColor} strokeWidth={2.4} />
-                        <Text style={{ color: typeColor, fontSize: 13, fontWeight: "800", marginLeft: 5 }}>
-                          {getTaskTypeLabel(item)}
-                        </Text>
-                      </View>
-                    );
-                  })()}
-                </View>
-
-                <View style={{ paddingHorizontal: 0, paddingVertical: 0 }}>
-                  <Text style={{ color: getTaskStatusColor(item.status), fontSize: 11, fontWeight: "900" }}>
-                    {getTaskStatusLabel(item.status)}
+                  <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
+                    {isSelectedDateToday ? "Заявки появятся здесь автоматически" : "Выберите другую дату"}
                   </Text>
                 </View>
-              </View>
+              ) : (
+                sortedTasks.map((item: any, index: number) => {
+                  const cardLines = getCardLines(item);
+                  const amountLabel = getAmountLabel(item);
+                  const TypeIcon = getTaskTypeIcon(item);
 
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: "#E2E8F0",
-                  marginTop: 8,
-                  marginHorizontal: -12,
-                }}
-              />
+                  const displayRequestNumber =
+                    displayNumberByTaskId.get(Number(item.id)) ?? getDisplayRequestId(item);
 
-              {(() => {
-                const info = getMainCardInfo(item);
-                const timeLabel = getTaskTimeLabel(item);
-                const nutsTask = isNutsTask(item);
-
-                if (nutsTask) {
-                  const orderLines = getNutsOrderLines(item);
-                  const sumLabel = getNutsSumLabel(item);
+                  const openTaskDetails = () =>
+                    router.push({
+                      pathname: "/task/[id]",
+                      params: {
+                        id: String(item.id),
+                        number: String(displayRequestNumber),
+                      },
+                    } as never);
 
                   return (
-                    <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
-                      <View style={{ flex: 32, paddingRight: 7, alignItems: "center" }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>Получатель</Text>
-                        <Text numberOfLines={1} style={{ color: "#0F172A", fontSize: 13, fontWeight: "900", marginTop: 2 }}>
-                          {item.recipientName || "—"}
-                        </Text>
-                        {!!item.recipientPhone && (
-                          <Text numberOfLines={1} style={{ color: "#64748B", fontSize: 10, fontWeight: "700", marginTop: 2 }}>
-                            {item.recipientPhone}
-                          </Text>
-                        )}
-                      </View>
-
-                      <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: "#E2E8F0" }} />
-                      </View>
-
-                      <View style={{ flex: 40, paddingHorizontal: 7, alignItems: "center" }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>Заказ</Text>
-                        <View style={{ marginTop: 2 }}>
-                          {orderLines.length ? orderLines.map((line, index) => (
-                            <Text key={`${line}-${index}`} numberOfLines={1} style={{ color: "#0F172A", fontSize: 11.5, fontWeight: "800", marginTop: index === 0 ? 0 : 2 }}>
-                              {line}
-                            </Text>
-                          )) : (
-                            <Text style={{ color: "#0F172A", fontSize: 11.5, fontWeight: "800" }}>—</Text>
-                          )}
-                        </View>
-                      </View>
-
-                      <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: Math.max(42, orderLines.length * 17 + 20), backgroundColor: "#E2E8F0" }} />
-                      </View>
-
-                      <View style={{ flex: 24, alignItems: "flex-start", paddingLeft: 7 }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>Сумма</Text>
-                        <Text numberOfLines={2} style={{ color: "#0F172A", fontSize: 11.5, fontWeight: "900", marginTop: 2 }}>
-                          {sumLabel || "—"}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                }
-
-                return (
-                  <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
-                    <View style={{ flex: timeLabel ? 35 : 49, paddingRight: 7, alignItems: "center" }}>
-                      <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>{info.leftTitle}</Text>
-                      <Text numberOfLines={2} style={{ color: "#0F172A", fontSize: 13, fontWeight: "800", marginTop: 2, textAlign: "center" }}>
-                        {info.leftName}
-                      </Text>
-                      {!!info.leftAddress && (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                          <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                          <Text numberOfLines={2} style={{ color: "#64748B", fontSize: 10, fontWeight: "600", marginLeft: 3, flexShrink: 1 }}>
-                            {info.leftAddress}
-                          </Text>
-                        </View>
+                    <View key={`${String(item.id)}-${index}`} collapsable={false}>
+                      {item.status === "completed" || item.status === "cancelled" ? (
+                      <OperationRow
+                        colors={colors}
+                        status={item.status}
+                        statusColor={getTaskStatusColor(item.status)}
+                        typeLabel={getTaskTypeLabel(item)}
+                        typeColor={getTaskTypeColor(item)}
+                        TypeIcon={TypeIcon}
+                        requestNumber={displayRequestNumber}
+                        title={cardLines.title}
+                        line3={cardLines.line3}
+                        line4={cardLines.line4}
+                        places={isCourierCallTask(item) ? null : getPlacesLabel(item)}
+                        courier={getCourierLabel(item)}
+                        courierColor={item.courierColor || undefined}
+                        amount={amountLabel}
+                        time={getTaskTimeLabel(item)}
+                        isLast={index === sortedTasks.length - 1}
+                        onPress={openTaskDetails}
+                      />
+                      ) : (
+                        <Swipeable
+                          overshootLeft={false}
+                          renderLeftActions={() => renderSwipeCompleteAction(item)}
+                        >
+                      <OperationRow
+                        colors={colors}
+                        status={item.status}
+                        statusColor={getTaskStatusColor(item.status)}
+                        typeLabel={getTaskTypeLabel(item)}
+                        typeColor={getTaskTypeColor(item)}
+                        TypeIcon={TypeIcon}
+                        requestNumber={displayRequestNumber}
+                        title={cardLines.title}
+                        line3={cardLines.line3}
+                        line4={cardLines.line4}
+                        places={isCourierCallTask(item) ? null : getPlacesLabel(item)}
+                        courier={getCourierLabel(item)}
+                        courierColor={item.courierColor || undefined}
+                        amount={amountLabel}
+                        time={getTaskTimeLabel(item)}
+                        isLast={index === sortedTasks.length - 1}
+                        onPress={openTaskDetails}
+                      />
+                        </Swipeable>
                       )}
                     </View>
-
-                    <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                      <View style={{ width: 1, height: 36, backgroundColor: "#E2E8F0" }} />
-                    </View>
-
-                    {!!info.rightTitle && (
-                      <View style={{ flex: timeLabel ? 35 : 49, paddingHorizontal: 7, alignItems: "center" }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400" }}>{info.rightTitle}</Text>
-                        <Text numberOfLines={2} style={{ color: "#0F172A", fontSize: 13, fontWeight: "800", marginTop: 2, textAlign: "center" }}>
-                          {info.rightName}
-                        </Text>
-                        {!!info.rightAddress && (
-                          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                            <MapPin size={10.5} color="#64748B" strokeWidth={2.2} />
-                            <Text numberOfLines={2} style={{ color: "#64748B", fontSize: 10, fontWeight: "600", marginLeft: 3, flexShrink: 1 }}>
-                              {info.rightAddress}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {timeLabel && (
-                      <View style={{ flex: 2, alignItems: "center", paddingTop: 17 }}>
-                        <View style={{ width: 1, height: 36, backgroundColor: "#E2E8F0" }} />
-                      </View>
-                    )}
-
-                    {timeLabel && (
-                      <View style={{ flex: 26, alignItems: "center", paddingLeft: 7 }}>
-                        <Text style={{ color: "#64748B", fontSize: 10, fontWeight: "400", textAlign: "center" }}>Время</Text>
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                          <Clock size={11} color="#64748B" strokeWidth={2.3} />
-                          <Text numberOfLines={1} style={{ color: "#475569", fontSize: 10, fontWeight: "400", marginLeft: 3, textAlign: "center" }}>
-                            {timeLabel}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                );
-              })()}
-
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: "#E2E8F0",
-                  marginTop: 8,
-                  marginHorizontal: -12,
-                }}
-              />
-
-              <View
-                style={{
-                  marginTop: 8,
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#64748B",
-                    fontSize: 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  {getPlacesLabel(item) ? (
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Package size={13} color="#64748B" strokeWidth={2.2} />
-                      <Text style={{ color: "#64748B", fontSize: 11, fontWeight: "800", marginLeft: 5 }}>
-                        {getPlacesLabel(item)}
-                      </Text>
-                    </View>
-                  ) : ""}
-                </Text>
-
-                <View style={{ alignItems: "flex-end" }}>
-                  {getPaymentLabel(item) ? (
-                    <Text
-                      style={{
-                        color: "#0F172A",
-                        fontSize: 11,
-                        fontWeight: "900",
-                        marginBottom: 2,
-                      }}
-                    >
-                      {`Оплата: ${getPaymentLabel(item)}`}
-                    </Text>
-                  ) : null}
-
-                  <Text
-                    style={{
-                      color: item.courierName
-                        ? (item.courierColor || "#0F172A")
-                        : "#2563EB",
-                      fontSize: 11,
-                      fontWeight: "800",
-                    }}
-                  >
-                    {getCourierLabel(item)}
-                  </Text>
-                </View>
-              </View>
-
-            </TouchableOpacity>
-            );
-          }}
-        />
-      )}
-
-    </ScreenContainer>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 

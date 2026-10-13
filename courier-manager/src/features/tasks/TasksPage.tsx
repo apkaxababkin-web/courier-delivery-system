@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { OrganizationLogo } from '../../components/OrganizationLogoField';
 import { Activity, CheckCircle2, Landmark, Loader2, Mail, MapPin, RotateCcw, Trash2 } from 'lucide-react';
 import {
   getAllClients,
@@ -23,6 +24,12 @@ import MailsView from '../../views/MailsView';
 import type { Request, Client, StatusFilter, TaskFormData } from './model/types';
 import { getFilteredRequests } from './model/filters';
 import { formatLocalDate, formatLocalDateWithOptions, formatLocalTime, getLocalDateKey, toLocalDateKey } from '../../lib/local-time';
+
+type SavedRequestTemplate = { id: string; name: string; requestType: string; data: Partial<TaskFormData>; usageCount?: number; pinned?: boolean };
+const TEMPLATE_TYPE_NAMES: Record<string, string> = {
+  delivery: 'Доставка', movement: 'Перемещение', nuts: 'Орехи', courier_call: 'Вызов курьера',
+  pickup_from_tc: 'Транспортная компания', simple: 'Заявка',
+};
 
 type OperationMode = 'requests' | 'mails' | 'hemotest' | 'sberbank';
 const normalizePackageType = (value: unknown): TaskFormData['packageType'] => {
@@ -216,6 +223,17 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const selectedDate = archiveDate || getTodayDate();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+  const [savedTemplates, setSavedTemplates] = useState<SavedRequestTemplate[]>([]);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateSort, setTemplateSort] = useState<'popular' | 'company' | 'recent' | 'alphabet'>('popular');
+  const [templateCompany, setTemplateCompany] = useState('all');
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesCreating, setTemplatesCreating] = useState(false);
+  const [templatesError, setTemplatesError] = useState('');
+  const [templateDeleteConfirm, setTemplateDeleteConfirm] = useState<string | null>(null);
+
   const [showAiModal, setShowAiModal] = useState(false);
 
   const [createInitialData, setCreateInitialData] = useState<Partial<TaskFormData> | null>(null);
@@ -403,6 +421,103 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
   const flattenedPoints = operationLists.flatMap((list) => list.items.map((point) => ({ ...point, listId: list.id, listName: list.name, listMeta: list.meta })));
   const pickedCount = flattenedPoints.filter((point) => getPickupMeta(point).isPicked).length;
 
+
+  const loadSavedTemplates = async () => {
+    setTemplatesLoading(true);
+    setTemplatesError('');
+    try {
+      const response = await managerFetch('/api/manager/request-templates', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Не удалось загрузить шаблоны');
+      const data: unknown = await response.json();
+      setSavedTemplates(Array.isArray(data) ? data as SavedRequestTemplate[] : []);
+    } catch (error) {
+      setTemplatesError(error instanceof Error ? error.message : 'Ошибка загрузки шаблонов');
+    } finally { setTemplatesLoading(false); }
+  };
+  const openSavedTemplates = () => {
+    setSelectedTemplateIds([]);
+    setTemplateSearch('');
+    setTemplateCompany('all');
+    setTemplateDeleteConfirm(null);
+    setShowTemplatesModal(true);
+    void loadSavedTemplates();
+  };
+  const deleteSavedTemplate = async (id: string) => {
+    setTemplatesError('');
+    try {
+      const response = await managerFetch(`/api/manager/request-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Не удалось удалить шаблон');
+      setSelectedTemplateIds(previous => previous.filter(value => value !== id));
+      setTemplateDeleteConfirm(null);
+      await loadSavedTemplates();
+    } catch (error) { setTemplatesError(error instanceof Error ? error.message : 'Ошибка удаления'); }
+  };
+  const toggleTemplatePin = async (item: SavedRequestTemplate) => {
+    setTemplatesError('');
+    try {
+      const response = await managerFetch(`/api/manager/request-templates/${encodeURIComponent(item.id)}/pin`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pinned: !item.pinned }),
+      });
+      if (!response.ok) throw new Error('Не удалось закрепить шаблон');
+      const updated = await response.json() as SavedRequestTemplate;
+      setSavedTemplates(previous => previous.map(value => value.id === item.id ? updated : value));
+    } catch (error) { setTemplatesError(error instanceof Error ? error.message : 'Ошибка сохранения'); }
+  };
+  const visibleTemplates = useMemo(() => {
+    const search = templateSearch.toLocaleLowerCase('ru').trim();
+    const companyName = (item: SavedRequestTemplate) => clients.find(client => String(client.id) === String(item.data.clientId))?.name || item.name;
+    return savedTemplates.filter(item => {
+      const matchesCompany = templateCompany === 'all' || String(item.data.clientId) === templateCompany;
+      const text = `${companyName(item)} ${item.name} ${item.requestType} ${item.data.senderAddress || ''} ${item.data.deliveryAddress || ''} ${item.data.recipientAddress || ''}`.toLocaleLowerCase('ru');
+      return matchesCompany && text.includes(search);
+    }).sort((a, b) => {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+      if (templateSort === 'popular') return (b.usageCount || 0) - (a.usageCount || 0);
+      if (templateSort === 'company') return companyName(a).localeCompare(companyName(b), 'ru');
+      if (templateSort === 'alphabet') return a.name.localeCompare(b.name, 'ru');
+      return savedTemplates.indexOf(b) - savedTemplates.indexOf(a);
+    });
+  }, [savedTemplates, clients, templateSearch, templateCompany, templateSort]);
+  const createFromSavedTemplates = async () => {
+    const chosen = savedTemplates.filter(item => selectedTemplateIds.includes(item.id));
+    if (!chosen.length) return;
+    setTemplatesCreating(true);
+    setTemplatesError('');
+    let created = 0;
+    try {
+      for (const item of chosen) {
+        const data = item.data;
+        const payload = {
+          ...data,
+          requestType: item.requestType,
+          requestDate: getLocalDateKey(),
+          isHistoricalCompleted: false,
+          courierId: undefined,
+          requestFiles: undefined,
+          recipientName: data.recipientName || data.senderName || 'Без получателя',
+          recipientPhone: data.recipientPhone || data.senderPhone || '',
+          deliveryAddress: data.deliveryAddress || data.recipientAddress || data.senderAddress || '',
+        };
+        await createRequest(payload as any);
+        created++;
+        // A successfully created request must not be retried just because usage accounting fails.
+        try {
+          const tracked = await managerFetch(`/api/manager/request-templates/${encodeURIComponent(item.id)}/used`, { method: 'POST' });
+          if (tracked.ok) {
+            const updated = await tracked.json() as SavedRequestTemplate;
+            setSavedTemplates(previous => previous.map(value => value.id === item.id ? updated : value));
+          }
+        } catch { /* Statistics are best-effort, request is already created. */ }
+      }
+      setShowTemplatesModal(false);
+      setOperationMode('requests');
+      setSelectedStatus('all');
+      await loadData();
+    } catch (error) {
+      setTemplatesError(`Создано ${created} из ${chosen.length}. ${error instanceof Error ? error.message : 'Ошибка создания'}. Не повторяйте всю операцию без проверки списка заявок.`);
+      await loadData();
+    } finally { setTemplatesCreating(false); }
+  };
 
   const openCreateRequest = (requestType: NonNullable<TaskFormData['requestType']>) => {
     setCreateInitialData({ requestType });
@@ -632,6 +747,8 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
 
       {operationMode === 'requests' ? (
         <>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
           <TasksToolbar selectedStatus={selectedStatus} onStatusChange={setSelectedStatus} selectedDate={selectedDate} onDateChange={() => {}} searchQuery={searchQuery} onSearchChange={setSearchQuery} onCreateClick={() => {
             window.dispatchEvent(new Event('mig-close-floating-ui'));
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
@@ -641,6 +758,9 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
             setShowAiModal(true);
           }} hideDatePicker />
+            </div>
+            <button type="button" onClick={openSavedTemplates} className="shrink-0 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100">Шаблоны заявок</button>
+          </div>
           {filteredRequests.length === 0 && !isLoading ? <EmptyState onCreateClick={() => {
             window.dispatchEvent(new Event('mig-close-floating-ui'));
             window.dispatchEvent(new Event('mig-close-archive-calendar'));
@@ -782,6 +902,49 @@ export default function TasksPage({ archiveDate }: { archiveDate?: string }) {
           )}
         </div>
       )}
+      <Modal isOpen={showTemplatesModal} onClose={() => { if (!templatesCreating) setShowTemplatesModal(false); }} className="max-h-[90vh] w-[min(1100px,calc(100vw-32px))] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="flex items-center justify-between gap-4">
+          <div><h2 className="text-xl font-bold text-slate-900">Шаблоны заявок</h2><p className="mt-1 text-sm text-slate-500">Выберите один или несколько шаблонов для создания новых заявок.</p></div>
+          <button type="button" disabled={templatesCreating} onClick={() => setShowTemplatesModal(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">Закрыть</button>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <input aria-label="Поиск шаблонов" value={templateSearch} onChange={event => setTemplateSearch(event.target.value)} placeholder="Поиск по компании, маршруту, шаблону" className="min-w-[220px] flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm" />
+          <select aria-label="Сортировка шаблонов" value={templateSort} onChange={event => setTemplateSort(event.target.value as typeof templateSort)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
+            <option value="popular">Часто используемые</option><option value="company">По компаниям</option><option value="recent">Недавно созданные</option><option value="alphabet">По алфавиту</option>
+          </select>
+          <select aria-label="Фильтр компании" value={templateCompany} onChange={event => setTemplateCompany(event.target.value)} className="max-w-[230px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
+            <option value="all">Все компании</option>
+            {clients.filter(client => savedTemplates.some(item => String(item.data.clientId) === String(client.id))).sort((a,b) => a.name.localeCompare(b.name,'ru')).map(client => <option key={client.id} value={String(client.id)}>{client.name}</option>)}
+          </select>
+        </div>
+        {templatesError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{templatesError}</p>}
+        {templatesLoading ? <p className="mt-6 text-sm text-slate-500">Загрузка...</p> : (
+          <div className="mt-5 max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+            {visibleTemplates.map(item => {
+              const selected = selectedTemplateIds.includes(item.id);
+              const client = clients.find(value => String(value.id) === String(item.data.clientId));
+              return <div key={item.id} className={`flex items-center gap-3 px-4 py-3 transition-colors ${selected ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'}`}>
+                <input type="checkbox" aria-label={`Выбрать шаблон ${item.name}`} checked={selected} disabled={templatesCreating} onChange={() => setSelectedTemplateIds(previous => selected ? previous.filter(id => id !== item.id) : [...previous, item.id])} className="h-4 w-4 shrink-0" />
+                <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-lg bg-slate-50">
+                  {client ? <OrganizationLogo kind="client" id={client.id} name={client.name} /> : <span className="text-xs text-slate-400">Без лого</span>}
+                </div>
+                <label className="min-w-0 flex-1 cursor-pointer" onClick={() => { if (!templatesCreating) setSelectedTemplateIds(previous => selected ? previous.filter(id => id !== item.id) : [...previous, item.id]); }}>
+                  <span className="block truncate text-sm font-semibold text-slate-900">{client?.name || item.name}</span>
+                  <span className="mt-1 block text-xs text-slate-500">{TEMPLATE_TYPE_NAMES[item.requestType] || item.requestType} · Использован {item.usageCount || 0} раз</span>
+                  <span className="mt-1 block break-words text-xs text-slate-600">{[item.data.senderAddress, item.data.deliveryAddress || item.data.recipientAddress].filter(Boolean).join(' → ') || 'Маршрут не указан'}</span>
+                </label>
+                <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+                  <button type="button" disabled={templatesCreating} aria-label={item.pinned ? 'Открепить шаблон' : 'Закрепить шаблон'} title={item.pinned ? 'Открепить' : 'В избранное'} onClick={() => void toggleTemplatePin(item)} className={`rounded-lg px-2 py-1 text-lg ${item.pinned ? 'text-amber-600' : 'text-slate-400 hover:text-amber-600'}`}>{item.pinned ? '★' : '☆'}</button>
+                  {templateDeleteConfirm === item.id ? <><button type="button" onClick={() => setTemplateDeleteConfirm(null)} className="text-xs text-slate-500">Отмена</button><button type="button" disabled={templatesCreating} onClick={() => void deleteSavedTemplate(item.id)} className="text-xs font-semibold text-red-700">Удалить?</button></> : <button type="button" disabled={templatesCreating} onClick={() => setTemplateDeleteConfirm(item.id)} className="text-xs text-red-700">Удалить</button>}
+                </div>
+              </div>;
+            })}
+            {!savedTemplates.length && <p className="p-5 text-sm text-slate-500">Шаблонов пока нет. Сохраните шаблон в форме создания заявки.</p>}
+            {!!savedTemplates.length && !visibleTemplates.length && <p className="p-5 text-sm text-slate-500">По выбранным условиям шаблоны не найдены.</p>}
+          </div>
+        )}
+        <div className="mt-5 flex justify-end border-t border-slate-200 pt-4"><button type="button" disabled={!selectedTemplateIds.length || templatesCreating || templatesLoading} onClick={() => void createFromSavedTemplates()} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{templatesCreating ? 'Создание...' : `Создать выбранные (${selectedTemplateIds.length})`}</button></div>
+      </Modal>
       <CreateTaskModal isOpen={showCreateModal} onClose={closeCreateRequest} onSubmit={handleCreateTask} clients={clients} isLoading={isCreating} initialData={createInitialData} />
       <TaskDetailsModal
         isOpen={Boolean(selectedRequest) && !isEditingSelectedRequest}

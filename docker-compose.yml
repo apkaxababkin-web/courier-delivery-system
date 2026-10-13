@@ -25,6 +25,7 @@ services:
 
   # Backend API
   api:
+    image: courier-api:push-fix-f7d4bd1-final
     build:
       context: .
       dockerfile: Dockerfile

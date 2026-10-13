@@ -448,7 +448,7 @@ function buildHemotestPeriods(
         .filter(
           (value) =>
             /^\d{4}-\d{2}$/.test(value)
-            && value >= '2026-07',
+            && value >= '2026-06',
         ),
     ),
   ).sort();
@@ -498,75 +498,40 @@ function downloadHemotestReconciliation(
     address: string;
   }>,
   pickedKeys: Set<string>,
+  priceFor: (date: string, pointId: number) => number,
+  managerMode: boolean,
 ) {
-  const rows = [
-    [
-      'Точка сбора',
-      ...period.dates.map((date) => {
-        const day = Number(date.slice(8, 10));
-        return isSundayDate(date)
-          ? `${day} / ВС`
-          : String(day);
-      }),
-    ],
-    ...points.map((point) => [
-      `${point.pointName} • ${point.address}`,
-      ...period.dates.map((date) =>
-        pickedKeys.has(`${date}:${point.pointId}`)
-          ? 'Собрано'
-          : '',
-      ),
-    ]),
-  ];
+  void points;
+  void pickedKeys;
+  void priceFor;
+  const url = `/api/${managerMode ? 'manager/hemotest/reconciliation' : 'client-portal/hemotest-reconciliation'}/export?period=${encodeURIComponent(period.key)}`;
+  const token = localStorage.getItem(managerMode ? 'managerToken' : 'clientPortalToken');
+  void fetch(url, {
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).then(async (response) => {
+    if (!response.ok) throw new Error(`Не удалось скачать Excel (${response.status})`);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `Гемотест-${period.key}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }).catch((error) => window.alert(error instanceof Error ? error.message : 'Ошибка выгрузки'));
 
-  const html = `
-    <html>
-      <head>
-        <meta charset="UTF-8">
-      </head>
-      <body>
-        <table border="1">
-          ${rows
-            .map(
-              (row) =>
-                `<tr>${row
-                  .map(
-                    (cell) =>
-                      `<td>${String(cell)
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')}</td>`,
-                  )
-                  .join('')}</tr>`,
-            )
-            .join('')}
-        </table>
-      </body>
-    </html>
-  `;
-
-  const blob = new Blob([html], {
-    type: 'application/vnd.ms-excel;charset=utf-8',
-  });
-
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-
-  link.href = url;
-  link.download = `mig-hemotest-${period.key}.xls`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  URL.revokeObjectURL(url);
 }
 
-function HemotestReconciliationPanel({
+export function HemotestReconciliationPanel({
   data,
   onRefresh,
+  managerMode = false,
 }: {
   data: ClientPortalHemotestReconciliation;
   onRefresh: () => void;
+  managerMode?: boolean;
 }) {
   const periods = useMemo(
     () => buildHemotestPeriods(data.items),
@@ -596,7 +561,7 @@ function HemotestReconciliationPanel({
     () =>
       Array.from(
         new Map(
-          data.items.map((item) => [
+          data.items.filter((item) => selectedPeriod?.dates.includes(hemotestDateKey(item.date))).map((item) => [
             item.pointId,
             {
               pointId: item.pointId,
@@ -613,7 +578,7 @@ function HemotestReconciliationPanel({
 
         return byName || a.address.localeCompare(b.address, 'ru');
       }),
-    [data.items],
+    [data.items, selectedPeriod?.key],
   );
 
   const pickedKeys = useMemo(
@@ -777,6 +742,8 @@ function HemotestReconciliationPanel({
                 selectedPeriod,
                 points,
                 pickedKeys,
+                priceFor,
+                managerMode,
               )
             }
             className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700"

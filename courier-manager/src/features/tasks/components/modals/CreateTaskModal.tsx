@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { Modal } from '../../../../components/Modal';
 import { AppSelect } from '../../../../components/AppSelect';
 import { getLocalDateKey } from '../../../../lib/local-time';
+import { managerFetch } from '../../../../lib/api';
 import {
   getClientPoints,
   getClientRegularClients,
@@ -195,6 +196,36 @@ export function CreateTaskModal({
   submitLabel,
 }: CreateTaskModalProps) {
   const [formData, setFormData] = useState<LocalFormData>(makeInitialFormData);
+  const [templateSaved, setTemplateSaved] = useState(false);
+  const [templateSaveConfirm, setTemplateSaveConfirm] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+  const saveTemplate = async () => {
+    setTemplateBusy(true);
+    setTemplateError('');
+    try {
+      const { requestFiles, courierId, requestDate, isHistoricalCompleted, ...data } = formData;
+      const nameParts = [
+        clients.find(client => client.id === formData.clientId)?.name,
+        REQUEST_TYPE_LABELS[formData.requestType || 'delivery'],
+        [formData.senderAddress, formData.deliveryAddress || formData.recipientAddress].filter(Boolean).join(' → '),
+      ].filter(Boolean);
+      const name = nameParts.join(' · ').slice(0, 100) || 'Заявка';
+      const response = await managerFetch('/api/manager/request-templates', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, data }),
+      });
+      if (!response.ok) throw new Error('Не удалось сохранить шаблон');
+      setTemplateSaved(true);
+      setTemplateSaveConfirm(false);
+    } catch (error) {
+      setTemplateError(error instanceof Error ? error.message : 'Ошибка сохранения');
+    } finally { setTemplateBusy(false); }
+  };
+  useEffect(() => {
+    if (!isOpen) { setTemplateSaved(false); setTemplateSaveConfirm(false); setTemplateError(''); }
+  }, [isOpen]);
+
   const [pickupClientPoints, setPickupClientPoints] = useState<ClientPoint[]>([]);
   const [transportCompanies, setTransportCompanies] = useState<TransportCompany[]>([]);
   const [requesters, setRequesters] = useState<Requester[]>([]);
@@ -1951,7 +1982,16 @@ export function CreateTaskModal({
             {formData.requestDate ? ` · ${formData.requestDate}` : ''}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {mode === 'create' && <>
+              <button type="button" disabled={templateBusy || isLoading}
+                onClick={() => { setTemplateSaved(false); setTemplateSaveConfirm(true); }}
+                className="h-[39px] rounded-[11px] border border-blue-300 bg-blue-50 px-[14px] text-xs font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-50">
+                {templateBusy ? 'Сохранение...' : 'Сохранить как шаблон'}
+              </button>
+              {templateSaved && <span role="status" className="text-xs font-medium text-green-700">Шаблон сохранён</span>}
+              {templateError && <span role="alert" className="text-xs text-red-700">{templateError}</span>}
+            </>}
             <button
               type="button"
               onClick={onClose}
@@ -1971,6 +2011,17 @@ export function CreateTaskModal({
             </button>
           </div>
         </div>
+        {templateSaveConfirm && mode === 'create' && <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+          <div role="dialog" aria-modal="true" aria-label="Сохранить шаблон" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Сохранить шаблон?</h3>
+            <p className="mt-2 text-sm text-slate-600">Текущие поля сохранятся как шаблон без создания заявки. Название будет сформировано автоматически.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setTemplateSaveConfirm(false)} disabled={templateBusy} className="rounded-lg border border-slate-200 px-4 py-2 text-sm">Отмена</button>
+              <button type="button" onClick={() => void saveTemplate()} disabled={templateBusy} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{templateBusy ? 'Сохранение...' : 'Сохранить'}</button>
+            </div>
+            {templateError && <p role="alert" className="mt-3 text-sm text-red-700">{templateError}</p>}
+          </div>
+        </div>}
       </form>
     </Modal>
   );

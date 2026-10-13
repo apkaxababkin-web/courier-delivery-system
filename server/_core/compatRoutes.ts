@@ -1273,6 +1273,137 @@ export function registerCompatRoutes(app: Express) {
   });
 
 
+  // One source of truth for both the client portal and manager's reconciliation.
+  async function hemotestReconciliationDetails() {
+    const conn = await db.getDb();
+    if (!conn) throw new Error("Database not available");
+    const items = await hemotestReconciliationRows();
+    const tariffResult = await conn.execute(sql`
+      SELECT "hemotestPointPrice", "hemotestSundayFirstPointPrice", "hemotestSundayNextPointPrice"
+      FROM "clientTariffs" WHERE "clientId" = 6 ORDER BY "id" DESC LIMIT 1
+    `) as any;
+    const tariffRow = sqlRows(tariffResult)[0];
+    return { items, tariffs: {
+      pointPrice: Number(tariffRow?.hemotestPointPrice ?? 0),
+      sundayFirstPointPrice: Number(tariffRow?.hemotestSundayFirstPointPrice ?? 0),
+      sundayNextPointPrice: Number(tariffRow?.hemotestSundayNextPointPrice ?? 0),
+    } };
+  }
+
+  app.get("/api/manager/hemotest/reconciliation/details", async (_req, res) => {
+    try { res.json(await hemotestReconciliationDetails()); }
+    catch (error) { sendError(res, error, "Failed to load Hemotest details"); }
+  });
+
+  async function exportHemotestExcel(req: Request, res: Response) {
+    const period = String(req.query.period || "");
+    const match = /^(20\d{2})-(0[1-9]|1[0-2])-([12])$/.exec(period);
+    if (!match) { res.status(400).json({ error: "Неверный расчётный период" }); return; }
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const first = match[3] === '1';
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const startDay = first ? 1 : 16;
+    const count = first ? 15 : daysInMonth - 15;
+    const from = `${match[1]}-${match[2]}-${String(startDay).padStart(2, '0')}`;
+    const to = `${match[1]}-${match[2]}-${String(startDay + count - 1).padStart(2, '0')}`;
+    const data = await hemotestReconciliationDetails();
+    if (data.tariffs.pointPrice <= 0 || data.tariffs.sundayFirstPointPrice <= 0 || data.tariffs.sundayNextPointPrice <= 0) {
+      res.status(409).json({ error: "Тарифы Гемотеста не заполнены: выгрузка остановлена, чтобы не создавать неверные суммы" }); return;
+    }
+    const dateKey = (value: unknown) => value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
+    const rows = data.items.filter(item => dateKey(item.date) >= from && dateKey(item.date) <= to);
+    const points = Array.from(new Map(rows.map(item => [item.pointId, {
+      pointId: item.pointId, name: item.pointName, address: item.address,
+    }])).values()).sort((a, b) => a.name.localeCompare(b.name, 'ru') || a.address.localeCompare(b.address, 'ru'));
+    const { default: ExcelJS } = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const templatePath = path.resolve(process.env.UPLOADS_DIR || 'uploads', 'hemotest-reconciliation-template.xlsx');
+    await workbook.xlsx.readFile(templatePath);
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new Error('Не найден лист шаблона Гемотест');
+    // Original template: A dates, B:AA pickup points, AB daily total, AC count;
+    // row 17 period total, row 18 onward is the preserved GENOMED block.
+    const originalPointCount = 26;
+    const pointCount = points.length;
+    const diff = pointCount - originalPointCount;
+    if (diff > 0) sheet.spliceColumns(28, 0, ...Array.from({length: diff}, () => []));
+    // Never delete columns: the GENOMED block below shares this worksheet.
+    // Clear unused Hemotest header/body cells instead, leaving lower blocks intact.
+    const totalCol = 2 + Math.max(pointCount, originalPointCount);
+    const countCol = totalCol + 1;
+    // The second half may contain 16 days. Insert before the summary/GENOMED area.
+    if (count > 15) sheet.spliceRows(17, 0, []);
+    if (count < 15) sheet.spliceRows(2 + count, 15 - count);
+    const summaryRow = 2 + count;
+    const excelDate = (day: number) => new Date(Date.UTC(year, month - 1, day, 12));
+    sheet.getCell(1, 1).value = 'Дата';
+    for (let j = 0; j < pointCount; j++) {
+      const cell = sheet.getCell(1, j + 2);
+      cell.value = `${points[j].name}\n${points[j].address}`;
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      sheet.getColumn(j + 2).width = 22;
+    }
+    for (let col = 2 + pointCount; col < 28 + Math.max(diff, 0); col++) {
+      for (let row = 1; row <= 17; row++) sheet.getCell(row, col).value = null;
+    }
+    sheet.getCell(1, totalCol).value = 'Итого';
+    sheet.getCell(1, countCol).value = 'Количество точек';
+    for (let i = 0; i < count; i++) {
+      const day = startDay + i;
+      const date = `${match[1]}-${match[2]}-${String(day).padStart(2, '0')}`;
+      const dateRows = rows.filter(item => dateKey(item.date) === date);
+      const sunday = excelDate(day).getUTCDay() === 0;
+      const sorted = [...new Map(dateRows.map(item => [item.pointId, item])).values()].sort((a, b) => {
+        const at = a.pickedAt ? new Date(a.pickedAt).getTime() : 0;
+        const bt = b.pickedAt ? new Date(b.pickedAt).getTime() : 0;
+        return at - bt || a.pointId - b.pointId;
+      });
+      const firstSundayPoint = sorted[0]?.pointId;
+      const row = sheet.getRow(i + 2);
+      row.getCell(1).value = excelDate(day);
+      row.getCell(1).numFmt = 'dd.mm.yyyy';
+      for (let j = 0; j < pointCount; j++) {
+        const picked = dateRows.some(item => item.pointId === points[j].pointId);
+        const cell = row.getCell(j + 2);
+        cell.value = !picked ? null : !sunday ? data.tariffs.pointPrice :
+          points[j].pointId === firstSundayPoint ? data.tariffs.sundayFirstPointPrice : data.tariffs.sundayNextPointPrice;
+        cell.numFmt = '#,##0 "₽"';
+      }
+      const lastPointLetter = sheet.getColumn(totalCol - 1).letter;
+      row.getCell(totalCol).value = {formula: `SUM(B${i+2}:${lastPointLetter}${i+2})`};
+      row.getCell(countCol).value = {formula: `COUNT(B${i+2}:${lastPointLetter}${i+2})`};
+    }
+    const summary = sheet.getRow(summaryRow);
+    summary.getCell(totalCol).value = {formula: `SUM(${sheet.getColumn(totalCol).letter}2:${sheet.getColumn(totalCol).letter}${summaryRow - 1})`};
+    summary.getCell(countCol).value = {formula: `SUM(${sheet.getColumn(countCol).letter}2:${sheet.getColumn(countCol).letter}${summaryRow - 1})`};
+    // Preserve GENOMED and its existing cells. Repair the original grand-total formula
+    // after column/row shifts so it still points to the new Hemotest subtotal.
+    const genomedHeaderRow = summaryRow + 2;
+    const genomedTotalRow = genomedHeaderRow + 6;
+    const grandTotalRow = genomedHeaderRow;
+    sheet.getCell(grandTotalRow, 28 + Math.max(diff, 0)).value = {
+      formula: `${sheet.getColumn(totalCol).letter}${summaryRow}+N${genomedTotalRow}`,
+    };
+    workbook.calcProperties.fullCalcOnLoad = true;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="hemotest-${period}.xlsx"`);
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.end(Buffer.from(buffer));
+  }
+
+  app.get('/api/manager/hemotest/reconciliation/export', async (req, res) => {
+    try { await exportHemotestExcel(req, res); }
+    catch (error) { sendError(res, error, 'Failed to export Hemotest Excel'); }
+  });
+  app.get('/api/client-portal/hemotest-reconciliation/export', async (req, res) => {
+    try {
+      const { account } = await requireClientPortalAccount(req);
+      if (account.clientId !== 6) { res.status(403).json({ error: 'Доступ запрещён' }); return; }
+      await exportHemotestExcel(req, res);
+    } catch (error) { sendError(res, error, 'Failed to export Hemotest Excel'); }
+  });
+
   app.get("/api/manager/hemotest/reconciliation", async (_req, res) => {
     try {
       res.json(await hemotestReconciliationRows());
@@ -1281,6 +1412,100 @@ export function registerCompatRoutes(app: Express) {
     }
   });
 
+
+  // Shared request templates live in the persistent uploads volume, not browser storage.
+  const templatesPath = path.resolve(process.env.UPLOADS_DIR || "uploads", "manager-request-templates.json");
+  type SavedRequestTemplate = { id: string; name: string; requestType: string; data: Record<string, unknown>; usageCount?: number; pinned?: boolean };
+  let templatesQueue: Promise<unknown> = Promise.resolve();
+  const loadRequestTemplates = async (): Promise<SavedRequestTemplate[]> => {
+    try {
+      const parsed: unknown = JSON.parse(await fs.readFile(templatesPath, "utf8"));
+      if (!Array.isArray(parsed)) throw new Error("Invalid templates data");
+      return parsed as SavedRequestTemplate[];
+    } catch (error: any) { if (error?.code === "ENOENT") return []; throw error; }
+  };
+  const saveRequestTemplates = async (items: SavedRequestTemplate[]) => {
+    await fs.mkdir(path.dirname(templatesPath), { recursive: true });
+    const temporary = `${templatesPath}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(temporary, JSON.stringify(items), { flag: "wx", mode: 0o600 });
+      await fs.rename(temporary, templatesPath);
+    } finally { await fs.unlink(temporary).catch(() => {}); }
+  };
+  const mutateRequestTemplates = <T>(action: () => Promise<T>): Promise<T> => {
+    const run = templatesQueue.then(action, action);
+    templatesQueue = run.then(() => undefined, () => undefined);
+    return run;
+  };
+  const allowedRequestTypes = new Set(["delivery", "movement", "nuts", "courier_call", "pickup_from_tc", "simple"]);
+  app.get("/api/manager/request-templates", async (_req, res) => {
+    try { res.setHeader("Cache-Control", "no-store"); res.json(await loadRequestTemplates()); }
+    catch (error) { sendError(res, error, "Failed to load request templates"); }
+  });
+  app.post("/api/manager/request-templates", async (req, res) => {
+    try {
+      const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      const data = req.body?.data;
+      const requestType = data?.requestType;
+      if (!name || name.length > 100 || !data || typeof data !== "object" || Array.isArray(data)
+          || !allowedRequestTypes.has(requestType) || JSON.stringify(data).length > 25000) {
+        res.status(400).json({ error: "Некорректный шаблон" }); return;
+      }
+      const safeData = { ...data };
+      for (const key of ["id", "status", "requestDate", "completedAt", "isHistoricalCompleted", "requestFiles", "courierId", "createdAt", "updatedAt"]) delete safeData[key];
+      const item = { id: crypto.randomUUID(), name, requestType, data: safeData, usageCount: 0, pinned: false };
+      await mutateRequestTemplates(async () => {
+        const items = await loadRequestTemplates();
+        if (items.length >= 200) throw Object.assign(new Error("Достигнут лимит шаблонов"), { status: 400 });
+        items.push(item); await saveRequestTemplates(items);
+      });
+      res.status(201).json(item);
+    } catch (error: any) {
+      if (error?.status === 400) { res.status(400).json({ error: error.message }); return; }
+      sendError(res, error, "Failed to save request template");
+    }
+  });
+  app.patch("/api/manager/request-templates/:id/pin", async (req, res) => {
+    try {
+      if (typeof req.body?.pinned !== "boolean") { res.status(400).json({ error: "Некорректное значение" }); return; }
+      const item = await mutateRequestTemplates(async () => {
+        const items = await loadRequestTemplates();
+        const target = items.find(value => value.id === req.params.id);
+        if (!target) return null;
+        target.pinned = req.body.pinned;
+        await saveRequestTemplates(items);
+        return target;
+      });
+      if (!item) { res.status(404).json({ error: "Шаблон не найден" }); return; }
+      res.json(item);
+    } catch (error) { sendError(res, error, "Failed to pin request template"); }
+  });
+  app.post("/api/manager/request-templates/:id/used", async (req, res) => {
+    try {
+      const item = await mutateRequestTemplates(async () => {
+        const items = await loadRequestTemplates();
+        const target = items.find(value => value.id === req.params.id);
+        if (!target) return null;
+        target.usageCount = Math.min(2147483647, (Number.isSafeInteger(target.usageCount) && (target.usageCount || 0) >= 0 ? target.usageCount! : 0) + 1);
+        await saveRequestTemplates(items);
+        return target;
+      });
+      if (!item) { res.status(404).json({ error: "Шаблон не найден" }); return; }
+      res.json(item);
+    } catch (error) { sendError(res, error, "Failed to track template use"); }
+  });
+  app.delete("/api/manager/request-templates/:id", async (req, res) => {
+    try {
+      const found = await mutateRequestTemplates(async () => {
+        const items = await loadRequestTemplates();
+        const filtered = items.filter(item => item.id !== req.params.id);
+        if (filtered.length === items.length) return false;
+        await saveRequestTemplates(filtered); return true;
+      });
+      if (!found) { res.status(404).json({ error: "Шаблон не найден" }); return; }
+      res.json({ success: true });
+    } catch (error) { sendError(res, error, "Failed to delete request template"); }
+  });
 
   app.get("/api/manager/couriers", async (_req, res) => {
     try {
@@ -1408,6 +1633,27 @@ export function registerCompatRoutes(app: Express) {
     } catch (error) {
       sendError(res, error, "Failed to update manager courier");
     }
+  });
+
+  // Password changes are explicit: generating/copying credentials never updates auth.
+  app.put("/api/manager/couriers/:id/password", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const password = req.body?.password;
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        res.status(400).json({ error: "Некорректный ID курьера" }); return;
+      }
+      if (typeof password !== "string" || password.length < 8 || password.length > 128) {
+        res.status(400).json({ error: "Пароль должен содержать от 8 до 128 символов" }); return;
+      }
+      if (!await db.getCourierById(id)) {
+        res.status(404).json({ error: "Курьер не найден" }); return;
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      await db.updateCourier(id, { passwordHash, updatedAt: new Date() } as any);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ success: true });
+    } catch (error) { sendError(res, error, "Failed to change courier password"); }
   });
 
   app.delete("/api/manager/couriers/:id", async (req, res) => {

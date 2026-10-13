@@ -1,9 +1,12 @@
+import { HemotestReconciliationPanel } from './ClientPortalView';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays, Search, Download, FileSpreadsheet, ArrowLeft, Pencil, RefreshCw,
   FileText, ScrollText, Wallet, Ban, Paperclip, CheckCircle2, AlertTriangle, Settings2,
 } from 'lucide-react';
 import {
+  getManagerHemotestReconciliation,
+  type ClientPortalHemotestReconciliation,
   getAllClients,
   getAllRequests,
   getAllMails,
@@ -603,6 +606,15 @@ function PartnerReconciliation() {
 export default function ReportsView() {
   const initialRange = useMemo(() => getCurrentMonthRange(), []);
   const [activeTab, setActiveTab] = useState<'partners' | 'documents'>('documents');
+  const [hemotestReconciliation, setHemotestReconciliation] = useState<ClientPortalHemotestReconciliation | null>(null);
+  const [hemotestOpen, setHemotestOpen] = useState(false);
+  const [hemotestError, setHemotestError] = useState('');
+  async function openHemotestReconciliation() {
+    setHemotestOpen(true);
+    setHemotestError('');
+    try { setHemotestReconciliation(await getManagerHemotestReconciliation()); }
+    catch (error) { setHemotestError(error instanceof Error ? error.message : 'Ошибка загрузки'); }
+  }
 
   const [requests, setRequests] = useState<Request[]>([]);
   const [billingOverview, setBillingOverview] = useState<Awaited<ReturnType<typeof getBillingOverview>> | null>(null);
@@ -2031,6 +2043,26 @@ export default function ReportsView() {
               </span>
             )}
           </div>
+
+          {selectedClientId === 6 && (
+            <div className="space-y-3">
+              <button type="button" onClick={() => void openHemotestReconciliation()}
+                className="rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">
+                {hemotestOpen ? 'Обновить сверку Гемотест' : 'Открыть сверку Гемотест'}
+              </button>
+              {hemotestOpen && (
+                <div className="space-y-3">
+                  <button type="button" onClick={() => setHemotestOpen(false)}
+                    className="rounded-lg border px-3 py-1.5 text-sm">Закрыть сверку</button>
+                  {hemotestError && <p role="alert" className="text-sm text-red-700">{hemotestError}</p>}
+                  {hemotestReconciliation && (
+                    <HemotestReconciliationPanel managerMode data={hemotestReconciliation}
+                      onRefresh={() => void openHemotestReconciliation()} />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Client list, shown while no client is chosen. */}
           {!selectedClient && (

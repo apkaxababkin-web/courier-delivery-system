@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, Building2, ChevronRight,
   KeyRound, Edit2, MapPin, Phone, Plus, Search, Store, Trash2, UserRound, X } from 'lucide-react';
 import * as api from '../lib/api';
+import { OrganizationLogo, OrganizationLogoField, saveOrganizationLogo } from '../components/OrganizationLogoField';
+import type { LogoChange } from '../components/OrganizationLogoField';
 
 type Client = api.Client;
 type Point = api.ClientPoint & { isPrimary?: boolean };
@@ -51,6 +53,11 @@ const buttonPrimary = 'inline-flex h-11 items-center justify-center gap-2 rounde
 const buttonSecondary = 'inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50';
 
 export default function ClientsViewV2() {
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const [clientLogo, setClientLogo] = useState<LogoChange>(null);
+  const [partnerLogo, setPartnerLogo] = useState<LogoChange>(null);
+  const [transportLogo, setTransportLogo] = useState<LogoChange>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -132,6 +139,8 @@ export default function ClientsViewV2() {
 
 
   function openClientForm(client?: Client) {
+    if (logoBusy) return;
+    setClientLogo(null); setLogoError('');
     if (client) {
       setEditingClientId(client.id);
       setClientForm({
@@ -157,18 +166,26 @@ export default function ClientsViewV2() {
 
   async function submitClient(event: FormEvent) {
     event.preventDefault();
+    if (logoBusy) return;
+    setLogoError('');
 
     if (!clientForm.name.trim() || !clientForm.address.trim()) {
       alert('Название и адрес обязательны');
       return;
     }
 
+    setLogoBusy(true);
     try {
-      if (editingClientId) {
-        await api.updateClient(editingClientId, clientForm);
+      let savedId = editingClientId;
+      if (savedId) {
+        await api.updateClient(savedId, clientForm);
       } else {
-        await api.createClient(clientForm);
+        const created = await api.createClient(clientForm);
+        savedId = created.id;
+        setEditingClientId(savedId);
       }
+      await saveOrganizationLogo('client', savedId, clientLogo);
+      setClientLogo(null);
 
       setShowClientModal(false);
       setEditingClientId(null);
@@ -176,8 +193,8 @@ export default function ClientsViewV2() {
       await loadClients();
     } catch (error) {
       console.error(error);
-      alert('Ошибка при сохранении клиента');
-    }
+      setLogoError(error instanceof Error ? error.message : 'Не удалось сохранить организацию или логотип');
+    } finally { setLogoBusy(false); }
   }
 
   function openClientPortalAccess(client: Client) {
@@ -382,6 +399,8 @@ export default function ClientsViewV2() {
   }
 
   function openPartnerForm(item?: Partner) {
+    if (logoBusy) return;
+    setPartnerLogo(null); setLogoError('');
     if (item) {
       setEditingPartnerId(item.id);
       setPartnerForm({
@@ -401,6 +420,8 @@ export default function ClientsViewV2() {
 
   async function submitPartner(event: FormEvent) {
     event.preventDefault();
+    if (logoBusy) return;
+    setLogoError('');
 
     if (!partnerForm.name.trim()) {
       alert('Название партнёра обязательно');
@@ -416,12 +437,18 @@ export default function ClientsViewV2() {
       isActive: true,
     };
 
+    setLogoBusy(true);
     try {
-      if (editingPartnerId) {
-        await api.updatePartner(editingPartnerId, payload);
+      let savedId = editingPartnerId;
+      if (savedId) {
+        await api.updatePartner(savedId, payload);
       } else {
-        await api.createPartner(payload);
+        const created = await api.createPartner(payload);
+        savedId = created.id;
+        setEditingPartnerId(savedId);
       }
+      await saveOrganizationLogo('partner', savedId, partnerLogo);
+      setPartnerLogo(null);
 
       setShowPartnerModal(false);
       setEditingPartnerId(null);
@@ -429,8 +456,8 @@ export default function ClientsViewV2() {
       await loadCounterpartyDirectories();
     } catch (error) {
       console.error(error);
-      alert('Ошибка при сохранении партнёра');
-    }
+      setLogoError(error instanceof Error ? error.message : 'Не удалось сохранить организацию или логотип');
+    } finally { setLogoBusy(false); }
   }
 
   async function deletePartner(item: Partner) {
@@ -446,6 +473,8 @@ export default function ClientsViewV2() {
   }
 
   function openTransportCompanyForm(item?: TransportCompany) {
+    if (logoBusy) return;
+    setTransportLogo(null); setLogoError('');
     if (item) {
       setEditingTransportCompanyId(item.id);
       setTransportCompanyForm({
@@ -465,6 +494,8 @@ export default function ClientsViewV2() {
 
   async function submitTransportCompany(event: FormEvent) {
     event.preventDefault();
+    if (logoBusy) return;
+    setLogoError('');
 
     if (!transportCompanyForm.name.trim() || !transportCompanyForm.address.trim()) {
       alert('Название и адрес ТК обязательны');
@@ -480,12 +511,18 @@ export default function ClientsViewV2() {
       isActive: true,
     };
 
+    setLogoBusy(true);
     try {
-      if (editingTransportCompanyId) {
-        await api.updateTransportCompany(editingTransportCompanyId, payload);
+      let savedId = editingTransportCompanyId;
+      if (savedId) {
+        await api.updateTransportCompany(savedId, payload);
       } else {
-        await api.createTransportCompany(payload);
+        const created = await api.createTransportCompany(payload);
+        savedId = created.id;
+        setEditingTransportCompanyId(savedId);
       }
+      await saveOrganizationLogo('transport', savedId, transportLogo);
+      setTransportLogo(null);
 
       setShowTransportCompanyModal(false);
       setEditingTransportCompanyId(null);
@@ -493,8 +530,8 @@ export default function ClientsViewV2() {
       await loadCounterpartyDirectories();
     } catch (error) {
       console.error(error);
-      alert('Ошибка при сохранении транспортной компании');
-    }
+      setLogoError(error instanceof Error ? error.message : 'Не удалось сохранить организацию или логотип');
+    } finally { setLogoBusy(false); }
   }
 
   async function deleteTransportCompany(item: TransportCompany) {
@@ -552,7 +589,7 @@ export default function ClientsViewV2() {
             </button>
 
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{selected.name}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950"><OrganizationLogo kind="client" id={selected.id} name={selected.name} />{selected.name}</h1>
               <p className="mt-1 text-sm text-slate-500">Магазины, точки и постоянные клиенты.</p>
             </div>
           </div>
@@ -717,9 +754,9 @@ export default function ClientsViewV2() {
             onClose={() => setShowClientPortalModal(false)}
           />
         )}
-        {showClientModal && <ClientModal form={clientForm} setForm={setClientForm} editing={Boolean(editingClientId)} onSubmit={submitClient} onClose={() => setShowClientModal(false)} />}
-      {showPartnerModal && <PartnerModal form={partnerForm} setForm={setPartnerForm} editing={Boolean(editingPartnerId)} onSubmit={submitPartner} onClose={() => setShowPartnerModal(false)} />}
-      {showTransportCompanyModal && <TransportCompanyModal form={transportCompanyForm} setForm={setTransportCompanyForm} editing={Boolean(editingTransportCompanyId)} onSubmit={submitTransportCompany} onClose={() => setShowTransportCompanyModal(false)} />}
+        {showClientModal && <ClientModal logoId={editingClientId} logoChange={clientLogo} onLogoChange={setClientLogo} logoBusy={logoBusy} logoError={logoError} form={clientForm} setForm={setClientForm} editing={Boolean(editingClientId)} onSubmit={submitClient} onClose={() => setShowClientModal(false)} />}
+      {showPartnerModal && <PartnerModal logoId={editingPartnerId} logoChange={partnerLogo} onLogoChange={setPartnerLogo} logoBusy={logoBusy} logoError={logoError} form={partnerForm} setForm={setPartnerForm} editing={Boolean(editingPartnerId)} onSubmit={submitPartner} onClose={() => setShowPartnerModal(false)} />}
+      {showTransportCompanyModal && <TransportCompanyModal logoId={editingTransportCompanyId} logoChange={transportLogo} onLogoChange={setTransportLogo} logoBusy={logoBusy} logoError={logoError} form={transportCompanyForm} setForm={setTransportCompanyForm} editing={Boolean(editingTransportCompanyId)} onSubmit={submitTransportCompany} onClose={() => setShowTransportCompanyModal(false)} />}
         {showPointModal && <PointModal form={pointForm} setForm={setPointForm} editing={Boolean(editingPointId)} onSubmit={submitPoint} onClose={() => setShowPointModal(false)} />}
         {showRegularClientModal && <RegularClientModal form={regularClientForm} setForm={setRegularClientForm} editing={Boolean(editingRegularClientId)} onSubmit={submitRegularClient} onClose={() => setShowRegularClientModal(false)} />}
       </div>
@@ -806,7 +843,7 @@ export default function ClientsViewV2() {
                 {filtered.map((client) => (
                   <tr key={client.id} onClick={() => void openClient(client)} className="group cursor-pointer hover:bg-slate-50/80">
                     <td className="px-5 py-4">
-                      <p className="font-semibold text-slate-950">{client.name}</p>
+                      <p className="font-semibold text-slate-950"><OrganizationLogo kind="client" id={client.id} name={client.name} />{client.name}</p>
                       <p className="mt-1 text-xs text-slate-500">Вся строка кликабельна</p>
                     </td>
                     <td className="px-2 py-2 text-center text-[11px] text-slate-600">{client.contactPerson || '—'}</td>
@@ -835,9 +872,9 @@ export default function ClientsViewV2() {
         <Plus className="h-6 w-6" />
       </button>
 
-      {showClientModal && <ClientModal form={clientForm} setForm={setClientForm} editing={Boolean(editingClientId)} onSubmit={submitClient} onClose={() => setShowClientModal(false)} />}
-      {showPartnerModal && <PartnerModal form={partnerForm} setForm={setPartnerForm} editing={Boolean(editingPartnerId)} onSubmit={submitPartner} onClose={() => setShowPartnerModal(false)} />}
-      {showTransportCompanyModal && <TransportCompanyModal form={transportCompanyForm} setForm={setTransportCompanyForm} editing={Boolean(editingTransportCompanyId)} onSubmit={submitTransportCompany} onClose={() => setShowTransportCompanyModal(false)} />}
+      {showClientModal && <ClientModal logoId={editingClientId} logoChange={clientLogo} onLogoChange={setClientLogo} logoBusy={logoBusy} logoError={logoError} form={clientForm} setForm={setClientForm} editing={Boolean(editingClientId)} onSubmit={submitClient} onClose={() => setShowClientModal(false)} />}
+      {showPartnerModal && <PartnerModal logoId={editingPartnerId} logoChange={partnerLogo} onLogoChange={setPartnerLogo} logoBusy={logoBusy} logoError={logoError} form={partnerForm} setForm={setPartnerForm} editing={Boolean(editingPartnerId)} onSubmit={submitPartner} onClose={() => setShowPartnerModal(false)} />}
+      {showTransportCompanyModal && <TransportCompanyModal logoId={editingTransportCompanyId} logoChange={transportLogo} onLogoChange={setTransportLogo} logoBusy={logoBusy} logoError={logoError} form={transportCompanyForm} setForm={setTransportCompanyForm} editing={Boolean(editingTransportCompanyId)} onSubmit={submitTransportCompany} onClose={() => setShowTransportCompanyModal(false)} />}
     </div>
   );
 }
@@ -862,7 +899,7 @@ function PartnersTable({ partners, loading, onEdit, onDelete }: { partners: Part
 
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                {selectedPartner.name}
+                <OrganizationLogo kind="partner" id={selectedPartner.id} name={selectedPartner.name} />{selectedPartner.name}
               </h1>
               <p className="mt-1 text-sm text-slate-500">
                 Данные партнёра.
@@ -968,7 +1005,7 @@ function PartnersTable({ partners, loading, onEdit, onDelete }: { partners: Part
                 >
                   <td className="px-5 py-4">
                     <p className="font-semibold text-slate-950">
-                      {item.name}
+                      <OrganizationLogo kind="partner" id={item.id} name={item.name} />{item.name}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
                       Вся строка кликабельна
@@ -1041,7 +1078,7 @@ function TransportCompaniesTable({ companies, loading, onEdit, onDelete }: { com
             <tbody className="divide-y divide-slate-100">
               {safeCompanies.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/80">
-                  <td className="px-5 py-4 font-semibold text-slate-950">{item.name}</td>
+                  <td className="px-5 py-4 font-semibold text-slate-950"><OrganizationLogo kind="transport" id={item.id} name={item.name} />{item.name}</td>
                   <td className="px-2 py-2 text-center text-[11px] text-slate-600">{item.address}</td>
                   <td className="px-2 py-2 text-center text-[11px] text-slate-600">{item.contactPerson || '—'}</td>
                   <td className="px-2 py-2 text-center text-[11px] text-slate-600">{item.phone || '—'}</td>
@@ -1122,7 +1159,7 @@ function Info({ label, value, full }: { label: string; value: string; full?: boo
 function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
           <button onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50">
@@ -1137,10 +1174,13 @@ function ModalShell({ title, children, onClose }: { title: string; children: Rea
   );
 }
 
-function ClientModal({ form, setForm, editing, onSubmit, onClose }: { form: ClientForm; setForm: Dispatch<SetStateAction<ClientForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
+function ClientModal({ logoId, logoChange, onLogoChange, logoBusy, logoError, form, setForm, editing, onSubmit, onClose }: { logoId: number | null; logoChange: LogoChange; onLogoChange: (change: LogoChange) => void; logoBusy: boolean; logoError: string; form: ClientForm; setForm: Dispatch<SetStateAction<ClientForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
   return (
-    <ModalShell title={editing ? 'Редактировать клиента' : 'Добавить клиента'} onClose={onClose}>
+    <ModalShell title={editing ? 'Редактировать клиента' : 'Добавить клиента'} onClose={() => { if (!logoBusy) onClose(); }}>
       <form onSubmit={onSubmit} className="space-y-3">
+        <fieldset disabled={logoBusy} className="space-y-3">
+        <OrganizationLogoField kind="client" id={logoId} change={logoChange} onChange={onLogoChange} disabled={logoBusy} />
+        {logoError && <p role="alert" className="text-sm text-red-600">{logoError}</p>}
         <input className={inputClass} placeholder="Название клиента *" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <input className={inputClass} placeholder="Основной адрес *" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
 
@@ -1203,6 +1243,7 @@ function ClientModal({ form, setForm, editing, onSubmit, onClose }: { form: Clie
         <input className={inputClass} placeholder="Телефон" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         <input className={inputClass} placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
         <button className={`w-full ${buttonPrimary}`}>{editing ? 'Сохранить' : 'Добавить клиента'}</button>
+      </fieldset>
       </form>
     </ModalShell>
   );
@@ -1222,31 +1263,39 @@ function PointModal({ form, setForm, editing, onSubmit, onClose }: { form: Point
   );
 }
 
-function PartnerModal({ form, setForm, editing, onSubmit, onClose }: { form: PartnerForm; setForm: Dispatch<SetStateAction<PartnerForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
+function PartnerModal({ logoId, logoChange, onLogoChange, logoBusy, logoError, form, setForm, editing, onSubmit, onClose }: { logoId: number | null; logoChange: LogoChange; onLogoChange: (change: LogoChange) => void; logoBusy: boolean; logoError: string; form: PartnerForm; setForm: Dispatch<SetStateAction<PartnerForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
   return (
-    <ModalShell title={editing ? 'Редактировать партнёра' : 'Добавить партнёра'} onClose={onClose}>
+    <ModalShell title={editing ? 'Редактировать партнёра' : 'Добавить партнёра'} onClose={() => { if (!logoBusy) onClose(); }}>
       <form onSubmit={onSubmit} className="space-y-3">
+        <fieldset disabled={logoBusy} className="space-y-3">
+        <OrganizationLogoField kind="partner" id={logoId} change={logoChange} onChange={onLogoChange} disabled={logoBusy} />
+        {logoError && <p role="alert" className="text-sm text-red-600">{logoError}</p>}
         <input className={inputClass} placeholder="Название партнёра *" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <input className={inputClass} placeholder="Email отправителя" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
         <input className={inputClass} placeholder="Контактное лицо" value={form.contactPerson} onChange={(event) => setForm({ ...form, contactPerson: event.target.value })} />
         <input className={inputClass} placeholder="Телефон" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         <textarea className={`${inputClass} min-h-24 py-3`} placeholder="Комментарий" value={form.comment} onChange={(event) => setForm({ ...form, comment: event.target.value })} />
         <button className={`w-full ${buttonPrimary}`}>{editing ? 'Сохранить' : 'Добавить партнёра'}</button>
+      </fieldset>
       </form>
     </ModalShell>
   );
 }
 
-function TransportCompanyModal({ form, setForm, editing, onSubmit, onClose }: { form: TransportCompanyForm; setForm: Dispatch<SetStateAction<TransportCompanyForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
+function TransportCompanyModal({ logoId, logoChange, onLogoChange, logoBusy, logoError, form, setForm, editing, onSubmit, onClose }: { logoId: number | null; logoChange: LogoChange; onLogoChange: (change: LogoChange) => void; logoBusy: boolean; logoError: string; form: TransportCompanyForm; setForm: Dispatch<SetStateAction<TransportCompanyForm>>; editing: boolean; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
   return (
-    <ModalShell title={editing ? 'Редактировать ТК' : 'Добавить ТК'} onClose={onClose}>
+    <ModalShell title={editing ? 'Редактировать ТК' : 'Добавить ТК'} onClose={() => { if (!logoBusy) onClose(); }}>
       <form onSubmit={onSubmit} className="space-y-3">
+        <fieldset disabled={logoBusy} className="space-y-3">
+        <OrganizationLogoField kind="transport" id={logoId} change={logoChange} onChange={onLogoChange} disabled={logoBusy} />
+        {logoError && <p role="alert" className="text-sm text-red-600">{logoError}</p>}
         <input className={inputClass} placeholder="Название ТК *" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <input className={inputClass} placeholder="Адрес ТК *" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
         <input className={inputClass} placeholder="Контактное лицо" value={form.contactPerson} onChange={(event) => setForm({ ...form, contactPerson: event.target.value })} />
         <input className={inputClass} placeholder="Телефон" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         <textarea className={`${inputClass} min-h-24 py-3`} placeholder="Комментарий" value={form.comment} onChange={(event) => setForm({ ...form, comment: event.target.value })} />
         <button className={`w-full ${buttonPrimary}`}>{editing ? 'Сохранить' : 'Добавить ТК'}</button>
+      </fieldset>
       </form>
     </ModalShell>
   );
