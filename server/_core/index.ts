@@ -187,6 +187,12 @@ async function startServer() {
 
   app.use(managerApiAuthGate);
 
+  app.get("/api/manager/assistant-identity", (req, res) => {
+    const managerId = Number(res.locals.manager?.managerId);
+    if (!Number.isSafeInteger(managerId) || managerId <= 0) return res.status(403).json({ error: "Forbidden" });
+    return res.json({ managerId });
+  });
+
   registerOAuthRoutes(app);
 
   app.post("/api/trpc/mails.deliver", async (req, res) => {
