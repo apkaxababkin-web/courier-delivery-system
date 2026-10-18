@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, Building2, ChevronRight,
   KeyRound, Edit2, MapPin, Phone, Plus, Search, Store, Trash2, UserRound, X } from 'lucide-react';
 import * as api from '../lib/api';
+import { MaxClientChatsField } from '../components/MaxClientChatsField';
 import { OrganizationLogo, OrganizationLogoField, saveOrganizationLogo } from '../components/OrganizationLogoField';
 import type { LogoChange } from '../components/OrganizationLogoField';
 
@@ -1179,6 +1180,7 @@ function ClientModal({ logoId, logoChange, onLogoChange, logoBusy, logoError, fo
     <ModalShell title={editing ? 'Редактировать клиента' : 'Добавить клиента'} onClose={() => { if (!logoBusy) onClose(); }}>
       <form onSubmit={onSubmit} className="space-y-3">
         <fieldset disabled={logoBusy} className="space-y-3">
+        {logoId && <MaxClientChatsField clientId={logoId} />}
         <OrganizationLogoField kind="client" id={logoId} change={logoChange} onChange={onLogoChange} disabled={logoBusy} />
         {logoError && <p role="alert" className="text-sm text-red-600">{logoError}</p>}
         <input className={inputClass} placeholder="Название клиента *" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />

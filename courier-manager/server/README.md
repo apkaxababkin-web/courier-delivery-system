@@ -187,15 +187,41 @@ export type Item = typeof items.$inferSelect;
 export type InsertItem = typeof items.$inferInsert;
 ```
 
-### Running Migrations
+### Schema changes and migrations
 
-After editing the schema, push changes to the database:
+`pnpm db:push` and `pnpm db:migrate` are wrapped in a fail-closed guard
+(`scripts/db-guard.mjs`): they refuse to run unless the target is a disposable local
+database. `pnpm db:guard:status` prints the verdict without executing anything.
+
+> ⚠️ **Не запускайте `db:push` на working-сервере.** В production PostgreSQL 65 таблиц, а
+> `drizzle/schema.ts` описывает 46. `drizzle-kit push` привёл бы БД к схеме и **удалил бы
+> 19 таблиц** (3 634 строки данных: корреспонденция и MAX), 25 внешних ключей, 9 CHECK,
+> 8 UNIQUE-ограничений, а также защитный индекс биллинга
+> `billingDocumentRequests_active_request_key` (защита от двойного выставления счетов), после
+> чего упал бы на `ALTER TABLE "hemotestPickups" ... "courierId" SET NOT NULL` (16 NULL-строк).
+> Журнал `drizzle.__drizzle_migrations` пуст, поэтому `db:migrate` тоже не отражает фактическое
+> состояние БД и попытается применить все миграции с начала.
+>
+> **Безопасный порядок изменения схемы:**
+> 1. `pnpm db:guard:status` — посмотреть, как guard классифицирует текущую цель (команда
+>    ничего не выполняет, только читает);
+> 2. подготовить SQL-миграцию и проверить её на **отдельной** тестовой БД;
+> 3. снять резервную копию (`pg_dump`) и согласовать окно обслуживания;
+> 4. применить вручную под ролью с правами DDL и проверить результат (индекс, FK, CHECK,
+>    количество таблиц);
+> 5. вернуть/обновить документацию.
+>
+> `pnpm db:push` и `pnpm db:migrate` теперь проходят через fail-closed guard
+> (`scripts/db-guard.mjs`): по умолчанию они **запрещены**, разрешаются только для
+> одноразовой локальной БД. Production-изменения через guard не выполняются никогда.
+
+For local development against a throwaway database:
 
 ```bash
-pnpm db:push
+export DATABASE_URL='postgresql://courier:local@127.0.0.1:5432/app_dev'
+DB_GUARD_ACK=local-disposable pnpm db:migrate   # create/adjust the disposable schema
+pnpm db:generate                                 # writes SQL files only, never touches the DB
 ```
-
-This runs `drizzle-kit generate` and `drizzle-kit migrate`.
 
 ### Query Helpers
 

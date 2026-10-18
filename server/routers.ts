@@ -114,8 +114,15 @@ function isScheduledForToday(value: unknown) {
 
 
 // ─── Manager JWT helpers ─────────────────────────────────────────────────────
+function requireJwtSecret(name: string, fallback: string): string {
+  const value = process.env[name];
+  if (process.env.NODE_ENV === "production" && (!value || value === fallback)) {
+    throw new Error(`${name} is not securely configured`);
+  }
+  return value || fallback;
+}
 const MANAGER_JWT_SECRET = new TextEncoder().encode(
-  process.env.MANAGER_JWT_SECRET ?? "manager-secret-key-change-in-production"
+  requireJwtSecret("MANAGER_JWT_SECRET", "manager-secret-key-change-in-production")
 );
 const MANAGER_TOKEN_EXPIRY = "30d";
 async function signManagerToken(managerId: number): Promise<string> {
@@ -128,7 +135,9 @@ export async function verifyManagerToken(token: string): Promise<{ managerId: nu
   try {
     const { payload } = await jwtVerify(token, MANAGER_JWT_SECRET);
     if (payload.type !== "manager" || typeof payload.managerId !== "number") return null;
-    return { managerId: payload.managerId as number };
+    const manager = await db.getManagerById(payload.managerId);
+    if (!manager?.isActive) return null;
+    return { managerId: payload.managerId };
   } catch {
     return null;
   }
@@ -136,7 +145,7 @@ export async function verifyManagerToken(token: string): Promise<{ managerId: nu
 
 // ─── Courier JWT helpers ──────────────────────────────────────────────────────
 const COURIER_JWT_SECRET = new TextEncoder().encode(
-  process.env.COURIER_JWT_SECRET ?? "courier-secret-key-change-in-production"
+  requireJwtSecret("COURIER_JWT_SECRET", "courier-secret-key-change-in-production")
 );
 const COURIER_TOKEN_EXPIRY = "7d";
 
@@ -152,6 +161,8 @@ export async function verifyCourierToken(token: string): Promise<{ courierId: nu
   try {
     const { payload } = await jwtVerify(token, COURIER_JWT_SECRET);
     if (payload.type !== "courier" || typeof payload.courierId !== "number") return null;
+    const courier = await db.getCourierById(payload.courierId);
+    if (!courier?.isActive) return null;
     return { courierId: payload.courierId };
   } catch {
     return null;
@@ -200,20 +211,7 @@ export const appRouter = router({
       }),
     getDemoToken: publicProcedure
       .mutation(async () => {
-        const managerId = await db.seedDemoManager();
-        const token = await signManagerToken(managerId);
-        const manager = await db.getManagerById(managerId);
-        if (!manager) throw new Error("Менеджер не найден");
-        return {
-          token,
-          manager: {
-            id: manager.id,
-            name: manager.name,
-            username: manager.username,
-            email: manager.email,
-            isActive: manager.isActive,
-          },
-        };
+        throw new Error("Demo login disabled");
       }),
   }),
   // ─── Courier authentication (login/password) ───────────────────────────────
@@ -264,22 +262,7 @@ export const appRouter = router({
 
     getDemoToken: publicProcedure
       .mutation(async () => {
-        const courierId = await db.seedDemoCourier();
-        const token = await signCourierToken(courierId);
-        const courier = await db.getCourierById(courierId);
-        if (!courier) throw new Error("Курьер не найден");
-        return {
-          token,
-          courier: {
-            id: courier.id,
-            name: courier.name,
-            username: courier.username,
-            phone: courier.phone,
-            vehicleType: courier.vehicleType,
-            isActive: courier.isActive,
-            totalDeliveries: courier.totalDeliveries,
-          },
-        };
+        throw new Error("Demo login disabled");
       }),
   }),
 

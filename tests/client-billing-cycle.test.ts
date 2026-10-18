@@ -412,7 +412,11 @@ describe("предпросмотр", () => {
     expect(registry.fileName).toBe("Сверка_ООО «Клиент Тест»_16.08.2026-31.08.2026.xlsx");
 
     const reconciliationWorkbook = new ExcelJS.Workbook();
-    await reconciliationWorkbook.xlsx.load(registry.buffer);
+    // exceljs declares a module-local `interface Buffer extends ArrayBuffer {}` that is
+    // structurally incompatible with @types/node's Buffer, so its own parameter type is
+    // derived here instead of casting to `any`; the runtime value is a real Node Buffer.
+    type ExcelJsLoadInput = Parameters<typeof reconciliationWorkbook.xlsx.load>[0];
+    await reconciliationWorkbook.xlsx.load(registry.buffer as unknown as ExcelJsLoadInput);
     const reconciliationSheet = reconciliationWorkbook.getWorksheet("Сверка");
     expect(reconciliationSheet).toBeDefined();
     expect(reconciliationSheet!.getCell("A1").value).toBe("Сверка выполненных заявок");

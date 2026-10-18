@@ -36,21 +36,6 @@ function rowsOf(result: any): any[] {
 export async function ensureCourierAccessTable() {
   const conn = await db.getDb();
   if (!conn) throw new Error("Database not available");
-
-  await conn.execute(sql`
-    CREATE TABLE IF NOT EXISTS "courierAccess" (
-      "courierId" integer PRIMARY KEY REFERENCES "couriers"("id") ON DELETE CASCADE,
-      "allowedDaysMask" integer NOT NULL DEFAULT 127,
-      "tasksAllowed" boolean NOT NULL DEFAULT true,
-      "hemotestAllowed" boolean NOT NULL DEFAULT true,
-      "sberbankAllowed" boolean NOT NULL DEFAULT true,
-      "mailsAllowed" boolean NOT NULL DEFAULT true,
-      "chatAllowed" boolean NOT NULL DEFAULT true,
-      "createdAt" timestamp NOT NULL DEFAULT now(),
-      "updatedAt" timestamp NOT NULL DEFAULT now()
-    )
-  `);
-
   return conn;
 }
 

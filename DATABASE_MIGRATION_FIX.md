@@ -1,3 +1,12 @@
+> ⚠️ **Исторический документ (сентябрь 2026). Описанное здесь автоматическое выполнение
+> миграций в `entrypoint.sh` больше не действует:** `RUN_DB_PUSH` и `RUN_DB_PATCHES`
+> по умолчанию `false`, поэтому при старте контейнера миграции и SQL-патчи не запускаются.
+> Инструкции вида `docker-compose exec api drizzle-kit migrate` в этом файле **не применять**:
+> прямой вызов `drizzle-kit` обходит защитный guard, а журнал `drizzle.__drizzle_migrations`
+> пуст, поэтому `migrate` попытается применить все миграции с начала и упадёт на
+> неидемпотентных шагах. Актуальная безопасная процедура — в `POSTGRESQL_DEPLOYMENT_GUIDE.md`
+> и `DEPLOY_VPS.md` (§ «Изменения схемы БД»).
+
 # Database Migration Fix — Production Deployment
 
 ## Problem Summary

@@ -289,8 +289,28 @@ docker run -d \
   --env-file .env \
   courier-api:latest
 
-# Запустить миграции БД (если нужно)
-docker exec courier-api npm run db:push
+# Изменения схемы БД — только по согласованной процедуре (см. ниже)
+> ⚠️ **Не запускайте `db:push` на working-сервере.** В production PostgreSQL 65 таблиц, а
+> `drizzle/schema.ts` описывает 46. `drizzle-kit push` привёл бы БД к схеме и **удалил бы
+> 19 таблиц** (3 634 строки данных: корреспонденция и MAX), 25 внешних ключей, 9 CHECK,
+> 8 UNIQUE-ограничений, а также защитный индекс биллинга
+> `billingDocumentRequests_active_request_key` (защита от двойного выставления счетов), после
+> чего упал бы на `ALTER TABLE "hemotestPickups" ... "courierId" SET NOT NULL` (16 NULL-строк).
+> Журнал `drizzle.__drizzle_migrations` пуст, поэтому `db:migrate` тоже не отражает фактическое
+> состояние БД и попытается применить все миграции с начала.
+>
+> **Безопасный порядок изменения схемы:**
+> 1. `pnpm db:guard:status` — посмотреть, как guard классифицирует текущую цель (команда
+>    ничего не выполняет, только читает);
+> 2. подготовить SQL-миграцию и проверить её на **отдельной** тестовой БД;
+> 3. снять резервную копию (`pg_dump`) и согласовать окно обслуживания;
+> 4. применить вручную под ролью с правами DDL и проверить результат (индекс, FK, CHECK,
+>    количество таблиц);
+> 5. вернуть/обновить документацию.
+>
+> `pnpm db:push` и `pnpm db:migrate` теперь проходят через fail-closed guard
+> (`scripts/db-guard.mjs`): по умолчанию они **запрещены**, разрешаются только для
+> одноразовой локальной БД. Production-изменения через guard не выполняются никогда.
 ```
 
 ## Мониторинг
@@ -315,8 +335,8 @@ sudo journalctl -u nginx -f
 # API health check
 curl https://api.site.ru/health
 
-# БД подключение
-docker exec courier-api npm run db:push
+# Проверка подключения к БД (только чтение)
+docker exec courier-api psql "$DATABASE_URL" -c 'SELECT current_database(), count(*) FROM information_schema.tables WHERE table_schema = '\''public'\'';'
 
 # Дисковое пространство
 df -h

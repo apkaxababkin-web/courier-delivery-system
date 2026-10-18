@@ -1,6 +1,6 @@
 import { lockCorrespondenceWrites, guardLegacyWaybills } from './_core/correspondenceWaybills';
 // Removed mysql2 - now using postgres driver
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq, and, or, gte, lte, lt, inArray, desc, isNotNull, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -21,6 +21,7 @@ import {
   sberbankPickupSchedule,
   mails,
   clients,
+  clientPoints,
   requests,
   type Courier,
   type InsertCourier,
@@ -108,10 +109,14 @@ export async function getCourierVisibleMails(targetDate: Date = new Date()): Pro
     .orderBy(desc(mails.createdAt));
 }
 
+// getDb() stays loosely typed (legacy dual-driver history), so the transaction
+// callback needs an explicit type to remain strictly checked.
+type DbTransaction = Parameters<Parameters<PostgresJsDatabase<Record<string, never>>["transaction"]>[0]>[0];
+
 export async function createMail(mail: InsertMail): Promise<Mail> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.transaction(async tx => {
+  return db.transaction(async (tx: DbTransaction) => {
     await lockCorrespondenceWrites(tx);
     await guardLegacyWaybills(tx, [mail.waybillNumber]);
     const result = await tx.insert(mails).values(mail).returning();
@@ -206,7 +211,7 @@ export async function bulkCreateMails(mailList: InsertMail[]): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (!mailList.length) return;
-  await db.transaction(async tx => {
+  await db.transaction(async (tx: DbTransaction) => {
     await lockCorrespondenceWrites(tx);
     await guardLegacyWaybills(tx, mailList.map(m => m.waybillNumber));
     await tx.insert(mails).values(mailList);
@@ -469,6 +474,7 @@ export type TaskWithCourier = Task &
     courierName: string | null;
     courierColor: string | null;
     courierIcon: string | null;
+    clientName?: string | null;
   };
 
 const requestMetaSelection = {
@@ -506,6 +512,88 @@ const requestMetaSelection = {
 } as const;
 
 type RequestMetaRow = TaskRequestMeta & { id: number };
+
+/** Normalised address key, used to map a stored address back to a client point. */
+export function normalizePointAddressKey(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^0-9a-zа-я]+/g, " ")
+    .trim();
+}
+
+/** clientPoints.name by normalised address, for the given clients. */
+async function loadPointNamesByAddress(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  clientIds: number[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (!clientIds.length) return map;
+  const rows = await db
+    .select({ name: clientPoints.name, address: clientPoints.address })
+    .from(clientPoints)
+    .where(inArray(clientPoints.clientId, clientIds));
+  for (const row of rows) {
+    const key = normalizePointAddressKey(row.address);
+    if (key && row.name && !map.has(key)) map.set(key, row.name);
+  }
+  return map;
+}
+
+/**
+ * Display-only correction for legacy movement requests created by the MAX Mini
+ * App before 2026-10-16. Those rows keep the contact person in
+ * senderName/recipientName and leave packageDescription empty, so the courier
+ * card (packageDescription || senderName || recipientName) showed a person
+ * instead of the organisation.
+ *
+ * Read-only: nothing is written back to the database. Only `movement` is
+ * touched, a point name is used only when the stored address matches a real
+ * client point, and values that already read as "Организация / Точка" are kept.
+ */
+export function applyMovementDisplayFallback<
+  T extends {
+    requestType?: string | null;
+    clientName?: string | null;
+    senderCompany?: string | null;
+    senderName?: string | null;
+    recipientName?: string | null;
+    senderAddress?: string | null;
+    deliveryAddress?: string | null;
+    recipientAddress?: string | null;
+    packageDescription?: string | null;
+  },
+>(
+  task: T,
+  pointNamesByAddress: Map<string, string>,
+): T {
+  if (task.requestType !== "movement") return task;
+
+  const organisation = String(task.clientName || task.senderCompany || "").trim();
+  if (!organisation) return task;
+
+  const isOrganisationLabel = (value: unknown) => {
+    const text = String(value ?? "").trim();
+    return text.length > 0 && (text.includes(" / ") || text === organisation);
+  };
+
+  const withPoint = (address: unknown) => {
+    const key = normalizePointAddressKey(address);
+    const point = key ? pointNamesByAddress.get(key) : undefined;
+    return point ? `${organisation} / ${point}` : organisation;
+  };
+
+  const senderName = isOrganisationLabel(task.senderName)
+    ? String(task.senderName).trim()
+    : withPoint(task.senderAddress);
+  const recipientName = isOrganisationLabel(task.recipientName)
+    ? String(task.recipientName).trim()
+    : withPoint(task.deliveryAddress || task.recipientAddress);
+  const packageDescription =
+    String(task.packageDescription ?? "").trim() || senderName;
+
+  return { ...task, senderName, recipientName, packageDescription };
+}
 
 /** Join tasks with courier name */
 async function fetchTasksWithCourier(
@@ -569,12 +657,51 @@ export async function getCompletedTasksWithCourier(): Promise<TaskWithCourier[]>
       { name: c.name, displayColor: c.displayColor, displayIcon: c.displayIcon },
     ]),
   );
-  return allTasks.map((t: Task) => ({
+  const requestIdCandidates: Array<number | null> = allTasks.map((t: Task) => {
+    const marker = Number(t.comments?.match(/\[request:(\d+)\]/)?.[1] || 0);
+    return t.requestId ?? t.sourceRequestId ??
+      (Number.isSafeInteger(marker) && marker > 0 ? marker : null);
+  });
+  const requestIds = Array.from(new Set(requestIdCandidates.filter((id): id is number => typeof id === "number")));
+
+  const requestMetaMap = new Map<number, TaskRequestMeta>();
+  if (requestIds.length) {
+    const rows: RequestMetaRow[] = await db.select(requestMetaSelection)
+      .from(requests).where(inArray(requests.id, requestIds));
+    for (const row of rows) {
+      const { id, ...meta } = row;
+      requestMetaMap.set(id, meta);
+    }
+  }
+
+  const clientIds = Array.from(new Set(
+    Array.from(requestMetaMap.values())
+      .map(meta => meta.clientId)
+      .filter((id): id is number => typeof id === "number")
+  ));
+  const clientNameMap = new Map<number, string>();
+  if (clientIds.length) {
+    const rows = await db.select({ id: clients.id, name: clients.name })
+      .from(clients).where(inArray(clients.id, clientIds));
+    for (const row of rows) clientNameMap.set(row.id, row.name);
+  }
+  const pointNamesByAddress = await loadPointNamesByAddress(db, clientIds);
+
+  return allTasks.map((t: Task) => {
+    const marker = Number(t.comments?.match(/\[request:(\d+)\]/)?.[1] || 0);
+    const requestId = t.requestId ?? t.sourceRequestId ??
+      (Number.isSafeInteger(marker) && marker > 0 ? marker : null);
+    const meta = requestId ? requestMetaMap.get(requestId) : null;
+    return {
     ...t,
+    ...(meta ?? {}),
+    requestType: meta?.requestType ?? null,
+    clientName: meta?.clientId ? clientNameMap.get(meta.clientId) ?? null : null,
     courierName: t.courierId ? (courierMap.get(t.courierId)?.name ?? null) : null,
     courierColor: t.courierId ? (courierMap.get(t.courierId)?.displayColor ?? null) : null,
     courierIcon: t.courierId ? (courierMap.get(t.courierId)?.displayIcon ?? null) : null,
-  }));
+  };
+  }).map((task: TaskWithCourier) => applyMovementDisplayFallback(task, pointNamesByAddress));
 }
 
 export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWithCourier[]> {
@@ -628,7 +755,9 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
   const requestIds: number[] = Array.from(new Set(
     allTasks
       .map((t: Task): number | null => {
-        const requestId = t.requestId ?? t.sourceRequestId ?? null;
+        const marker = Number(t.comments?.match(/\[request:(\d+)\]/)?.[1] || 0);
+        const requestId = t.requestId ?? t.sourceRequestId ??
+          (Number.isSafeInteger(marker) && marker > 0 ? marker : null);
         return typeof requestId === "number" ? requestId : null;
       })
       .filter((id: number | null): id is number => id !== null)
@@ -647,19 +776,39 @@ export async function getTasksByDateWithCourier(dateStr: string): Promise<TaskWi
     }
   }
 
+  const clientIds = Array.from(new Set(
+    Array.from(requestMetaMap.values())
+      .map((meta) => meta.clientId)
+      .filter((id): id is number => typeof id === "number")
+  ));
+  const clientNameMap = new Map<number, string>();
+  if (clientIds.length > 0) {
+    const clientRows = await db
+      .select({ id: clients.id, name: clients.name })
+      .from(clients)
+      .where(inArray(clients.id, clientIds));
+    for (const client of clientRows) {
+      clientNameMap.set(client.id, client.name);
+    }
+  }
+  const pointNamesByAddress = await loadPointNamesByAddress(db, clientIds);
+
   return allTasks.map((t: Task) => {
-    const requestId = t.requestId ?? t.sourceRequestId ?? null;
+    const marker = Number(t.comments?.match(/\[request:(\d+)\]/)?.[1] || 0);
+    const requestId = t.requestId ?? t.sourceRequestId ??
+      (Number.isSafeInteger(marker) && marker > 0 ? marker : null);
     const requestMeta = requestId ? requestMetaMap.get(requestId) : null;
     return {
       ...t,
       ...(requestMeta ?? {}),
       requestType: requestMeta?.requestType ?? null,
+      clientName: requestMeta?.clientId ? clientNameMap.get(requestMeta.clientId) ?? null : null,
       paymentAmount: requestMeta?.paymentAmount ?? null,
       courierName: t.courierId ? (courierMap.get(t.courierId)?.name ?? null) : null,
     courierColor: t.courierId ? (courierMap.get(t.courierId)?.displayColor ?? null) : null,
     courierIcon: t.courierId ? (courierMap.get(t.courierId)?.displayIcon ?? null) : null,
     };
-  });
+  }).map((task: TaskWithCourier) => applyMovementDisplayFallback(task, pointNamesByAddress));
 }
 
 export async function getTaskWithCourierByRequestId(
@@ -695,7 +844,9 @@ export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCo
     courierIcon = courier?.displayIcon ?? null;
   }
 
-  const requestId = task.requestId ?? task.sourceRequestId ?? null;
+  const markerRequestId = Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0);
+  const requestId = task.requestId ?? task.sourceRequestId ??
+    (Number.isSafeInteger(markerRequestId) && markerRequestId > 0 ? markerRequestId : null);
   let requestMeta: TaskRequestMeta | null = null;
   if (requestId) {
     const requestRows: RequestMetaRow[] = await db
@@ -711,15 +862,28 @@ export async function getTaskWithCourierById(taskId: number): Promise<TaskWithCo
     }
   }
 
-  return {
+  const clientName = requestMeta?.clientId
+    ? (await db.select({ name: clients.name })
+        .from(clients)
+        .where(eq(clients.id, requestMeta.clientId))
+        .limit(1))[0]?.name ?? null
+    : null;
+  const pointNamesByAddress = requestMeta?.clientId
+    ? await loadPointNamesByAddress(db, [requestMeta.clientId])
+    : new Map<string, string>();
+
+  const merged = {
     ...task,
     ...(requestMeta ?? {}),
     requestType: requestMeta?.requestType ?? null,
+    clientName,
     paymentAmount: requestMeta?.paymentAmount ?? null,
     courierName,
     courierColor,
     courierIcon,
   };
+
+  return applyMovementDisplayFallback(merged, pointNamesByAddress);
 }
 
 export async function getTaskById(taskId: number): Promise<Task | null> {
@@ -2456,8 +2620,11 @@ export async function removePointFromSberbankList(listId: number, pointId: numbe
 /**
  * Create a new request of any type
  */
-export async function createRequest(data: InsertRequest): Promise<number> {
-  const db = await getDb();
+export async function createRequest(
+  data: InsertRequest,
+  transaction?: Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>['insert']>[0] extends never ? never : any,
+): Promise<number> {
+  const db = transaction ?? await getDb();
   if (!db) throw new Error("Database not available");
 
   const {

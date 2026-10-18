@@ -106,21 +106,25 @@ sudo docker run -d \
 **What happens automatically:**
 1. Container starts
 2. `entrypoint.sh` waits for PostgreSQL to be ready (max 30 attempts, 2-second intervals)
-3. `drizzle-kit migrate` runs automatically
-4. All tables are created from `drizzle/migrations/0001_init_postgresql.sql`
-5. API server starts on port 3000
-6. Health check passes
+3. **No migration runs.** `RUN_DB_PUSH` and `RUN_DB_PATCHES` both default to `false`
+   (`entrypoint.sh`), and neither `docker-compose.yml` nor the env files set them.
+   The production database is provisioned out-of-band (65 tables, see the audit report).
+4. API server starts on port 3000
+5. Health check passes
 
 **Expected output:**
 ```
 [Entrypoint] Starting courier-delivery-system API...
 [Entrypoint] Waiting for PostgreSQL to be ready...
 [Entrypoint] PostgreSQL is ready!
-[Entrypoint] Running database migrations...
-[Entrypoint] ✓ Migrations completed successfully
-[Entrypoint] Starting API server...
+[Entrypoint] Skipping Drizzle schema push (set RUN_DB_PUSH=true to run it explicitly)
+[Entrypoint] Skipping compatibility SQL patches (set RUN_DB_PATCHES=true to run them explicitly)
 [api] server listening on port 3000
 ```
+
+> Do **not** set `RUN_DB_PUSH=true` on a server that already holds data: it runs
+> `drizzle-kit push` against `drizzle/schema.ts`, which declares only 46 of the 65
+> production tables and would drop the rest (see the warning in §"Schema changes").
 
 ### Step 5: Verify Container is Running
 
@@ -134,20 +138,18 @@ CONTAINER_ID  IMAGE                               STATUS         PORTS
 abc123def456  courier-delivery-system_api:latest  Up 10 seconds  0.0.0.0:3000->3000/tcp
 ```
 
-### Step 6: Check Database Migrations
+### Step 6: Check Database Schema (read-only)
 
 ```bash
-sudo docker exec -it courier-api npm run db:push
+# number of tables and the billing protection index — nothing is modified
+sudo docker exec -it courier-postgres psql -U courier -d courier_db -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
+sudo docker exec -it courier-postgres psql -U courier -d courier_db -c "SELECT indexdef FROM pg_indexes WHERE indexname='billingDocumentRequests_active_request_key';"
+sudo docker exec -it courier-api npm run db:guard:status
 ```
 
-**Expected output:**
-```
-> app-template@1.0.0 db:push
-> drizzle-kit migrate
-Reading config file '/app/drizzle.config.ts'
-0 tables
-No schema changes, nothing to migrate
-```
+**Expected output:** 65 tables, a `UNIQUE ... WHERE active` index definition, and the
+guard verdict. `db:push` must not be used to inspect or to migrate this database
+(see the warning below).
 
 This is **normal** — migrations already ran in the entrypoint. The message "0 tables" means drizzle-kit is comparing the current schema to the migration history and found no new changes.
 
@@ -271,10 +273,10 @@ sudo docker start courier-api
 **Solution:**
 1. Check container logs: `sudo docker logs courier-api`
 2. Verify tables: `sudo docker exec -it courier-postgres psql -U courier -d courier_db -c "\dt"`
-3. If tables are missing, manually run migrations:
-   ```bash
-   sudo docker exec -it courier-api npm run db:migrate
-   ```
+3. If tables are missing, **stop and investigate** — do not run `db:push`/`db:migrate`
+   blindly on a database that already holds data (the migration journal is empty, so
+   `db:migrate` would try to apply every migration from the beginning). Follow the
+   manual procedure below.
 
 ### Issue: "Cannot find module 'postgres'"
 

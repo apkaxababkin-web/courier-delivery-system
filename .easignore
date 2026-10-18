@@ -1,0 +1,138 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env
+
+# typescript
+*.tsbuildinfo
+
+app-example
+
+# Native projects are part of the production mobile source.
+# Keep generated/local build artifacts and credentials ignored instead.
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs
+*.log
+
+# OS
+Thumbs.db
+
+# Build files
+*.tgz
+*.tar.gz
+.cache/
+
+# Webdev artifacts (checkpoint zips, migrations, etc.)
+.webdev/
+
+# Docker
+certs/
+postgres_data/
+
+# Deployment
+.vercel/
+
+# Runtime uploads
+uploads/
+
+# Sensitive local files and repository backups
+.env.*
+!.env.example
+!.env.*.example
+
+credentials.json
+*credentials*.json
+*secret*.json
+*token*.json
+
+*.sql
+!drizzle/migrations/*.sql
+!scripts/*.sql
+*.dump
+*.backup
+*.before-*
+backups/
+**/backups/
+tmp/
+.pnpm-store/
+build/
+
+
+# Native local/generated artifacts
+/android/.gradle/
+/android/**/build/
+/android/.cxx/
+/android/local.properties
+/android/app/debug.keystore
+/android/app/*.keystore
+/android/app/*.jks
+
+/ios/Pods/
+/ios/build/
+/ios/DerivedData/
+/ios/.xcode.env.local
+/ios/**/*.xcuserstate
+/ios/**/xcuserdata/
+
+# EAS / Apple signing credentials
+.eas-local-credentials/
+*.p12
+*.p8
+*.mobileprovision
+
+
+# Temporary project backups
+*.bak-*
+*.bak
+*.bak.*
+*.before-*
+
+# Local diagnostic reports
+*_REPORT_*.md
+
+# Local documents and exports
+*.xlsx
+*.xls
+*.csv
+
+# Server-only runtime configuration
+docker-compose.yml.bak-*

@@ -588,7 +588,13 @@ export default function TaskListScreen() {
   };
 
   const getCardTitle = (item: any) =>
-    item.packageDescription || item.senderName || item.recipientName || "Заявка";
+    item.clientName ||
+    item.senderCompany ||
+    item.recipientCompany ||
+    item.packageDescription ||
+    item.senderName ||
+    item.recipientName ||
+    "Заявка";
 
   const getCardLines = (item: any) => {
     const type = item.requestType || item.taskType;
@@ -598,7 +604,7 @@ export default function TaskListScreen() {
 
     if (type === "nuts" || type === "warehouse_pickup") {
       return {
-        title: item.recipientName || "Получатель",
+        title: getCardTitle(item),
         line3: recipientAddress || null,
         line4: String(item.items || "").trim() || null,
       };

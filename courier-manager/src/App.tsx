@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import TasksView from './views/TasksView';
 import ClientsView from './views/ClientsViewV2';
+import MaxSettingsView from './views/MaxSettingsView';
 import HemotestView from './views/HemotestView';
 import SberbankView from './views/SberbankView';
 import MailsView from './views/MailsView';
@@ -25,7 +26,7 @@ import ManagerChatPanelV2 from './components/ManagerChatPanel';
 import { type ChatMessage, getChatMessages, sendChatMessage } from './lib/api';
 import { formatLocalDateWithOptions, formatLocalTime, getLocalDateKey } from './lib/local-time';
 
-type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'couriers';
+type ViewType = 'tasks' | 'mails' | 'hemotest' | 'sberbank' | 'clients' | 'reports' | 'couriers' | 'maxSettings';
 
 
 
@@ -396,6 +397,7 @@ function LegacyManagerChatPanel() {
 const menuItems = [
   { id: 'tasks', label: 'Все заявки', icon: Package },
   { id: 'clients', label: 'Контрагенты', icon: Users },
+  { id: 'maxSettings', label: 'Настройки MAX', icon: MessageCircle },
   { id: 'reports', label: 'Расчёты', icon: BarChart3 },
   { id: 'couriers', label: 'Курьеры', icon: Users },
 ];
@@ -472,6 +474,8 @@ function App() {
         return <SberbankView archiveDate={archiveDate} />;
       case 'clients':
         return <ClientsView />;
+      case 'maxSettings':
+        return <MaxSettingsView />;
       case 'reports':
         return <ReportsView />;
       case 'couriers':
@@ -497,6 +501,8 @@ function App() {
         return 'Заявки и маршруты по направлению Сбербанк.';
       case 'clients':
         return 'Контрагенты, магазины, точки и будущие кабинеты руководителей.';
+      case 'maxSettings':
+        return 'Привязка MAX-аккаунтов к менеджерам и настройка прав согласования.';
       case 'reports':
         return 'Операционные показатели и выгрузки по доставкам.';
       case 'couriers':

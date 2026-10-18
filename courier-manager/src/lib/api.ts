@@ -1960,3 +1960,23 @@ export async function getRequestActivity(
     await trpcGet('requests.activity', { id: requestId }, []),
   );
 }
+
+// MAX chat bindings. Requires manager authentication and confirmed bot membership.
+export type MaxClientChat = { id: number; inviteUrl: string; chatId: string | null; enabled: boolean; verifiedAt: string | null };
+async function maxChatRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await managerFetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Ошибка MAX');
+  return data as T;
+}
+export const getMaxClientChats = (clientId: number) => maxChatRequest<MaxClientChat[]>(`/api/manager/clients/${clientId}/max-chats`);
+export const addMaxClientChat = (clientId: number, inviteUrl: string) => maxChatRequest<{id: number}>(`/api/manager/clients/${clientId}/max-chats`, { method: 'POST', body: JSON.stringify({ inviteUrl }) });
+export const setMaxClientChatEnabled = (clientId: number, id: number, enabled: boolean) => maxChatRequest<{id: number; enabled: boolean}>(`/api/manager/clients/${clientId}/max-chats/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) });
+
+export const createMaxChatConnectCode = (clientId:number,id:number) => maxChatRequest<{command:string;expiresMinutes:number}>(`/api/manager/clients/${clientId}/max-chats/${id}/connect-code`,{method:'POST'});
+
+export type MaxManagerLink = {maxUserId:string;managerId:number;managerName:string;enabled:boolean;canApprove:boolean};
+export type MaxManagerAccount = {id:number;name:string;username:string};
+export const getMaxManagerSettings = () => maxChatRequest<{managers:MaxManagerAccount[];links:MaxManagerLink[]}>('/api/manager/max/managers');
+export const saveMaxManagerSetting = (maxUserId:string,managerId:number,enabled:boolean,canApprove:boolean) => maxChatRequest<MaxManagerLink>(`/api/manager/max/managers/${encodeURIComponent(maxUserId)}`,{method:'PUT',body:JSON.stringify({managerId,enabled,canApprove})});
+export const revokeMaxManagerSetting = (maxUserId:string) => maxChatRequest<{ok:boolean}>(`/api/manager/max/managers/${encodeURIComponent(maxUserId)}`,{method:'DELETE'});

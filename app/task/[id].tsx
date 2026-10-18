@@ -460,7 +460,7 @@ export default function TaskDetailScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: 24, gap: 10, backgroundColor: colors.background }} showsVerticalScrollIndicator={false}>
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
           <SectionTitle colors={colors}>{senderSectionTitle}</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.senderName || "—"}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{(task as any).clientName || task.senderCompany || task.senderName || "—"}</Text>
           <ClickableLine value={task.senderAddress} onPress={() => handleOpenMap(task.senderAddress)} />
           <View style={{ height: 5 }} />
           <ClickableLine value={task.senderPhone} onPress={() => handleCallPhone(task.senderPhone)} muted />
@@ -468,7 +468,9 @@ export default function TaskDetailScreen() {
 
         <GlassCard palette={palette} colors={colors} style={{ padding: 14 }}>
           <SectionTitle colors={colors}>{recipientSectionTitle}</SectionTitle>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{task.recipientName || "—"}</Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "900", marginBottom: 6 }}>{(task as any).requestType === "movement"
+            ? ((task as any).clientName || task.recipientCompany || "—")
+            : (task.recipientName || task.recipientCompany || "—")}</Text>
           <ClickableLine value={task.deliveryAddress} onPress={() => handleOpenMap(task.deliveryAddress)} />
           <View style={{ height: 5 }} />
           <ClickableLine value={task.recipientPhone} onPress={() => handleCallPhone(task.recipientPhone)} muted />

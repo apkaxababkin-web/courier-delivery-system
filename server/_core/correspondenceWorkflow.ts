@@ -160,7 +160,7 @@ function manifestData(b:any){
    carrierMinBillableWeight:decimal(b.carrierMinBillableWeight,3,999999999.999,true),terminalRequired:b.terminalRequired,terminalCost,terminalPayer,comment:text(b.comment,5000)};
 }
 async function manifestReferences(tx:any,d:any){await active(tx,'partners',d.partnerId,'Партнёр');await active(tx,'correspondenceCities',d.destinationCityId,'Населённый пункт');if(d.carrierId)await active(tx,'transportCompanies',d.carrierId,'Перевозчик');}
-function shipmentIds(b:any){if(!Array.isArray(b.shipmentIds)||!b.shipmentIds.length||b.shipmentIds.length>1000)throw new InputError('Выберите от 1 до 1000 отправлений');const ids=b.shipmentIds.map(id);if(new Set(ids).size!==ids.length)throw new InputError('Отправление указано дважды');return ids.sort((a:number,b:number)=>a-b);}
+function shipmentIds(b:any):number[]{if(!Array.isArray(b.shipmentIds)||!b.shipmentIds.length||b.shipmentIds.length>1000)throw new InputError('Выберите от 1 до 1000 отправлений');const ids=b.shipmentIds.map(id);if(new Set(ids).size!==ids.length)throw new InputError('Отправление указано дважды');return ids.sort((a:number,b:number)=>a-b);}
 async function checkMembers(tx:any,ids:number[],cityId:number,currentManifest?:number){
  const found=rows(await tx.execute(sql`SELECT s.*,m.status AS "legacyStatus" FROM "correspondenceShipments" s LEFT JOIN mails m ON m.id=s."mailId"
    WHERE s.id IN (${sql.join(ids.map(n=>sql`${n}`),sql`,`)}) ORDER BY s.id FOR UPDATE OF s`));

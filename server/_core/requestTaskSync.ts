@@ -30,7 +30,7 @@ export function requestMarker(id: number) {
   return `[request:${id}]`;
 }
 
-function taskFromRequest(request: DeliveryRequest): InsertTask {
+export function taskFromRequest(request: DeliveryRequest): InsertTask {
   const isTransportCompanyRequest = request.requestType === "pickup_from_tc";
   const isDeliveryToTransportCompany =
     isTransportCompanyRequest &&
@@ -203,9 +203,7 @@ export async function updateRequestStatusFromTask(
 
   const task = await db.getTaskById(taskId);
   const marker = task?.comments?.match(/\[request:(\d+)\]/)?.[1];
-  if (!marker) return;
-
-  const requestId = Number(marker);
+  const requestId = task?.requestId ?? task?.sourceRequestId ?? (marker ? Number(marker) : 0);
   if (!requestId) return;
 
   const updateData: Partial<DeliveryRequest> = {

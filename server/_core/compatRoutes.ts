@@ -1,3 +1,4 @@
+import { requireManagerAuth } from "./managerSecurity";
 import express, { type Express, type Request, type Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
 import { isExpoPushToken, sendExpoPush } from "./expoPush";
@@ -64,21 +65,6 @@ function safeAttachmentName(name: string) {
 
 function attachmentPublicUrl(id: number, storedName: string) {
   return `/api/request-attachments/${id}/${encodeURIComponent(storedName)}`;
-}
-
-async function ensureRequestAttachmentsTable(conn: any) {
-  await conn.execute(sql`
-    CREATE TABLE IF NOT EXISTS "requestAttachments" (
-      "id" serial PRIMARY KEY,
-      "requestId" integer NOT NULL,
-      "originalName" text NOT NULL,
-      "storedName" text NOT NULL,
-      "fileUrl" text NOT NULL,
-      "mimeType" varchar(255),
-      "sizeBytes" integer NOT NULL,
-      "createdAt" timestamp DEFAULT now() NOT NULL
-    )
-  `);
 }
 
 function trpcJson(data: unknown) {
@@ -245,13 +231,18 @@ function requestMarker(id: number) {
   return `[request:${id}]`;
 }
 
-function requestIdFromTask(task: Pick<Task, "comments">): number | null {
+/** Task -> request link. Explicit ids win over the comment marker. */
+export function requestIdFromTask(
+  task: Pick<Task, "comments" | "requestId" | "sourceRequestId">,
+): number | null {
+  const direct = task.requestId ?? task.sourceRequestId;
+  if (typeof direct === "number" && Number.isSafeInteger(direct) && direct > 0) return direct;
   const marker = task.comments?.match(/\[request:(\d+)\]/)?.[1];
   const requestId = marker ? Number(marker) : null;
   return requestId && Number.isFinite(requestId) ? requestId : null;
 }
 
-async function tasksWithRequestType<T extends Pick<Task, "comments">>(
+async function tasksWithRequestType<T extends Pick<Task, "comments" | "requestId" | "sourceRequestId">>(
   taskList: T[],
 ): Promise<Array<T & { requestType: DeliveryRequest["requestType"] | null }>> {
   if (!taskList.length) return taskList.map((task) => ({ ...task, requestType: null }));
@@ -417,11 +408,11 @@ function taskFromRequest(request: DeliveryRequest): InsertTask {
   };
 }
 
-async function courierNameMap() {
+async function courierNameMap(): Promise<Map<number, string>> {
   const conn = await db.getDb();
   if (!conn) return new Map<number, string>();
   const allCouriers = await conn.select({ id: couriers.id, name: couriers.name }).from(couriers);
-  return new Map(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
+  return new Map<number, string>(allCouriers.map((c: { id: number; name: string }) => [c.id, c.name]));
 }
 
 async function requestRows() {
@@ -558,7 +549,19 @@ async function pickupFeedbackSummary() {
   };
 }
 
-async function hemotestReconciliationRows() {
+type HemotestReconciliationItem = {
+  id: number;
+  pointId: number;
+  pointName: string;
+  address: string;
+  courierId: number | null;
+  courierName: string | null;
+  date: string;
+  isPicked: boolean;
+  pickedAt: Date | null;
+};
+
+async function hemotestReconciliationRows(): Promise<HemotestReconciliationItem[]> {
   const conn = await db.getDb();
   if (!conn) return [];
 
@@ -571,7 +574,7 @@ async function hemotestReconciliationRows() {
     .where(eq(hemotestPickups.isPicked, true))
     .orderBy(desc(hemotestPickups.date), desc(hemotestPickups.pickedAt));
 
-  return rows.map((row: any) => ({
+  return rows.map((row: any): HemotestReconciliationItem => ({
     id: row.hemotestPickups.id,
     pointId: row.hemotestPickupPoints.id,
     pointName: row.hemotestPickupPoints.name,
@@ -610,8 +613,7 @@ async function updateRequestStatusFromTask(taskId: number, status: Task["status"
   if (!conn) return;
   const task = await db.getTaskById(taskId);
   const marker = task?.comments?.match(/\[request:(\d+)\]/)?.[1];
-  if (!marker) return;
-  const requestId = Number(marker);
+  const requestId = task?.requestId ?? task?.sourceRequestId ?? (marker ? Number(marker) : 0);
   if (!requestId) return;
   const updated = await conn.update(requests).set({
     status: requestStatusFromTask(status),
@@ -708,9 +710,14 @@ async function courierIdFromReq(req: Request): Promise<number | null> {
 }
 
 const CLIENT_PORTAL_JWT_SECRET = new TextEncoder().encode(
-  process.env.CLIENT_PORTAL_JWT_SECRET
-    ?? process.env.JWT_SECRET
-    ?? "client-portal-secret-key-change-in-production",
+  (() => {
+    const secret = process.env.CLIENT_PORTAL_JWT_SECRET || process.env.JWT_SECRET;
+    if (process.env.NODE_ENV === "production" &&
+        (!secret || secret === "client-portal-secret-key-change-in-production")) {
+      throw new Error("Client portal JWT secret is not securely configured");
+    }
+    return secret || "client-portal-secret-key-change-in-production";
+  })(),
 );
 
 const CLIENT_PORTAL_TOKEN_EXPIRY = "30d";
@@ -2722,7 +2729,7 @@ export function registerCompatRoutes(app: Express) {
       const conn = await db.getDb();
       if (!conn) throw new Error("Database not available");
 
-      await ensureRequestAttachmentsTable(conn);
+      
 
       const requestId = Number(req.params.id);
       if (!requestId) throw new Error("request id is required");
@@ -2756,7 +2763,7 @@ export function registerCompatRoutes(app: Express) {
         const conn = await db.getDb();
         if (!conn) throw new Error("Database not available");
 
-        await ensureRequestAttachmentsTable(conn);
+        
 
         const requestId = Number(req.params.id);
         if (!requestId) throw new Error("request id is required");
@@ -2817,7 +2824,7 @@ export function registerCompatRoutes(app: Express) {
       const conn = await db.getDb();
       if (!conn) throw new Error("Database not available");
 
-      await ensureRequestAttachmentsTable(conn);
+      
 
       const id = Number(req.params.id);
       if (!id) throw new Error("attachment id is required");
@@ -3101,7 +3108,7 @@ export function registerCompatRoutes(app: Express) {
   });
 
 
-  app.get("/api/request-attachments/:requestId/:storedName", async (req, res) => {
+  app.get("/api/request-attachments/:requestId/:storedName", requireManagerAuth, async (req, res) => {
     try {
       const requestId = Number(req.params.requestId);
       if (!requestId) {

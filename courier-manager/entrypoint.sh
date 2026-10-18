@@ -1,12 +1,22 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────────────────
-# entrypoint.sh — Wait for PostgreSQL, run migrations, start server
+# entrypoint.sh — wait for PostgreSQL, then start the courier-manager server.
+#
+# This script performs NO schema changes. The previous version ran
+# `npx drizzle-kit push` on every container start (bypassing scripts/db-guard.mjs)
+# and printed DATABASE_URL — including the password — into the container log.
+# Both behaviours were removed; no environment variable can enable DDL here.
+#
+# DDL is applied only through the reviewed procedure:
+#   * disposable local database: pnpm db:migrate (wrapped by scripts/db-guard.mjs)
+#   * production: manual, backed-up, reviewed migration — see
+#     POSTGRESQL_DEPLOYMENT_GUIDE.md and DEPLOY_VPS.md.
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -e
 
+# Connection details are never logged: DATABASE_URL carries the password.
 echo "[Entrypoint] Starting courier-manager API..."
-echo "[Entrypoint] DATABASE_URL: $DATABASE_URL"
 
 # Wait for PostgreSQL to be ready
 echo "[Entrypoint] Waiting for PostgreSQL to be ready..."
@@ -25,14 +35,6 @@ done
 if [ $attempt -gt $max_attempts ]; then
   echo "[Entrypoint] ERROR: PostgreSQL did not become ready in time"
   exit 1
-fi
-
-# Run migrations using drizzle-kit push
-echo "[Entrypoint] Running database migrations (drizzle-kit push)..."
-if npx drizzle-kit push 2>&1; then
-  echo "[Entrypoint] ✓ Migrations completed successfully"
-else
-  echo "[Entrypoint] ⚠ Migrations encountered an issue, but continuing..."
 fi
 
 # Start the production server

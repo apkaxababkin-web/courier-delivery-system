@@ -1,16 +1,26 @@
+import { sql } from "drizzle-orm";
 import {
+  bigint,
+  bigserial,
   boolean,
+  check,
+  customType,
   date,
   decimal,
-  integer,
+  foreignKey,
   index,
+  integer,
+  jsonb,
+  numeric,
   pgEnum,
   pgTable,
   serial,
   text,
   timestamp,
-  varchar,
   unique,
+  uuid,
+  uniqueIndex,
+  varchar,
 } from "drizzle-orm/pg-core";
 
 // ─── PostgreSQL Enums ────────────────────────────────────────────────────────
@@ -124,7 +134,10 @@ export const couriers = pgTable("couriers", {
   pushToken: varchar("pushToken", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    index("idx_couriers_username").on(table.username),
+  ]);
 
 export type Courier = typeof couriers.$inferSelect;
 export type InsertCourier = typeof couriers.$inferInsert;
@@ -187,7 +200,13 @@ export const tasks = pgTable("tasks", {
   requestId: integer("requestId"),
   /** Legacy source request link */
   sourceRequestId: integer("sourceRequestId"),
-});
+},
+  (table) => [
+    index("idx_tasks_courierId").on(table.courierId),
+    index("idx_tasks_requestId").on(table.requestId),
+    uniqueIndex("idx_tasks_sourceRequestId").on(table.sourceRequestId).where(sql`("sourceRequestId" IS NOT NULL)`),
+    index("idx_tasks_status").on(table.status),
+  ]);
 
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = typeof tasks.$inferInsert;
@@ -238,7 +257,7 @@ export type InsertHemotestPickupPoint = typeof hemotestPickupPoints.$inferInsert
 export const hemotestPickups = pgTable("hemotestPickups", {
   id: serial("id").primaryKey(),
   pointId: integer("pointId").notNull(),
-  courierId: integer("courierId").notNull(),
+  courierId: integer("courierId"),
   date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD format
   isPicked: boolean("isPicked").default(false).notNull(),
   pickedAt: timestamp("pickedAt"),
@@ -280,7 +299,7 @@ export type InsertSberbankPickupPoint = typeof sberbankPickupPoints.$inferInsert
 export const sberbankPickups = pgTable("sberbankPickups", {
   id: serial("id").primaryKey(),
   pointId: integer("pointId").notNull(),
-  courierId: integer("courierId").notNull(),
+  courierId: integer("courierId"),
   date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD format
   isPicked: boolean("isPicked").default(false).notNull(),
   pickedAt: timestamp("pickedAt"),
@@ -385,7 +404,7 @@ export const mails = pgTable("mails", {
   /** Recipient name */
   recipientName: varchar("recipientName", { length: 255 }),
   /** Recipient phone number */
-  recipientPhone: varchar("recipientPhone", { length: 50 }).notNull(),
+  recipientPhone: varchar("recipientPhone", { length: 50 }),
   /** Delivery address */
   deliveryAddress: text("deliveryAddress").notNull(),
   /** Status: not_delivered or delivered */
@@ -407,7 +426,13 @@ export const mails = pgTable("mails", {
   billingCheckedByManagerId: integer("billingCheckedByManagerId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    index("idx_mails_createdAt").on(table.createdAt),
+    index("idx_mails_status").on(table.status),
+    index("idx_mails_waybillNumber").on(table.waybillNumber),
+    index("mails_partnerId_idx").on(table.partnerId),
+  ]);
 
 export type Mail = typeof mails.$inferSelect;
 export type InsertMail = typeof mails.$inferInsert;
@@ -542,7 +567,13 @@ export const clientTariffRules = pgTable("clientTariffRules", {
   createdByManagerId: integer("createdByManagerId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    check("clientTariffRules_first_price_nonnegative", sql`("firstPlacePrice" >= (0)::numeric)`),
+    check("clientTariffRules_next_price_nonnegative", sql`("nextPlacePrice" >= (0)::numeric)`),
+    index("clientTariffRules_client_active_idx").on(table.clientId, table.isActive),
+    index("clientTariffRules_client_request_type_idx").on(table.clientId, table.requestType),
+  ]);
 
 export type ClientTariffRule = typeof clientTariffRules.$inferSelect;
 export type InsertClientTariffRule = typeof clientTariffRules.$inferInsert;
@@ -619,6 +650,28 @@ export type InsertTransportCompany = typeof transportCompanies.$inferInsert;
  * Requests table — stores all types of requests created by managers
  * Supports multiple request types: Delivery, Movement, Nuts, Courier Call, Pickup from TC, Simple Request
  */
+export const managers = pgTable("managers", {
+  id: serial("id").primaryKey(),
+  /** Display name of the manager */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Login username */
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  /** Email address */
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  /** Legacy password column kept for existing database compatibility */
+  password: varchar("password", { length: 255 }).notNull(),
+  /** Bcrypt hashed password */
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  /** Legacy role column kept for existing database compatibility */
+  role: text("role").default("manager"),
+  /** Phone number */
+  phone: varchar("phone", { length: 50 }),
+  /** Account active status */
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
 export const requests = pgTable("requests", {
   id: serial("id").primaryKey(),
   /** Manager who created the request */
@@ -755,6 +808,7 @@ export const requests = pgTable("requests", {
   billingCheckedAt: timestamp("billingCheckedAt"),
   /** Manager who performed the latest financial check */
   billingCheckedByManagerId: integer("billingCheckedByManagerId"),
+
   /** Delivery time from (HH:MM) */
   deliveryTimeFrom: varchar("deliveryTimeFrom", { length: 5 }),
   /** Delivery time to (HH:MM) */
@@ -776,7 +830,20 @@ export const requests = pgTable("requests", {
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    check("requests_billingReviewState_valid", sql`(("billingReviewState" IS NULL) OR (("billingReviewState")::text = ANY ((ARRAY['cancelled_confirmed'::character varying, 'completed_confirmed'::character varying, 'requires_clarification'::character varying, 'not_billable'::character varying])::text[])))`),
+    check("requests_quoteSource_valid", sql`(("quoteSource" IS NULL) OR (("quoteSource")::text = ANY ((ARRAY['tariff'::character varying, 'manual_fee'::character varying])::text[])))`),
+    index("idx_requests_courierId").on(table.courierId),
+    index("idx_requests_status").on(table.status),
+    index("requests_client_status_completed_idx").on(table.clientId, table.status, table.completedAt),
+    index("requests_quote_tariff_rule_idx").on(table.quoteTariffRuleId),
+    foreignKey({
+      name: "requests_billingCheckedByManagerId_managers_id_fk",
+      columns: [table.billingCheckedByManagerId],
+      foreignColumns: [managers.id],
+    }).onDelete("set null"),
+  ]);
 
 export type Request = typeof requests.$inferSelect;
 export type InsertRequest = typeof requests.$inferInsert;
@@ -808,7 +875,11 @@ export const requestActivity = pgTable("requestActivity", {
   changes: text("changes"),
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    index("requestActivity_createdAt_idx").on(table.createdAt),
+    index("requestActivity_requestId_idx").on(table.requestId),
+  ]);
 
 export type RequestActivity = typeof requestActivity.$inferSelect;
 export type InsertRequestActivity = typeof requestActivity.$inferInsert;
@@ -905,7 +976,10 @@ export const billingSettings = pgTable("billingSettings", {
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    check("billingSettings_nextDocumentNumber_positive", sql`("nextDocumentNumber" > 0)`),
+  ]);
 
 export type BillingSettings = typeof billingSettings.$inferSelect;
 export type InsertBillingSettings = typeof billingSettings.$inferInsert;
@@ -925,7 +999,11 @@ export const billingDocumentNumberSequences = pgTable("billingDocumentNumberSequ
   initialized: boolean("initialized").notNull().default(false),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+},
+  (table) => [
+    check("billingDocumentNumberSequences_next_positive", sql`("nextNumber" > 0)`),
+    check("billingDocumentNumberSequences_year_valid", sql`((year >= 2000) AND (year <= 9999))`),
+  ]);
 
 /**
  * One row represents one immutable billing set:
@@ -993,6 +1071,7 @@ export const billingDocuments = pgTable("billingDocuments", {
   // Annulment instead of deletion
   voidedAt: timestamp("voidedAt"),
   voidedByManagerId: integer("voidedByManagerId"),
+
   /** The document that replaced this one after it was annulled */
   replacesDocumentId: integer("replacesDocumentId"),
   voidReason: text("voidReason"),
@@ -1007,16 +1086,59 @@ export const billingDocuments = pgTable("billingDocuments", {
 
   // Audit
   createdByManagerId: integer("createdByManagerId").notNull(),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 
   paidAt: timestamp("paidAt"),
   paidByManagerId: integer("paidByManagerId"),
 
+
   cancelledAt: timestamp("cancelledAt"),
   cancelledByManagerId: integer("cancelledByManagerId"),
 
+
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    foreignKey({
+      name: "billingDocuments_client_fk",
+      columns: [table.clientId],
+      foreignColumns: [clients.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "billingDocuments_replacesDocument_fk",
+      columns: [table.replacesDocumentId],
+      foreignColumns: [table.id],
+    }).onDelete("set null"),
+    check("billingDocuments_period_valid", sql`("periodFrom" <= "periodTo")`),
+    check("billingDocuments_requestsCount_positive", sql`("requestsCount" > 0)`),
+    check("billingDocuments_totalAmount_nonnegative", sql`("totalAmount" >= (0)::numeric)`),
+    index("billingDocuments_client_idx").on(table.clientId),
+    index("billingDocuments_client_period_idx").on(table.clientId, table.periodFrom, table.periodTo),
+    index("billingDocuments_period_idx").on(table.periodFrom, table.periodTo),
+    index("billingDocuments_status_idx").on(table.status),
+    uniqueIndex("billingDocuments_year_number_key").on(sql`EXTRACT(YEAR FROM "documentDate")`, table.number),
+    foreignKey({
+      name: "billingDocuments_voidedByManager_fk",
+      columns: [table.voidedByManagerId],
+      foreignColumns: [managers.id],
+    }).onDelete("set null"),
+    foreignKey({
+      name: "billingDocuments_createdByManager_fk",
+      columns: [table.createdByManagerId],
+      foreignColumns: [managers.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "billingDocuments_paidByManager_fk",
+      columns: [table.paidByManagerId],
+      foreignColumns: [managers.id],
+    }).onDelete("set null"),
+    foreignKey({
+      name: "billingDocuments_cancelledByManager_fk",
+      columns: [table.cancelledByManagerId],
+      foreignColumns: [managers.id],
+    }).onDelete("set null"),
+  ]);
 
 export type BillingDocument = typeof billingDocuments.$inferSelect;
 export type InsertBillingDocument = typeof billingDocuments.$inferInsert;
@@ -1040,11 +1162,34 @@ export const billingDocumentRequests = pgTable("billingDocumentRequests", {
 
   releasedAt: timestamp("releasedAt"),
   releasedByManagerId: integer("releasedByManagerId"),
+
   /** True while this link still holds the request on an active document. */
   active: boolean("active").default(true).notNull(),
   /** Why the manager released the request (re-issue after annulment). */
   releaseNote: text("releaseNote"),
-});
+},
+  (table) => [
+    foreignKey({
+      name: "billingDocumentRequests_document_fk",
+      columns: [table.billingDocumentId],
+      foreignColumns: [billingDocuments.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "billingDocumentRequests_request_fk",
+      columns: [table.requestId],
+      foreignColumns: [requests.id],
+    }).onDelete("restrict"),
+    check("billingDocumentRequests_amount_nonnegative", sql`(amount >= (0)::numeric)`),
+    index("billingDocumentRequests_active_document_idx").on(table.billingDocumentId).where(sql`active`),
+    uniqueIndex("billingDocumentRequests_active_request_key").on(table.requestId).where(sql`active`),
+    index("billingDocumentRequests_document_idx").on(table.billingDocumentId),
+    index("billingDocumentRequests_request_idx").on(table.requestId),
+    foreignKey({
+      name: "billingDocumentRequests_releasedByManager_fk",
+      columns: [table.releasedByManagerId],
+      foreignColumns: [managers.id],
+    }).onDelete("set null"),
+  ]);
 
 export type BillingDocumentRequest = typeof billingDocumentRequests.$inferSelect;
 export type InsertBillingDocumentRequest = typeof billingDocumentRequests.$inferInsert;
@@ -1061,38 +1206,33 @@ export const billingDocumentEvents = pgTable("billingDocumentEvents", {
   billingDocumentId: integer("billingDocumentId").notNull(),
   kind: varchar("kind", { length: 40 }).notNull(),
   managerId: integer("managerId"),
+
   managerName: varchar("managerName", { length: 255 }),
   note: text("note"),
   /** Structured extras: released request ids, replacement document id, … */
   details: text("details"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    foreignKey({
+      name: "billingDocumentEvents_document_fk",
+      columns: [table.billingDocumentId],
+      foreignColumns: [billingDocuments.id],
+    }).onDelete("restrict"),
+    check("billingDocumentEvents_kind_valid", sql`((kind)::text = ANY ((ARRAY['issued'::character varying, 'reissued'::character varying, 'voided'::character varying, 'requests_released'::character varying, 'replaced_by'::character varying, 'payment_set'::character varying, 'payment_cleared'::character varying, 'rolled_back'::character varying])::text[]))`),
+    index("billingDocumentEvents_document_idx").on(table.billingDocumentId, table.createdAt),
+    foreignKey({
+      name: "billingDocumentEvents_manager_fk",
+      columns: [table.managerId],
+      foreignColumns: [managers.id],
+    }).onDelete("set null"),
+  ]);
 
 export type BillingDocumentEvent = typeof billingDocumentEvents.$inferSelect;
 export type InsertBillingDocumentEvent = typeof billingDocumentEvents.$inferInsert;
 
 
-export const managers = pgTable("managers", {
-  id: serial("id").primaryKey(),
-  /** Display name of the manager */
-  name: varchar("name", { length: 255 }).notNull(),
-  /** Login username */
-  username: varchar("username", { length: 100 }).notNull().unique(),
-  /** Email address */
-  email: varchar("email", { length: 320 }).notNull().unique(),
-  /** Legacy password column kept for existing database compatibility */
-  password: varchar("password", { length: 255 }).notNull(),
-  /** Bcrypt hashed password */
-  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
-  /** Legacy role column kept for existing database compatibility */
-  role: text("role").default("manager"),
-  /** Phone number */
-  phone: varchar("phone", { length: 50 }),
-  /** Account active status */
-  isActive: boolean("isActive").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+
 
 export type Manager = typeof managers.$inferSelect;
 export type InsertManager = typeof managers.$inferInsert;
@@ -1121,6 +1261,10 @@ export const chatV2Conversations = pgTable(
     unique("chatV2Conversations_slug_key").on(table.slug),
     unique("chatV2Conversations_directKey_key").on(table.directKey),
     index("chatV2Conversations_updatedAt_idx").on(table.updatedAt),
+    check("chatV2Conversations_createdByType_check", sql`(("createdByType" IS NULL) OR (("createdByType")::text = ANY ((ARRAY['manager'::character varying, 'courier'::character varying])::text[])))`),
+    check("chatV2Conversations_kind_check", sql`((kind)::text = ANY ((ARRAY['general'::character varying, 'direct'::character varying])::text[]))`),
+    unique("chatV2Conversations_directKey_key").on(table.directKey),
+    unique("chatV2Conversations_slug_key").on(table.slug),
   ],
 );
 
@@ -1147,6 +1291,13 @@ export const chatV2Participants = pgTable(
     ),
     index("chatV2Participants_actor_idx").on(table.participantType, table.participantId),
     index("chatV2Participants_conversation_idx").on(table.conversationId),
+    foreignKey({
+      name: "chatV2Participants_conversationId_fkey",
+      columns: [table.conversationId],
+      foreignColumns: [chatV2Conversations.id],
+    }).onDelete("cascade"),
+    check("chatV2Participants_participantType_check", sql`(("participantType")::text = ANY ((ARRAY['manager'::character varying, 'courier'::character varying])::text[]))`),
+    unique("chatV2Participants_member_key").on(table.conversationId, table.participantType, table.participantId),
   ],
 );
 
@@ -1180,6 +1331,20 @@ export const chatV2Messages = pgTable(
     unique("chatV2Messages_legacy_key").on(table.legacySource, table.legacySourceId),
     index("chatV2Messages_conversation_id_idx").on(table.conversationId, table.id),
     index("chatV2Messages_reply_idx").on(table.replyToMessageId),
+    foreignKey({
+      name: "chatV2Messages_conversationId_fkey",
+      columns: [table.conversationId],
+      foreignColumns: [chatV2Conversations.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "chatV2Messages_replyToMessageId_fkey",
+      columns: [table.replyToMessageId],
+      foreignColumns: [table.id],
+    }).onDelete("set null"),
+    check("chatV2Messages_senderType_check", sql`(("senderType")::text = ANY ((ARRAY['manager'::character varying, 'courier'::character varying])::text[]))`),
+    check("chatV2Messages_text_check", sql`((char_length(text) >= 1) AND (char_length(text) <= 4000))`),
+    unique("chatV2Messages_client_key").on(table.senderType, table.senderId, table.clientMessageId),
+    unique("chatV2Messages_legacy_key").on(table.legacySource, table.legacySourceId),
   ],
 );
 
@@ -1206,6 +1371,18 @@ export const chatV2MessageReceipts = pgTable(
     ),
     index("chatV2MessageReceipts_recipient_idx").on(table.participantType, table.participantId),
     index("chatV2MessageReceipts_conversation_idx").on(table.conversationId),
+    foreignKey({
+      name: "chatV2MessageReceipts_conversationId_fkey",
+      columns: [table.conversationId],
+      foreignColumns: [chatV2Conversations.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "chatV2MessageReceipts_messageId_fkey",
+      columns: [table.messageId],
+      foreignColumns: [chatV2Messages.id],
+    }).onDelete("cascade"),
+    check("chatV2MessageReceipts_participantType_check", sql`(("participantType")::text = ANY ((ARRAY['manager'::character varying, 'courier'::character varying])::text[]))`),
+    unique("chatV2MessageReceipts_recipient_key").on(table.messageId, table.participantType, table.participantId),
   ],
 );
 
@@ -1231,6 +1408,19 @@ export const chatV2MessageReactions = pgTable(
     ),
     index("chatV2MessageReactions_message_idx").on(table.messageId),
     index("chatV2MessageReactions_conversation_idx").on(table.conversationId),
+    foreignKey({
+      name: "chatV2MessageReactions_conversationId_fkey",
+      columns: [table.conversationId],
+      foreignColumns: [chatV2Conversations.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "chatV2MessageReactions_messageId_fkey",
+      columns: [table.messageId],
+      foreignColumns: [chatV2Messages.id],
+    }).onDelete("cascade"),
+    check("chatV2MessageReactions_emoji_check", sql`((emoji)::text = ANY ((ARRAY['❤️'::character varying, '🔥'::character varying, '😂'::character varying, '🤩'::character varying, '😍'::character varying, '🎉'::character varying, '💯'::character varying, '👏'::character varying, '👍'::character varying, '🤝'::character varying, '👀'::character varying, '🤯'::character varying, '✅'::character varying, '❌'::character varying, '⚠️'::character varying, '🚀'::character varying, '🎯'::character varying, '💡'::character varying, '📌'::character varying, '📦'::character varying, '⏳'::character varying, '🛠️'::character varying])::text[]))`),
+    check("chatV2MessageReactions_participantType_check", sql`(("participantType")::text = ANY ((ARRAY['manager'::character varying, 'courier'::character varying])::text[]))`),
+    unique("chatV2MessageReactions_actor_key").on(table.messageId, table.participantType, table.participantId),
   ],
 );
 
@@ -1249,7 +1439,14 @@ export const chatV2Attachments = pgTable(
     sizeBytes: integer("sizeBytes").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
-  (table) => [index("chatV2Attachments_message_idx").on(table.messageId)],
+  (table) => [index("chatV2Attachments_message_idx").on(table.messageId),
+    foreignKey({
+      name: "chatV2Attachments_messageId_fkey",
+      columns: [table.messageId],
+      foreignColumns: [chatV2Messages.id],
+    }).onDelete("cascade"),
+    check("chatV2Attachments_sizeBytes_check", sql`("sizeBytes" >= 0)`),
+  ],
 );
 
 export type ChatV2Attachment = typeof chatV2Attachments.$inferSelect;
@@ -1349,6 +1546,7 @@ export const clientPortalAccounts = pgTable(
   },
   (table) => [
     unique("clientPortalAccounts_login_key").on(table.login),
+    unique("clientPortalAccounts_login_key").on(table.login),
   ],
 );
 
@@ -1375,7 +1573,7 @@ export const clientTariffs = pgTable(
     hemotestSundayNextPointPrice: integer("hemotestSundayNextPointPrice").default(0).notNull(),
   },
   (table) => [
-    unique("clientTariffs_clientId_unique").on(table.clientId),
+    uniqueIndex("clientTariffs_clientId_unique").on(table.clientId),
   ],
 );
 
@@ -1442,6 +1640,11 @@ export const addressOrgLocations = pgTable(
   (table) => [
     index("addressOrgLocations_organizationId_idx").on(table.organizationId),
     index("addressOrgLocations_normalizedAddress_idx").on(table.normalizedAddress),
+    foreignKey({
+      name: "addressOrgLocations_organizationId_fkey",
+      columns: [table.organizationId],
+      foreignColumns: [addressOrganizations.id],
+    }).onDelete("cascade"),
   ],
 );
 
@@ -1475,6 +1678,16 @@ export const addressOrgContacts = pgTable(
     index("addressOrgContacts_locationId_idx").on(table.locationId),
     index("addressOrgContacts_phoneNormalized_idx").on(table.phoneNormalized),
     index("addressOrgContacts_name_idx").on(table.name),
+    foreignKey({
+      name: "addressOrgContacts_locationId_fkey",
+      columns: [table.locationId],
+      foreignColumns: [addressOrgLocations.id],
+    }).onDelete("set null"),
+    foreignKey({
+      name: "addressOrgContacts_organizationId_fkey",
+      columns: [table.organizationId],
+      foreignColumns: [addressOrganizations.id],
+    }).onDelete("cascade"),
   ],
 );
 
@@ -1500,8 +1713,702 @@ export const billingDocumentFiles = pgTable("billingDocumentFiles", {
   mimeType: varchar("mimeType", { length: 150 }).notNull(),
   sizeBytes: integer("sizeBytes").notNull(),
   uploadedByManagerId: integer("uploadedByManagerId"),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    foreignKey({
+      name: "billingDocumentFiles_document_fk",
+      columns: [table.billingDocumentId],
+      foreignColumns: [billingDocuments.id],
+    }).onDelete("restrict"),
+    check("billingDocumentFiles_kind_valid", sql`((kind)::text = 'payment_proof'::text)`),
+    check("billingDocumentFiles_size_nonnegative", sql`("sizeBytes" >= 0)`),
+    index("billingDocumentFiles_document_idx").on(table.billingDocumentId, table.kind),
+    foreignKey({
+      name: "billingDocumentFiles_uploadedByManager_fk",
+      columns: [table.uploadedByManagerId],
+      foreignColumns: [managers.id],
+    }).onDelete("set null"),
+  ]);
 
 export type BillingDocumentFile = typeof billingDocumentFiles.$inferSelect;
 export type InsertBillingDocumentFile = typeof billingDocumentFiles.$inferInsert;
+
+// ─── MAX Mini App (tables created out-of-band; structure taken from the production
+// catalogue dump of 2026-10-16, revision C.1). No migration is created here. ──────────
+/** `bytea` is not built into drizzle-orm; this reproduces the production column exactly. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+export const maxClientChats = pgTable(
+  "max_client_chats",
+  {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  clientId: integer("client_id").notNull(),
+  inviteUrl: text("invite_url").notNull(),
+  chatId: text("chat_id"),
+  enabled: boolean("enabled").notNull().default(false),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  connectCodeHash: text("connect_code_hash"),
+  connectExpiresAt: timestamp("connect_expires_at", { withTimezone: true }),
+  },
+  (table) => [
+    check("max_chat_enabled_requires_verification", sql`(((NOT enabled) OR ((chat_id IS NOT NULL) AND (verified_at IS NOT NULL))))`),
+    check("max_chat_invite_url_length", sql`((char_length(invite_url) <= 1000))`),
+    foreignKey({
+      name: "max_client_chats_client_id_fkey",
+      columns: [table.clientId],
+      foreignColumns: [clients.id],
+    }).onDelete("cascade"),
+    unique("max_client_chats_chat_id_key").on(table.chatId),
+    index("max_client_chats_client_id_idx").on(table.clientId),
+    uniqueIndex("max_client_chats_code_hash_idx").on(table.connectCodeHash).where(sql`(connect_code_hash IS NOT NULL)`),
+  ],
+);
+
+export type MaxClientChats = typeof maxClientChats.$inferSelect;
+export type InsertMaxClientChats = typeof maxClientChats.$inferInsert;
+
+export const maxManagerLinks = pgTable(
+  "max_manager_links",
+  {
+  maxUserId: text("max_user_id").primaryKey(),
+  managerId: integer("manager_id").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  canApprove: boolean("can_approve").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("max_manager_links_max_user_id_check", sql`((max_user_id ~ '^\\d{1,20}$'::text))`),
+    foreignKey({
+      name: "max_manager_links_manager_id_fkey",
+      columns: [table.managerId],
+      foreignColumns: [managers.id],
+    }),
+  ],
+);
+
+export type MaxManagerLinks = typeof maxManagerLinks.$inferSelect;
+export type InsertMaxManagerLinks = typeof maxManagerLinks.$inferInsert;
+
+export const maxOrderDrafts = pgTable(
+  "max_order_drafts",
+  {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  chatBindingId: bigint("chat_binding_id", { mode: "number" }).notNull(),
+  maxUserId: text("max_user_id").notNull(),
+  requestData: jsonb("request_data").notNull(),
+  status: text("status").notNull().default("pending"),
+  requestId: integer("request_id"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  maxMessageId: text("max_message_id"),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  qrOriginal: bytea("qr_original"),
+  qrMime: text("qr_mime"),
+  lastNotifiedStatus: text("last_notified_status"),
+  },
+  (table) => [
+    check("max_order_drafts_status_check", sql`((status = ANY (ARRAY['pending'::text, 'approving'::text, 'approved'::text, 'rejected'::text, 'failed'::text])))`),
+    foreignKey({
+      name: "max_order_drafts_chat_binding_id_fkey",
+      columns: [table.chatBindingId],
+      foreignColumns: [maxClientChats.id],
+    }),
+    foreignKey({
+      name: "max_order_drafts_request_id_fkey",
+      columns: [table.requestId],
+      foreignColumns: [requests.id],
+    }),
+    unique("max_order_drafts_idempotency_key_key").on(table.idempotencyKey),
+    index("max_order_drafts_chat_idx").on(table.chatBindingId, sql`created_at DESC`),
+  ],
+);
+
+export type MaxOrderDrafts = typeof maxOrderDrafts.$inferSelect;
+export type InsertMaxOrderDrafts = typeof maxOrderDrafts.$inferInsert;
+
+export const maxTimeSelectionMessages = pgTable(
+  "max_time_selection_messages",
+  {
+  messageId: text("message_id").primaryKey(),
+  draftId: bigint("draft_id", { mode: "number" }).notNull(),
+  chatId: text("chat_id").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`(now() + '00:30:00'::interval)`),
+  },
+  (table) => [
+    foreignKey({
+      name: "max_time_selection_messages_draft_id_fkey",
+      columns: [table.draftId],
+      foreignColumns: [maxOrderDrafts.id],
+    }).onDelete("cascade"),
+    index("max_time_selection_draft_idx").on(table.draftId, table.expiresAt),
+  ],
+);
+
+export type MaxTimeSelectionMessages = typeof maxTimeSelectionMessages.$inferSelect;
+export type InsertMaxTimeSelectionMessages = typeof maxTimeSelectionMessages.$inferInsert;
+
+// ─── Correspondence module (tables created out-of-band; structure taken from the
+// production catalogue dump of 2026-10-16, revision C.2). No migration is created. ────
+
+export const correspondenceCities = pgTable(
+  "correspondenceCities",
+  {
+  id: integer("id").generatedByDefaultAsIdentity({ name: "correspondenceCities_id_seq" }).notNull().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  region: varchar("region", { length: 255 }).notNull().default(""),
+  aliases: text("aliases").array().notNull().default(sql`ARRAY[]::text[]`),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("correspondenceCities_name_check", sql`((btrim((name)::text) <> ''::text))`),
+    uniqueIndex("correspondenceCities_name_region_uidx").on(sql`lower(btrim((name)::text))`, sql`lower(btrim((region)::text))`),
+  ],
+);
+
+export type CorrespondenceCities = typeof correspondenceCities.$inferSelect;
+export type InsertCorrespondenceCities = typeof correspondenceCities.$inferInsert;
+
+export const correspondenceCarrierProfiles = pgTable(
+  "correspondenceCarrierProfiles",
+  {
+  carrierId: integer("carrierId").notNull().primaryKey(),
+  legalName: varchar("legalName", { length: 500 }),
+  inn: varchar("inn", { length: 20 }),
+  kpp: varchar("kpp", { length: 20 }),
+  ogrn: varchar("ogrn", { length: 20 }),
+  legalAddress: text("legalAddress"),
+  postalAddress: text("postalAddress"),
+  bankName: varchar("bankName", { length: 255 }),
+  bik: varchar("bik", { length: 20 }),
+  bankAccount: varchar("bankAccount", { length: 34 }),
+  correspondentAccount: varchar("correspondentAccount", { length: 34 }),
+  contractNumber: varchar("contractNumber", { length: 100 }),
+  contractDate: date("contractDate"),
+  signerName: varchar("signerName", { length: 255 }),
+  signerPosition: varchar("signerPosition", { length: 255 }),
+  signerAuthority: text("signerAuthority"),
+  comment: text("comment"),
+  createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondenceCarrierProfiles_carrierId_fkey",
+      columns: [table.carrierId],
+      foreignColumns: [transportCompanies.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+export type CorrespondenceCarrierProfiles = typeof correspondenceCarrierProfiles.$inferSelect;
+export type InsertCorrespondenceCarrierProfiles = typeof correspondenceCarrierProfiles.$inferInsert;
+
+export const correspondencePartnerProfiles = pgTable(
+  "correspondencePartnerProfiles",
+  {
+  partnerId: integer("partnerId").notNull().primaryKey(),
+  legalName: varchar("legalName", { length: 500 }),
+  inn: varchar("inn", { length: 20 }),
+  kpp: varchar("kpp", { length: 20 }),
+  ogrn: varchar("ogrn", { length: 20 }),
+  legalAddress: text("legalAddress"),
+  postalAddress: text("postalAddress"),
+  bankName: varchar("bankName", { length: 255 }),
+  bik: varchar("bik", { length: 20 }),
+  bankAccount: varchar("bankAccount", { length: 34 }),
+  correspondentAccount: varchar("correspondentAccount", { length: 34 }),
+  contractNumber: varchar("contractNumber", { length: 100 }),
+  contractDate: date("contractDate"),
+  signerName: varchar("signerName", { length: 255 }),
+  signerPosition: varchar("signerPosition", { length: 255 }),
+  signerAuthority: text("signerAuthority"),
+  comment: text("comment"),
+  createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondencePartnerProfiles_partnerId_fkey",
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+export type CorrespondencePartnerProfiles = typeof correspondencePartnerProfiles.$inferSelect;
+export type InsertCorrespondencePartnerProfiles = typeof correspondencePartnerProfiles.$inferInsert;
+
+export const correspondenceManifestTemplates = pgTable(
+  "correspondenceManifestTemplates",
+  {
+  id: serial("id").notNull().primaryKey(),
+  partnerId: integer("partnerId").notNull(),
+  sheetName: varchar("sheetName", { length: 255 }),
+  startRow: integer("startRow").notNull().default(2),
+  mapping: jsonb("mapping").notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondenceManifestTemplates_partnerId_fkey",
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+    }).onDelete("restrict"),
+    unique("correspondenceManifestTemplates_partnerId_key").on(table.partnerId),
+  ],
+);
+
+export type CorrespondenceManifestTemplates = typeof correspondenceManifestTemplates.$inferSelect;
+export type InsertCorrespondenceManifestTemplates = typeof correspondenceManifestTemplates.$inferInsert;
+
+export const correspondenceClients = pgTable(
+  "correspondenceClients",
+  {
+  id: serial("id").notNull().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  legalName: varchar("legalName", { length: 500 }),
+  inn: varchar("inn", { length: 20 }),
+  kpp: varchar("kpp", { length: 20 }),
+  legalAddress: text("legalAddress"),
+  postalAddress: text("postalAddress"),
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  email: varchar("email", { length: 320 }),
+  contractNumber: varchar("contractNumber", { length: 100 }),
+  contractDate: date("contractDate"),
+  comment: text("comment"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  ogrn: varchar("ogrn", { length: 20 }),
+  bankName: varchar("bankName", { length: 255 }),
+  bik: varchar("bik", { length: 20 }),
+  bankAccount: varchar("bankAccount", { length: 34 }),
+  correspondentAccount: varchar("correspondentAccount", { length: 34 }),
+  signerName: varchar("signerName", { length: 255 }),
+  signerPosition: varchar("signerPosition", { length: 255 }),
+  signerAuthority: text("signerAuthority"),
+  },
+);
+
+export type CorrespondenceClients = typeof correspondenceClients.$inferSelect;
+export type InsertCorrespondenceClients = typeof correspondenceClients.$inferInsert;
+
+export const correspondenceAuditLog = pgTable(
+  "correspondenceAuditLog",
+  {
+  id: bigint("id", { mode: "number" }).generatedByDefaultAsIdentity({ name: "correspondenceAuditLog_id_seq" }).notNull().primaryKey(),
+  managerId: integer("managerId"),
+  occurredAt: timestamp("occurredAt", { withTimezone: true }).notNull().defaultNow(),
+  action: varchar("action", { length: 50 }).notNull(),
+  entityType: varchar("entityType", { length: 100 }).notNull(),
+  entityId: bigint("entityId", { mode: "number" }).notNull(),
+  beforeData: jsonb("beforeData"),
+  afterData: jsonb("afterData"),
+  },
+  (table) => [
+    index("correspondenceAuditLog_entity_idx").on(table.entityType, table.entityId, sql`"occurredAt" DESC`, sql`id DESC`),
+  ],
+);
+
+export type CorrespondenceAuditLog = typeof correspondenceAuditLog.$inferSelect;
+export type InsertCorrespondenceAuditLog = typeof correspondenceAuditLog.$inferInsert;
+
+export const correspondenceManifests = pgTable(
+  "correspondenceManifests",
+  {
+  id: serial("id").notNull().primaryKey(),
+  direction: varchar("direction", { length: 20 }).notNull(),
+  partnerId: integer("partnerId"),
+  importKey: varchar("importKey", { length: 80 }),
+  importPayloadHash: varchar("importPayloadHash", { length: 64 }),
+  manifestNumber: varchar("manifestNumber", { length: 100 }),
+  manifestDate: date("manifestDate"),
+  arrivedAt: date("arrivedAt"),
+  sourceFileName: varchar("sourceFileName", { length: 255 }),
+  sourceFileMime: varchar("sourceFileMime", { length: 150 }),
+  sourceFileSha256: varchar("sourceFileSha256", { length: 64 }),
+  sourceFileData: bytea("sourceFileData"),
+  createdByManagerId: integer("createdByManagerId"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  destinationCityId: integer("destinationCityId"),
+  transportType: varchar("transportType", { length: 10 }),
+  carrierId: integer("carrierId"),
+  transportWaybillNumber: varchar("transportWaybillNumber", { length: 100 }),
+  departureDate: date("departureDate"),
+  plannedArrivalDate: date("plannedArrivalDate"),
+  handedOverAt: timestamp("handedOverAt", { withTimezone: true }),
+  handedOverByManagerId: integer("handedOverByManagerId"),
+  transportPayer: varchar("transportPayer", { length: 10 }),
+  transportCost: numeric("transportCost", { precision: 14, scale: 2 }),
+  carrierMinBillableWeight: numeric("carrierMinBillableWeight", { precision: 12, scale: 3 }),
+  terminalRequired: boolean("terminalRequired"),
+  terminalCost: numeric("terminalCost", { precision: 14, scale: 2 }),
+  terminalPayer: varchar("terminalPayer", { length: 10 }),
+  comment: text("comment"),
+  creationKey: uuid("creationKey"),
+  creationPayloadHash: varchar("creationPayloadHash", { length: 64 }),
+  },
+  (table) => [
+    check("correspondenceManifests_carrierMinBillableWeight_check", sql`((("carrierMinBillableWeight" >= 0.001) AND ("carrierMinBillableWeight" <= 999999999.999)))`),
+    check("correspondenceManifests_creation_key_hash_check", sql`(((("creationKey" IS NULL) AND ("creationPayloadHash" IS NULL)) OR (("creationKey" IS NOT NULL) AND ("creationPayloadHash" IS NOT NULL) AND (("creationPayloadHash")::text ~ '^[0-9a-f]{64}$'::text))))`),
+    check("correspondenceManifests_direction_check", sql`(((direction)::text = ANY ((ARRAY['incoming'::character varying, 'outgoing'::character varying])::text[])))`),
+    check("correspondenceManifests_terminalCost_check", sql`((("terminalCost" >= (0)::numeric) AND ("terminalCost" <= 999999999999.99)))`),
+    check("correspondenceManifests_terminalPayer_check", sql`((("terminalPayer")::text = ANY ((ARRAY['us'::character varying, 'partner'::character varying])::text[])))`),
+    check("correspondenceManifests_transportCost_check", sql`((("transportCost" >= (0)::numeric) AND ("transportCost" <= 999999999999.99)))`),
+    check("correspondenceManifests_transportPayer_check", sql`((("transportPayer")::text = ANY ((ARRAY['us'::character varying, 'partner'::character varying])::text[])))`),
+    check("correspondenceManifests_transportType_check", sql`((("transportType")::text = ANY ((ARRAY['air'::character varying, 'ground'::character varying])::text[])))`),
+    foreignKey({
+      name: "correspondenceManifests_carrierId_fkey",
+      columns: [table.carrierId],
+      foreignColumns: [transportCompanies.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondenceManifests_destinationCityId_fkey",
+      columns: [table.destinationCityId],
+      foreignColumns: [correspondenceCities.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondenceManifests_partnerId_fkey",
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+    }).onDelete("restrict"),
+    unique("correspondenceManifests_creationKey_key").on(table.creationKey),
+    unique("correspondenceManifests_importKey_key").on(table.importKey),
+  ],
+);
+
+export type CorrespondenceManifests = typeof correspondenceManifests.$inferSelect;
+export type InsertCorrespondenceManifests = typeof correspondenceManifests.$inferInsert;
+
+export const correspondenceShipments = pgTable(
+  "correspondenceShipments",
+  {
+  id: serial("id").notNull().primaryKey(),
+  mailId: integer("mailId"),
+  manifestId: integer("manifestId"),
+  direction: varchar("direction", { length: 20 }).notNull(),
+  ownerType: varchar("ownerType", { length: 20 }),
+  ownerId: integer("ownerId"),
+  waybillDate: date("waybillDate"),
+  senderCity: text("senderCity"),
+  senderName: text("senderName"),
+  senderCompany: text("senderCompany"),
+  senderPhone: text("senderPhone"),
+  senderPostalCode: text("senderPostalCode"),
+  senderAddress: text("senderAddress"),
+  recipientRegion: text("recipientRegion"),
+  recipientCityRaw: text("recipientCityRaw"),
+  recipientCityNormalized: text("recipientCityNormalized"),
+  recipientName: text("recipientName"),
+  recipientCompany: text("recipientCompany"),
+  recipientPhone: text("recipientPhone"),
+  recipientPostalCode: text("recipientPostalCode"),
+  recipientAddress: text("recipientAddress"),
+  declaredValue: numeric("declaredValue", { precision: 14, scale: 2 }),
+  manifestWeight: numeric("manifestWeight", { precision: 12, scale: 3 }),
+  volumetricWeight: numeric("volumetricWeight", { precision: 12, scale: 3 }),
+  measuredWeight: numeric("measuredWeight", { precision: 12, scale: 3 }),
+  placesCount: integer("placesCount"),
+  contents: text("contents"),
+  senderNotes: text("senderNotes"),
+  paymentMethod: text("paymentMethod"),
+  payer: text("payer"),
+  specialConditions: text("specialConditions"),
+  archivedAt: timestamp("archivedAt"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  waybillNumber: varchar("waybillNumber", { length: 50 }),
+  destinationCityId: integer("destinationCityId"),
+  outgoingManifestId: integer("outgoingManifestId"),
+  acceptedAt: timestamp("acceptedAt", { withTimezone: true }),
+  acceptedByManagerId: integer("acceptedByManagerId"),
+  intakeKey: uuid("intakeKey"),
+  intakePayloadHash: varchar("intakePayloadHash", { length: 64 }),
+  partnerId: integer("partnerId"),
+  billableWeight: numeric("billableWeight", { precision: 12, scale: 3 }),
+  },
+  (table) => [
+    check("correspondenceShipments_direction_check", sql`(((direction)::text = ANY ((ARRAY['incoming'::character varying, 'outgoing'::character varying])::text[])))`),
+    check("correspondenceShipments_intake_key_hash_check", sql`(((("intakeKey" IS NULL) AND ("intakePayloadHash" IS NULL)) OR (("intakeKey" IS NOT NULL) AND ("intakePayloadHash" IS NOT NULL) AND (("intakePayloadHash")::text ~ '^[0-9a-f]{64}$'::text))))`),
+    check("correspondenceShipments_mail_or_outgoing_waybill_check", sql`((("mailId" IS NOT NULL) OR (((direction)::text = 'outgoing'::text) AND ("waybillNumber" IS NOT NULL))))`),
+    check("correspondenceShipments_ownerType_check", sql`((("ownerType")::text = ANY ((ARRAY['client'::character varying, 'partner'::character varying])::text[])))`),
+    check("correspondenceShipments_waybillNumber_check", sql`((btrim(("waybillNumber")::text) <> ''::text))`),
+    foreignKey({
+      name: "correspondenceShipments_destinationCityId_fkey",
+      columns: [table.destinationCityId],
+      foreignColumns: [correspondenceCities.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondenceShipments_mailId_fkey",
+      columns: [table.mailId],
+      foreignColumns: [mails.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondenceShipments_manifestId_fkey",
+      columns: [table.manifestId],
+      foreignColumns: [correspondenceManifests.id],
+    }).onDelete("set null"),
+    foreignKey({
+      name: "correspondenceShipments_outgoingManifestId_fkey",
+      columns: [table.outgoingManifestId],
+      foreignColumns: [correspondenceManifests.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondenceShipments_partnerId_fkey",
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+    }).onDelete("set null"),
+    unique("correspondenceShipments_intakeKey_key").on(table.intakeKey),
+    unique("correspondenceShipments_mailId_key").on(table.mailId),
+    index("correspondenceShipments_archive_created_idx").on(table.archivedAt, sql`"createdAt" DESC`),
+    index("correspondenceShipments_destinationCityId_idx").on(table.destinationCityId),
+    index("correspondenceShipments_manifestId_idx").on(table.manifestId),
+    index("correspondenceShipments_outgoingManifestId_idx").on(table.outgoingManifestId),
+    index("correspondenceShipments_partnerId_idx").on(table.partnerId),
+    uniqueIndex("correspondenceShipments_waybillNumber_uidx").on(sql`lower(btrim(("waybillNumber")::text))`).where(sql`("waybillNumber" IS NOT NULL)`),
+  ],
+);
+
+export type CorrespondenceShipments = typeof correspondenceShipments.$inferSelect;
+export type InsertCorrespondenceShipments = typeof correspondenceShipments.$inferInsert;
+
+export const correspondenceShipmentPlaces = pgTable(
+  "correspondenceShipmentPlaces",
+  {
+  id: integer("id").generatedByDefaultAsIdentity({ name: "correspondenceShipmentPlaces_id_seq" }).notNull().primaryKey(),
+  shipmentId: integer("shipmentId").notNull(),
+  position: integer("position").notNull(),
+  measuredWeight: numeric("measuredWeight", { precision: 12, scale: 3 }).notNull(),
+  lengthCm: numeric("lengthCm", { precision: 10, scale: 2 }),
+  widthCm: numeric("widthCm", { precision: 10, scale: 2 }),
+  heightCm: numeric("heightCm", { precision: 10, scale: 2 }),
+  createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("correspondenceShipmentPlaces_dimensions_check", sql`(((("lengthCm" IS NULL) AND ("widthCm" IS NULL) AND ("heightCm" IS NULL)) OR (("lengthCm" IS NOT NULL) AND ("widthCm" IS NOT NULL) AND ("heightCm" IS NOT NULL))))`),
+    check("correspondenceShipmentPlaces_heightCm_check", sql`((("heightCm" >= 0.01) AND ("heightCm" <= 99999999.99)))`),
+    check("correspondenceShipmentPlaces_lengthCm_check", sql`((("lengthCm" >= 0.01) AND ("lengthCm" <= 99999999.99)))`),
+    check("correspondenceShipmentPlaces_measuredWeight_check", sql`((("measuredWeight" >= 0.001) AND ("measuredWeight" <= 999999999.999)))`),
+    check("correspondenceShipmentPlaces_position_check", sql`(("position" > 0))`),
+    check("correspondenceShipmentPlaces_widthCm_check", sql`((("widthCm" >= 0.01) AND ("widthCm" <= 99999999.99)))`),
+    foreignKey({
+      name: "correspondenceShipmentPlaces_shipmentId_fkey",
+      columns: [table.shipmentId],
+      foreignColumns: [correspondenceShipments.id],
+    }).onDelete("restrict"),
+    unique("correspondenceShipmentPlaces_shipmentId_position_key").on(table.shipmentId, table.position),
+  ],
+);
+
+export type CorrespondenceShipmentPlaces = typeof correspondenceShipmentPlaces.$inferSelect;
+export type InsertCorrespondenceShipmentPlaces = typeof correspondenceShipmentPlaces.$inferInsert;
+
+// ─── Tariff directories (migration 0010) and courierAccess: structure taken from the
+// production catalogue dump of 2026-10-16, revision C.3. No migration is created. ────
+
+export const correspondenceServices = pgTable(
+  "correspondenceServices",
+  {
+  id: serial("id").notNull().primaryKey(),
+  code: varchar("code", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  isActive: boolean("isActive").notNull().default(true),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => [
+    unique("correspondenceServices_code_key").on(table.code),
+  ],
+);
+
+export type CorrespondenceServices = typeof correspondenceServices.$inferSelect;
+export type InsertCorrespondenceServices = typeof correspondenceServices.$inferInsert;
+
+export const correspondenceClientTariffPlans = pgTable(
+  "correspondenceClientTariffPlans",
+  {
+  id: serial("id").notNull().primaryKey(),
+  ownerType: varchar("ownerType", { length: 10 }).notNull(),
+  ownerId: integer("ownerId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("RUB"),
+  validFrom: date("validFrom"),
+  validTo: date("validTo"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => [
+    index("correspondenceClientTariffPlans_owner_idx").on(table.ownerType, table.ownerId),
+  ],
+);
+
+export type CorrespondenceClientTariffPlans = typeof correspondenceClientTariffPlans.$inferSelect;
+export type InsertCorrespondenceClientTariffPlans = typeof correspondenceClientTariffPlans.$inferInsert;
+
+export const correspondenceClientTariffItems = pgTable(
+  "correspondenceClientTariffItems",
+  {
+  id: serial("id").notNull().primaryKey(),
+  planId: integer("planId").notNull(),
+  serviceCode: varchar("serviceCode", { length: 20 }).notNull(),
+  cityFromId: integer("cityFromId"),
+  cityToId: integer("cityToId"),
+  weightFromKg: numeric("weightFromKg", { precision: 12, scale: 3 }),
+  weightToKg: numeric("weightToKg", { precision: 12, scale: 3 }),
+  pricingModel: varchar("pricingModel", { length: 20 }).notNull(),
+  basePrice: numeric("basePrice", { precision: 14, scale: 2 }),
+  pricePerKg: numeric("pricePerKg", { precision: 14, scale: 2 }),
+  vatRate: numeric("vatRate", { precision: 5, scale: 2 }),
+  priority: integer("priority").notNull().default(100),
+  description: text("description"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondenceClientTariffItems_cityFromId_fkey",
+      columns: [table.cityFromId],
+      foreignColumns: [correspondenceCities.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondenceClientTariffItems_cityToId_fkey",
+      columns: [table.cityToId],
+      foreignColumns: [correspondenceCities.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondenceClientTariffItems_planId_fkey",
+      columns: [table.planId],
+      foreignColumns: [correspondenceClientTariffPlans.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "correspondenceClientTariffItems_serviceCode_fkey",
+      columns: [table.serviceCode],
+      foreignColumns: [correspondenceServices.code],
+    }).onDelete("restrict"),
+    index("correspondenceClientTariffItems_plan_idx").on(table.planId),
+  ],
+);
+
+export type CorrespondenceClientTariffItems = typeof correspondenceClientTariffItems.$inferSelect;
+export type InsertCorrespondenceClientTariffItems = typeof correspondenceClientTariffItems.$inferInsert;
+
+export const correspondencePartnerTariffPlans = pgTable(
+  "correspondencePartnerTariffPlans",
+  {
+  id: serial("id").notNull().primaryKey(),
+  partnerId: integer("partnerId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("RUB"),
+  validFrom: date("validFrom"),
+  validTo: date("validTo"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondencePartnerTariffPlans_partnerId_fkey",
+      columns: [table.partnerId],
+      foreignColumns: [partners.id],
+    }).onDelete("restrict"),
+    index("correspondencePartnerTariffPlans_partner_idx").on(table.partnerId),
+  ],
+);
+
+export type CorrespondencePartnerTariffPlans = typeof correspondencePartnerTariffPlans.$inferSelect;
+export type InsertCorrespondencePartnerTariffPlans = typeof correspondencePartnerTariffPlans.$inferInsert;
+
+export const correspondencePartnerTariffItems = pgTable(
+  "correspondencePartnerTariffItems",
+  {
+  id: serial("id").notNull().primaryKey(),
+  planId: integer("planId").notNull(),
+  serviceCode: varchar("serviceCode", { length: 20 }).notNull(),
+  cityFromId: integer("cityFromId"),
+  cityToId: integer("cityToId"),
+  weightFromKg: numeric("weightFromKg", { precision: 12, scale: 3 }),
+  weightToKg: numeric("weightToKg", { precision: 12, scale: 3 }),
+  pricingModel: varchar("pricingModel", { length: 20 }).notNull(),
+  basePrice: numeric("basePrice", { precision: 14, scale: 2 }),
+  pricePerKg: numeric("pricePerKg", { precision: 14, scale: 2 }),
+  vatRate: numeric("vatRate", { precision: 5, scale: 2 }),
+  priority: integer("priority").notNull().default(100),
+  description: text("description"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondencePartnerTariffItems_cityFromId_fkey",
+      columns: [table.cityFromId],
+      foreignColumns: [correspondenceCities.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondencePartnerTariffItems_cityToId_fkey",
+      columns: [table.cityToId],
+      foreignColumns: [correspondenceCities.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "correspondencePartnerTariffItems_planId_fkey",
+      columns: [table.planId],
+      foreignColumns: [correspondencePartnerTariffPlans.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "correspondencePartnerTariffItems_serviceCode_fkey",
+      columns: [table.serviceCode],
+      foreignColumns: [correspondenceServices.code],
+    }).onDelete("restrict"),
+    index("correspondencePartnerTariffItems_plan_idx").on(table.planId),
+  ],
+);
+
+export type CorrespondencePartnerTariffItems = typeof correspondencePartnerTariffItems.$inferSelect;
+export type InsertCorrespondencePartnerTariffItems = typeof correspondencePartnerTariffItems.$inferInsert;
+
+export const courierAccess = pgTable(
+  "courierAccess",
+  {
+  courierId: integer("courierId").notNull().primaryKey(),
+  allowedDaysMask: integer("allowedDaysMask").notNull().default(127),
+  tasksAllowed: boolean("tasksAllowed").notNull().default(true),
+  hemotestAllowed: boolean("hemotestAllowed").notNull().default(true),
+  sberbankAllowed: boolean("sberbankAllowed").notNull().default(true),
+  mailsAllowed: boolean("mailsAllowed").notNull().default(true),
+  chatAllowed: boolean("chatAllowed").notNull().default(true),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "courierAccess_courierId_fkey",
+      columns: [table.courierId],
+      foreignColumns: [couriers.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export type CourierAccess = typeof courierAccess.$inferSelect;
+export type InsertCourierAccess = typeof courierAccess.$inferInsert;

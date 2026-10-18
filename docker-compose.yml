@@ -1,7 +1,5 @@
 version: '3.8'
-
 services:
-  # PostgreSQL база данных
   postgres:
     image: postgres:16-alpine
     container_name: courier-postgres
@@ -9,29 +7,28 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-courier}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-courier_password}
       POSTGRES_DB: ${POSTGRES_DB:-courier_db}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+    - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-courier} -d ${POSTGRES_DB:-courier_db}"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U ${POSTGRES_USER:-courier} -d ${POSTGRES_DB:-courier_db}
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     networks:
-      - courier-network
-
-  # Backend API
+    - courier-network
   api:
-    image: courier-api:push-fix-f7d4bd1-final
+    image: courier-api:courier-access-fix-20261018
     build:
       context: .
       dockerfile: Dockerfile
     container_name: courier-api
     env_file:
-      - ./.env.deepseek
+    - ./.env.deepseek
+    - /home/administrator333/.config/couriermig/max-bot.env
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:-postgresql://courier:courier_password@postgres:5432/courier_db}
@@ -46,26 +43,31 @@ services:
       MANAGER_JWT_SECRET: ${MANAGER_JWT_SECRET:-change-me-manager-jwt-secret}
       COURIER_JWT_SECRET: ${COURIER_JWT_SECRET:-change-me-courier-jwt-secret}
     ports:
-      - "${PORT:-3000}:3000"
+    - ${PORT:-3000}:3000
     volumes:
-      - ./uploads:/app/uploads
+    - ./uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test:
+      - CMD
+      - wget
+      - --quiet
+      - --tries=1
+      - --spider
+      - http://localhost:3000/api/health
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
     restart: unless-stopped
     networks:
-      - courier-network
-
+    - courier-network
 volumes:
   postgres_data:
     driver: local
-
 networks:
   courier-network:
-    driver: bridge
+    external: true
+    name: courier-delivery-system_courier-network

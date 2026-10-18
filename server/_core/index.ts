@@ -6,6 +6,10 @@ import path from "path";
 import bcrypt from "bcryptjs";
 import { eq, inArray, sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { registerMaxQrDecodeRoutes } from "./maxQrDecode";
+import { registerMaxChatBindingRoutes } from "./maxChatBindings";
+import { registerMaxIntegrationRoutes, startMaxOrderStatusNotifier } from "./maxIntegration";
+import { registerMaxManagerSettingsRoutes } from "./maxManagerSettings";
 import { registerOAuthRoutes } from "./oauth";
 import { registerCompatRoutes } from "./compatRoutes";
 import { registerCorrespondenceRoutes } from "./correspondenceRoutes";
@@ -265,6 +269,12 @@ function normalizeChatMessageRow(row: Record<string, unknown>) {
   registerOrganizationLogoRoutes(app);
   registerBillingRoutes(app);
   registerChatV2Routes(app);
+
+  registerMaxQrDecodeRoutes(app);
+  registerMaxChatBindingRoutes(app);
+  registerMaxIntegrationRoutes(app);
+  registerMaxManagerSettingsRoutes(app);
+  if(process.env.MAX_BOT_TOKEN)startMaxOrderStatusNotifier();
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });

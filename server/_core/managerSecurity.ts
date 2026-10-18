@@ -128,10 +128,7 @@ export async function managerApiAuthGate(req: Request, res: Response, next: Next
     return;
   }
 
-  if (
-    req.path.startsWith("/api/manager/") &&
-    !(req.method === "GET" && /^\/api\/manager\/requests\/\d+\/attachments$/.test(req.path))
-  ) {
+  if (req.path.startsWith("/api/manager/")) {
     await requireManagerAuth(req, res, next);
     return;
   }
