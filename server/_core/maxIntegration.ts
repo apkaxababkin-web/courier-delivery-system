@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import * as db from '../db';
 import { verifyMaxInitData } from './maxQrDecode';
 import { syncTaskForRequestId } from './requestTaskSync';
+import { sendNewRequestPush } from './requestCreationPush';
 import { broadcastLive } from './liveEvents';
 import { isExpoPushToken, sendExpoPush } from './expoPush';
 import { buildNewRequestPush } from './requestPushPresentation';
@@ -260,8 +261,8 @@ async function createActual(tx:any,d:any,clientId:number,actor:string,managerCre
   senderName:d.type==='movement'
    ?partyLabel(d.from)
    :d.type==='tc'&&d.direction==='from'
-    ?tc.contactPerson||tc.name
-    :from?.contactPerson||client.contactPerson||client.name,
+    ?tc.name
+    :partyLabel(d.from),
   senderCompany:d.type==='tc'&&d.direction==='from'?tc.name:client.name,
   senderPhone:d.type==='tc'&&d.direction==='from'
    ?tc.phone||null
@@ -273,8 +274,8 @@ async function createActual(tx:any,d:any,clientId:number,actor:string,managerCre
    :d.type==='delivery'
     ?allowedText(d.recipient,255)
     :d.type==='tc'&&d.direction==='to'
-     ?tc.contactPerson||tc.name
-     :to?.contactPerson||to?.name||client.name,
+     ?tc.name
+     :partyLabel(d.to),
   recipientPhone:d.type==='delivery'
    ?allowedText(d.phone,50)
    :d.type==='tc'&&d.direction==='to'
@@ -605,38 +606,11 @@ export function registerMaxIntegrationRoutes(app:Express){
         let taskId:number|null=null;
         try{taskId=await syncTaskForRequestId(real)}
         catch(e){console.error('MAX task sync',e)}
-        try{
-         const request=await db.getRequestById(real);
-         if(request){
-          const today=(v:any)=>{
-           if(!v)return true;
-           const date=v instanceof Date?v:new Date(String(v));
-           if(Number.isNaN(date.getTime()))return true;
-           const fmt=(x:Date)=>new Intl.DateTimeFormat('en-CA',{
-            timeZone:'Asia/Irkutsk',year:'numeric',month:'2-digit',day:'2-digit'
-           }).format(x);
-           return fmt(date)===fmt(new Date());
-          };
-          if(taskId&&today(request.scheduledAt)){
-           const push=buildNewRequestPush(request);
-           const couriers=await db.getAllCouriers();
-           const targets=couriers.filter(c=>isExpoPushToken(c.pushToken));
-
-           const results=await Promise.allSettled(targets.map(c=>
-            sendExpoPush(c.pushToken,push.title,push.body,{
-             type:'new_request_available',
-             requestId:real,
-             taskId,
-             requestType:request.requestType
-            })
-           ));
-           const failures=results.filter(r=>r.status==='rejected').length;
-           if(failures)console.warn('MAX push failures',failures,targets.length);
-           if(request.scheduledAt)
-            await db.updateRequest(real,{scheduledPushSentAt:new Date()});
-          }
-         }
-        }catch(e){console.error('MAX push error',e)}
+        try {
+          await sendNewRequestPush(real, taskId);
+        } catch (e) {
+          console.error("MAX push error", e);
+        }
         broadcastLive('requests_changed',{requestId:real});
         broadcastLive('tasks_changed',{requestId:real});
         try{

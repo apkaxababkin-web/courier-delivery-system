@@ -405,3 +405,34 @@ describe("regressions fixed on 2026-10-16", () => {
     );
   });
 });
+
+
+it("uses the actual sender for delivery to a transport company", () => {
+  const request = {
+    id: 99991,
+    requestType: "pickup_from_tc",
+    status: "pending",
+    senderName: "Основа движения / Склад",
+    senderCompany: "Основа движения",
+    senderAddress: "ул. Ленина, 10",
+    senderPhone: "301010",
+    recipientName: "Контактное лицо ТК",
+    recipientCompany: "Деловые линии",
+    recipientAddress: "ул. Павлова, 13",
+    recipientPhone: "302020",
+    deliveryAddress: "ул. Павлова, 13",
+    tcName: "Деловые линии",
+    tcAddress: "ул. Павлова, 13",
+    comments: "Направление: получатель → ТК",
+  } as Parameters<typeof taskFromRequest>[0];
+
+  const task = taskFromRequest(request);
+
+  expect(task.senderName).toBe("Основа движения / Склад");
+  expect(task.senderAddress).toBe("ул. Ленина, 10");
+  expect(task.senderPhone).toBe("301010");
+  expect(task.recipientName).toBe("Деловые линии");
+  expect(task.recipientAddress).toBe("ул. Павлова, 13");
+  expect(task.recipientPhone).toBe("302020");
+  expect(task.deliveryAddress).toBe("ул. Павлова, 13");
+});

@@ -53,11 +53,9 @@ export function taskFromRequest(request: DeliveryRequest): InsertTask {
   const taskSenderName = isTransportCompanyRequest
     ? (
         isDeliveryToTransportCompany
-          ? request.recipientName ||
-            request.recipientCompany ||
-            request.senderName ||
+          ? request.senderName ||
             request.senderCompany ||
-            "Получатель не указан"
+            "Отправитель не указан"
           : request.tcName || "Транспортная компания"
       )
     : request.senderName || request.senderCompany || request.tcName || null;
@@ -65,9 +63,7 @@ export function taskFromRequest(request: DeliveryRequest): InsertTask {
   const taskSenderAddress = isTransportCompanyRequest
     ? (
         isDeliveryToTransportCompany
-          ? request.deliveryAddress ||
-            request.recipientAddress ||
-            request.senderAddress ||
+          ? request.senderAddress ||
             null
           : request.tcAddress || null
       )
@@ -76,7 +72,7 @@ export function taskFromRequest(request: DeliveryRequest): InsertTask {
   const taskSenderPhone = isTransportCompanyRequest
     ? (
         isDeliveryToTransportCompany
-          ? request.recipientPhone || request.senderPhone || null
+          ? request.senderPhone || null
           : request.senderPhone ?? null
       )
     : request.senderPhone ?? null;
@@ -114,7 +110,7 @@ export function taskFromRequest(request: DeliveryRequest): InsertTask {
   const taskRecipientPhone = isTransportCompanyRequest
     ? (
         isDeliveryToTransportCompany
-          ? request.senderPhone || null
+          ? request.recipientPhone || null
           : request.recipientPhone || ""
       )
     : request.recipientPhone || request.senderPhone || "";

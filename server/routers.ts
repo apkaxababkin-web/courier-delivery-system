@@ -12,6 +12,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { managerProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { buildNewRequestPush, buildAssignedRequestPush } from "./_core/requestPushPresentation";
+import { sendNewRequestPush } from "./_core/requestCreationPush";
 
 const BUSINESS_TIME_ZONE = "Asia/Irkutsk";
 
@@ -1961,41 +1962,13 @@ export const appRouter = router({
 
         const taskId = await syncTaskForRequestId(id);
 
-        const requestForPush = await db.getRequestById(id);
-        if (isScheduledForToday(requestForPush?.scheduledAt)) {
-  const push = buildNewRequestPush({
-            id,
-            requestType: requestForPush?.requestType || input.requestType,
-            deliveryAddress: requestForPush?.deliveryAddress || input.deliveryAddress,
-            recipientAddress: requestForPush?.recipientAddress || input.recipientAddress,
-            senderAddress: requestForPush?.senderAddress || input.senderAddress,
-            senderName: requestForPush?.senderName || input.senderName,
-            senderCompany: requestForPush?.senderCompany || input.senderCompany,
-            recipientName: requestForPush?.recipientName || input.recipientName,
-            recipientCompany: requestForPush?.recipientCompany || input.recipientCompany,
-            tcName: requestForPush?.tcName || input.tcName,
-            tcAddress: requestForPush?.tcAddress || input.tcAddress,
-            comments: requestForPush?.comments || input.comments,
-            items: requestForPush?.items || input.items,
-            packageDescription: requestForPush?.packageDescription || input.packageDescription,
-            placesCount: requestForPush?.placesCount || input.placesCount,
-            paymentMethod: requestForPush?.paymentMethod || input.paymentMethod,
-          });
-  
-          await sendPushToAllCouriers(push.title, push.body, {
-            type: "new_request_available",
-            requestId: id,
-            taskId,
-            requestType: input.requestType,
-          });
+        try {
+           await sendNewRequestPush(id, taskId);
+         } catch (error) {
+           console.error("[REQUEST_PUSH] manager creation", error);
+         }
 
-          if (requestForPush?.scheduledAt) {
-            await db.updateRequest(id, {
-              scheduledPushSentAt: new Date(),
-            });
-          }
-}
-        broadcastLive("requests_changed", { requestId: id });
+         broadcastLive("requests_changed", { requestId: id });
         broadcastLive("tasks_changed", { requestId: id });
         return { id, success: true };
       }),

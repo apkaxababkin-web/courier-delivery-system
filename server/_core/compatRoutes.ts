@@ -41,6 +41,8 @@ import { toSafeCourier } from "./courierPublic";
 import { getCourierAccess, saveCourierAccess } from "./courierAccess";
 import { resolveRequester, RequesterInputError } from "./requester";
 import { buildNewRequestPush, buildAssignedRequestPush } from "./requestPushPresentation";
+import { syncTaskForRequest as syncCanonicalTaskForRequest } from "./requestTaskSync";
+import { sendNewRequestPush } from "./requestCreationPush";
 import { quoteCompletedRequest } from "./requestQuote";
 
 const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
@@ -3313,49 +3315,14 @@ export function registerCompatRoutes(app: Express) {
         note: "Заявка создана",
       });
 
-      const taskId = await syncTaskForRequest(request);
+      const taskId = await syncCanonicalTaskForRequest(request);
 
       if (!isHistoricalCompleted) {
-        const requestForPush = await db.getRequestById(request.id);
-
-        if (isScheduledForToday(requestForPush?.scheduledAt)) {
-  const push = buildNewRequestPush({
-            id: request.id,
-            requestType: requestForPush?.requestType || request.requestType,
-            deliveryAddress: requestForPush?.deliveryAddress || request.deliveryAddress,
-            recipientAddress: requestForPush?.recipientAddress || request.recipientAddress,
-            senderAddress: requestForPush?.senderAddress || request.senderAddress,
-            senderName: requestForPush?.senderName || request.senderName,
-            senderCompany: requestForPush?.senderCompany || request.senderCompany,
-            recipientName: requestForPush?.recipientName || request.recipientName,
-            recipientCompany: requestForPush?.recipientCompany || request.recipientCompany,
-            tcName: requestForPush?.tcName || request.tcName,
-            tcAddress: requestForPush?.tcAddress || request.tcAddress,
-            comments: requestForPush?.comments || request.comments,
-            items: requestForPush?.items || request.items,
-            packageDescription: requestForPush?.packageDescription || request.packageDescription,
-            placesCount: requestForPush?.placesCount || request.placesCount,
-            paymentMethod: requestForPush?.paymentMethod || request.paymentMethod,
-          });
-  
-          await sendPushToAllCouriers(
-            push.title,
-            push.body,
-            {
-              type: "new_request_available",
-              requestId: request.id,
-              taskId,
-              requestType: request.requestType,
-            },
-          );
-
-          if (requestForPush?.scheduledAt) {
-            await conn
-              .update(requests)
-              .set({ scheduledPushSentAt: new Date() })
-              .where(eq(requests.id, request.id));
-          }
-}
+        try {
+          await sendNewRequestPush(request.id, taskId);
+        } catch (error) {
+          console.error("[REQUEST_PUSH] compat creation", error);
+        }
       }
 
       broadcastLive("requests_changed");
@@ -3392,7 +3359,7 @@ export function registerCompatRoutes(app: Express) {
         .returning();
 
       if (updated[0]) {
-        await syncTaskForRequest(updated[0] as DeliveryRequest);
+        await syncCanonicalTaskForRequest(updated[0] as DeliveryRequest);
 
         // Price the work automatically as soon as it is completed.
         if (status === "completed") {
@@ -3468,7 +3435,7 @@ export function registerCompatRoutes(app: Express) {
         .returning();
 
       if (updated[0]) {
-        await syncTaskForRequest(updated[0] as DeliveryRequest);
+        await syncCanonicalTaskForRequest(updated[0] as DeliveryRequest);
 
         if (previousCourierId !== courierId) {
           const previousCourier = previousCourierId
