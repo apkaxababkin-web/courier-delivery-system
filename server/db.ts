@@ -2461,6 +2461,9 @@ export async function getHemotestPickupListWithItems(listId: number): Promise<{
         pickedAt: pickup?.hemotestPickups.pickedAt ?? null,
         courierId: pickup?.hemotestPickups.courierId ?? null,
         courierName: pickup?.couriers?.name ?? null,
+        routeOrder: pickup?.hemotestPickups.routeOrder ?? null,
+        isFrozen: pickup?.hemotestPickups.isFrozen ?? false,
+        isCancelled: pickup?.hemotestPickups.isCancelled ?? false,
       };
     }),
   };
