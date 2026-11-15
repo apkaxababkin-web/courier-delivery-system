@@ -910,6 +910,26 @@ export const appRouter = router({
 
   // Hemotest pickup points
   hemotest: router({
+    dailyRoutes: managerProcedure
+      .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+      .query(async ({ input }) => db.getHemotestDailyRoutes(input.date)),
+
+    saveDailyRoutes: managerProcedure
+      .input(z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        routes: z.tuple([
+          z.object({ number: z.literal(1), courierId: z.number().int().positive().nullable(),
+            pointIds: z.array(z.number().int().positive()), isFrozen: z.boolean() }),
+          z.object({ number: z.literal(2), courierId: z.number().int().positive().nullable(),
+            pointIds: z.array(z.number().int().positive()), isFrozen: z.boolean() }),
+        ]),
+      }))
+      .mutation(async ({ input }) => {
+        await db.saveHemotestDailyRoutes(input.date, input.routes);
+        broadcastLive("hemotest_changed", { date: input.date });
+        return { success: true };
+      }),
+
     // Manager-only mutation. Existing pickup completion flags remain untouched.
     reorderCourierRoute: managerProcedure
       .input(z.object({
