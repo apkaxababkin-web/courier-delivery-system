@@ -12,6 +12,7 @@ import {
   users,
   hemotestPickupPoints,
   hemotestPickups,
+  hemotestDailyRoutes,
   hemotestPickupLists,
   hemotestListItems,
   sberbankPickupPoints,
@@ -1426,6 +1427,7 @@ export async function getHemotestPickupPointsForDate(
       courierColor: pickup?.couriers?.displayColor ?? undefined,
       courierIcon: pickup?.couriers?.displayIcon ?? undefined,
       routeOrder: pickup?.hemotestPickups.routeOrder ?? null,
+      routeNumber: pickup?.hemotestPickups.routeNumber ?? null,
       isFrozen: pickup?.hemotestPickups.isFrozen ?? false,
     };
   });
@@ -1669,6 +1671,125 @@ export async function cancelHemotestPickup(
  * Reorder an existing courier route without resetting pickup completion state.
  * Rejects frozen points and any attempt to move a point owned by another courier.
  */
+export async function getHemotestDailyRoutes(date: string) {
+  const connection = await getDb();
+  if (!connection) throw new Error("Database not available");
+  const routes = await connection.select().from(hemotestDailyRoutes)
+    .where(eq(hemotestDailyRoutes.date, date));
+  const assignments = await connection.select().from(hemotestPickups)
+    .where(eq(hemotestPickups.date, date));
+  const lists = await connection.select({ id: hemotestPickupLists.id })
+    .from(hemotestPickupLists).where(eq(hemotestPickupLists.date, date));
+  const items = lists.length ? await connection.select({ pointId: hemotestListItems.pointId })
+    .from(hemotestListItems)
+    .where(inArray(hemotestListItems.listId, lists.map((list) => list.id))) : [];
+  const allowed = new Set(items.map((item) => item.pointId));
+  return {
+    routes: [1, 2].map((number) => {
+      const route = routes.find((row) => row.routeNumber === number);
+      return {
+        number,
+        courierId: route?.courierId ?? null,
+        isFrozen: route?.isFrozen ?? false,
+        pointIds: assignments.filter((row) => row.routeNumber === number && allowed.has(row.pointId))
+          .sort((a, b) => (a.routeOrder ?? 999999) - (b.routeOrder ?? 999999) || a.pointId - b.pointId)
+          .map((row) => row.pointId),
+      };
+    }),
+    unassignedPointIds: [...allowed].filter((id) =>
+      !assignments.some((row) => row.pointId === id && (row.routeNumber === 1 || row.routeNumber === 2))),
+  };
+}
+
+/** Atomic manager update: validate a complete snapshot, preserve completion fields. */
+export async function saveHemotestDailyRoutes(
+  date: string,
+  routes: Array<{ number: 1 | 2; courierId: number | null; pointIds: number[]; isFrozen: boolean }>,
+): Promise<void> {
+  const connection = await getDb();
+  if (!connection) throw new Error("Database not available");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid date");
+  if (routes.length !== 2 || routes[0].number !== 1 || routes[1].number !== 2) {
+    throw new Error("Exactly two numbered routes required");
+  }
+  const allIds = routes.flatMap((route) => route.pointIds);
+  if (new Set(allIds).size !== allIds.length) throw new Error("Point belongs to multiple routes");
+  const courierIds = routes.map((route) => route.courierId).filter((id) => id !== null);
+  if (new Set(courierIds).size !== courierIds.length) throw new Error("Same courier cannot own both routes");
+
+  await connection.transaction(async (tx) => {
+    // Lock both route records in deterministic order, creating them if absent.
+    for (const number of [1, 2]) {
+      await tx.insert(hemotestDailyRoutes)
+        .values({ date, routeNumber: number })
+        .onConflictDoNothing();
+    }
+    const existingRoutes = await tx.select().from(hemotestDailyRoutes)
+      .where(eq(hemotestDailyRoutes.date, date)).orderBy(hemotestDailyRoutes.routeNumber).for("update");
+    const current = await tx.select().from(hemotestPickups)
+      .where(eq(hemotestPickups.date, date)).for("update");
+
+    const listRows = await tx.select({ id: hemotestPickupLists.id })
+      .from(hemotestPickupLists).where(eq(hemotestPickupLists.date, date));
+    const listItems = listRows.length ? await tx.select({ pointId: hemotestListItems.pointId })
+      .from(hemotestListItems)
+      .where(inArray(hemotestListItems.listId, listRows.map((row) => row.id))) : [];
+    const allowed = new Set(listItems.map((item) => item.pointId));
+    if (allIds.some((id) => !allowed.has(id))) throw new Error("Route contains point outside daily lists");
+
+    for (const old of existingRoutes) {
+      const next = routes.find((route) => route.number === old.routeNumber)!;
+      const oldIds = current.filter((row) => row.routeNumber === old.routeNumber)
+        .sort((a, b) => (a.routeOrder ?? 999999) - (b.routeOrder ?? 999999) || a.pointId - b.pointId)
+        .map((row) => row.pointId);
+      if (old.isFrozen && (
+        old.courierId !== next.courierId ||
+        oldIds.length !== next.pointIds.length ||
+        oldIds.some((id, index) => next.pointIds[index] !== id) ||
+        !next.isFrozen
+      )) throw new Error("Frozen route cannot be modified");
+    }
+    if (current.some((row) => row.isFrozen && (
+      !routes.some((route) => route.number === row.routeNumber && route.pointIds.includes(row.pointId))
+    ))) throw new Error("Frozen pickup cannot be moved");
+
+    for (const route of routes) {
+      if (route.courierId !== null) {
+        const courier = await tx.select({ id: couriers.id }).from(couriers)
+          .where(eq(couriers.id, route.courierId)).limit(1);
+        if (!courier.length) throw new Error("Courier does not exist");
+      }
+      await tx.update(hemotestDailyRoutes)
+        .set({ courierId: route.courierId, isFrozen: route.isFrozen, updatedAt: new Date() })
+        .where(and(eq(hemotestDailyRoutes.date, date), eq(hemotestDailyRoutes.routeNumber, route.number)));
+    }
+
+    // Unassigned points are kept in the daily list, with their original completion state.
+    for (const old of current.filter((row) => row.routeNumber != null && !allIds.includes(row.pointId))) {
+      await tx.update(hemotestPickups)
+        .set({ routeNumber: null, routeOrder: null, courierId: null, updatedAt: new Date() })
+        .where(eq(hemotestPickups.id, old.id));
+    }
+    for (const route of routes) {
+      for (let index = 0; index < route.pointIds.length; index++) {
+        const pointId = route.pointIds[index];
+        const existing = current.find((row) => row.pointId === pointId);
+        if (existing) {
+          await tx.update(hemotestPickups)
+            .set({ routeNumber: route.number, routeOrder: index + 1, courierId: route.courierId,
+              isFrozen: route.isFrozen, updatedAt: new Date() })
+            .where(eq(hemotestPickups.id, existing.id));
+        } else {
+          await tx.insert(hemotestPickups).values({
+            date, pointId, routeNumber: route.number, routeOrder: index + 1,
+            courierId: route.courierId, isFrozen: route.isFrozen,
+          });
+        }
+      }
+    }
+  });
+}
+
 export async function reorderHemotestCourierRoute(
   date: string,
   courierId: number,
@@ -2462,6 +2583,7 @@ export async function getHemotestPickupListWithItems(listId: number): Promise<{
         courierId: pickup?.hemotestPickups.courierId ?? null,
         courierName: pickup?.couriers?.name ?? null,
         routeOrder: pickup?.hemotestPickups.routeOrder ?? null,
+        routeNumber: pickup?.hemotestPickups.routeNumber ?? null,
         isFrozen: pickup?.hemotestPickups.isFrozen ?? false,
         isCancelled: pickup?.hemotestPickups.isCancelled ?? false,
       };
