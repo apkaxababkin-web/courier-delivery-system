@@ -1360,6 +1360,7 @@ export type HemotestPickupWithStatus = HemotestPickupPoint & {
   courierColor?: string;
   courierIcon?: string;
   routeOrder?: number | null;
+  routeNumber?: number | null;
   isFrozen?: boolean;
 };
 
