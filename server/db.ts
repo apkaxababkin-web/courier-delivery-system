@@ -1,3 +1,4 @@
+import { validateHemotestRoutes } from './_core/hemotestRoutes';
 import { lockCorrespondenceWrites, guardLegacyWaybills } from './_core/correspondenceWaybills';
 // Removed mysql2 - now using postgres driver
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -1721,14 +1722,8 @@ export async function saveHemotestDailyRoutes(
 ): Promise<void> {
   const connection = await getDb();
   if (!connection) throw new Error("Database not available");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid date");
-  if (routes.length !== 2 || routes[0].number !== 1 || routes[1].number !== 2) {
-    throw new Error("Exactly two numbered routes required");
-  }
+  validateHemotestRoutes(date, routes);
   const allIds = routes.flatMap((route) => route.pointIds);
-  if (new Set(allIds).size !== allIds.length) throw new Error("Point belongs to multiple routes");
-  const courierIds = routes.map((route) => route.courierId).filter((id) => id !== null);
-  if (new Set(courierIds).size !== courierIds.length) throw new Error("Same courier cannot own both routes");
 
   await connection.transaction(async (tx) => {
     // Lock both route records in deterministic order, creating them if absent.
