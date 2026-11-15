@@ -615,6 +615,15 @@ export async function setSberbankScheduleForDay(dayOfWeek: number, pointIds: num
   await trpcPost('sberbank.setScheduleForDay', { dayOfWeek, pointIds }, { success: true });
 }
 
+/** Persist an existing courier route's point order on the server. */
+export async function reorderHemotestCourierRoute(
+  date: string,
+  courierId: number,
+  pointIds: number[],
+): Promise<void> {
+  await trpcPost('hemotest.reorderCourierRoute', { date, courierId, pointIds }, { success: true });
+}
+
 // ─── Hemotest List Management ───────────────────────────────────────────────
 
 export interface HemotestPickupList {
