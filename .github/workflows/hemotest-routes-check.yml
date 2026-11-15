@@ -21,6 +21,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir courier-manager install --frozen-lockfile
       - run: pnpm check
       - run: pnpm exec vitest run server/_core/hemotestRoutes.test.ts
       - run: pnpm --dir courier-manager check
