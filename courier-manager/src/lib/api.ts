@@ -637,7 +637,16 @@ export interface HemotestPickupList {
 
 export interface HemotestListWithItems {
   list: HemotestPickupList;
-  items: HemotestPoint[];
+  items: HemotestRoutePoint[];
+}
+
+export interface HemotestRoutePoint extends HemotestPoint {
+  courierId?: number | null;
+  courierName?: string | null;
+  routeOrder?: number | null;
+  isFrozen?: boolean;
+  isPicked?: boolean;
+  isCancelled?: boolean;
 }
 
 export async function createHemotestPickupList(date: string, name: string, pointIds: number[]): Promise<HemotestPickupList> {
