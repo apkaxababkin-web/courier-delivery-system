@@ -80,6 +80,21 @@ export default function HemotestRoutesEditor({ date, points, refreshKey }: {
     });
     change(next, []);
   };
+  const unfreeze = async (routeNumber: 1 | 2) => {
+    if (!window.confirm(`Разморозить маршрут №${routeNumber}?`)) return;
+    try {
+      setBusy(true);
+      setError('');
+      await api.unfreezeHemotestDailyRoute(date, routeNumber);
+      const data = await api.getHemotestDailyRoutes(date);
+      setRoutes(data.routes);
+      setUnassigned(data.unassignedPointIds);
+      setDirty(false);
+      setMessage(`Маршрут №${routeNumber} разморожен.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось разморозить маршрут');
+    } finally { setBusy(false); }
+  };
   const save = async () => {
     try {
       setBusy(true);
@@ -156,6 +171,9 @@ export default function HemotestRoutesEditor({ date, points, refreshKey }: {
               className="min-h-32 rounded-xl border border-slate-200 p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <strong>Маршрут №{index + 1}</strong>
+                {routes[index].isFrozen && <button type="button" disabled={busy || dirty}
+                  onClick={() => void unfreeze((index + 1) as 1 | 2)}
+                  className="text-xs text-amber-700 underline">Разморозить</button>}
                 <label className="flex items-center gap-1 text-xs">
                   <input type="checkbox" checked={routes[index].isFrozen}
                     disabled={routes[index].isFrozen}
