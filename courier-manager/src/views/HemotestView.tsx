@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, GripVertical, ListMinus, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
+import HemotestRoutesEditor from './HemotestRoutesEditor';
 import { formatLocalDate } from '../lib/local-time';
 
 const POINT_ORDER_STORAGE_KEY = 'courier-manager:hemotest-point-order';
@@ -59,6 +60,8 @@ function moveId(order: number[], id: number, targetId: number) {
 
 export default function HemotestView({ archiveDate }: { archiveDate?: string }) {
   const [points, setPoints] = useState<HemotestPointRow[]>([]);
+  const [routePoints, setRoutePoints] = useState<api.HemotestRoutePoint[]>([]);
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0);
   const [pointOrderIds, setPointOrderIds] = useState<number[]>(() => readNumberArray(POINT_ORDER_STORAGE_KEY));
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState(archiveDate || new Date().toISOString().split('T')[0]);
@@ -137,9 +140,11 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
       }
 
       setPoints(rows);
+      setRoutePoints(Array.from(listedPoints.values()) as api.HemotestRoutePoint[]);
     } catch (error) {
       console.error('Error loading points:', error);
       setPoints([]);
+      setRoutePoints([]);
     } finally {
       setLoading(false);
     }
@@ -272,6 +277,8 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
       setFeedback({ type: 'success', text: `Точки сохранены (${orderedSelectedPointIds.length}).` });
       setSelectedPoints([]);
       setShowListForm(false);
+      await loadPoints();
+      setRouteRefreshKey((value) => value + 1);
     } catch (error) {
       console.error('Error creating list:', error);
       const message = error instanceof Error && error.message ? error.message : 'Неизвестная ошибка';
@@ -486,6 +493,8 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
           </div>,
           document.body
         )}
+
+      <HemotestRoutesEditor date={selectedDate} points={routePoints} refreshKey={routeRefreshKey} />
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">

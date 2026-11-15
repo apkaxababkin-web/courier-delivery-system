@@ -1,0 +1,28 @@
+name: Hemotest two routes checks
+on:
+  pull_request:
+    paths:
+      - 'courier-manager/**'
+      - 'server/**'
+      - 'drizzle/**'
+      - '.github/workflows/hemotest-routes-check.yml'
+  push:
+    branches: [feature/hemotest-two-routes-20261115]
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir courier-manager install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm exec vitest run --config vitest.hemotest.config.ts
+      - run: pnpm --dir courier-manager check
+      - run: pnpm --dir courier-manager build

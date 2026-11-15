@@ -615,6 +615,41 @@ export async function setSberbankScheduleForDay(dayOfWeek: number, pointIds: num
   await trpcPost('sberbank.setScheduleForDay', { dayOfWeek, pointIds }, { success: true });
 }
 
+export interface HemotestDailyRoute {
+  number: 1 | 2;
+  courierId: number | null;
+  isFrozen: boolean;
+  pointIds: number[];
+}
+export interface HemotestDailyRoutes {
+  routes: [HemotestDailyRoute, HemotestDailyRoute];
+  unassignedPointIds: number[];
+}
+export async function getHemotestDailyRoutes(date: string): Promise<HemotestDailyRoutes> {
+  return trpcGet('hemotest.dailyRoutes', { date }, {
+    routes: [
+      { number: 1, courierId: null, isFrozen: false, pointIds: [] },
+      { number: 2, courierId: null, isFrozen: false, pointIds: [] },
+    ],
+    unassignedPointIds: [],
+  } as HemotestDailyRoutes);
+}
+export async function unfreezeHemotestDailyRoute(date: string, routeNumber: 1 | 2): Promise<void> {
+  await trpcPost('hemotest.unfreezeDailyRoute', { date, routeNumber }, { success: true });
+}
+export async function saveHemotestDailyRoutes(date: string, routes: [HemotestDailyRoute, HemotestDailyRoute]): Promise<void> {
+  await trpcPost('hemotest.saveDailyRoutes', { date, routes }, { success: true });
+}
+
+/** Persist an existing courier route's point order on the server. */
+export async function reorderHemotestCourierRoute(
+  date: string,
+  courierId: number,
+  pointIds: number[],
+): Promise<void> {
+  await trpcPost('hemotest.reorderCourierRoute', { date, courierId, pointIds }, { success: true });
+}
+
 // ─── Hemotest List Management ───────────────────────────────────────────────
 
 export interface HemotestPickupList {
@@ -628,7 +663,16 @@ export interface HemotestPickupList {
 
 export interface HemotestListWithItems {
   list: HemotestPickupList;
-  items: HemotestPoint[];
+  items: HemotestRoutePoint[];
+}
+
+export interface HemotestRoutePoint extends HemotestPoint {
+  courierId?: number | null;
+  courierName?: string | null;
+  routeOrder?: number | null;
+  isFrozen?: boolean;
+  isPicked?: boolean;
+  isCancelled?: boolean;
 }
 
 export async function createHemotestPickupList(date: string, name: string, pointIds: number[]): Promise<HemotestPickupList> {
