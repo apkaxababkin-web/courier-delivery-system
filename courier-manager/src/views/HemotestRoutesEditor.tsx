@@ -120,6 +120,7 @@ export default function HemotestRoutesEditor({ date, points, refreshKey }: {
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           if (dragged !== null && dragged !== id) move(dragged, source, index);
           setDragged(null);
         }}
