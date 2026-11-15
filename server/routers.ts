@@ -914,6 +914,17 @@ export const appRouter = router({
       .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
       .query(async ({ input }) => db.getHemotestDailyRoutes(input.date)),
 
+    unfreezeDailyRoute: managerProcedure
+      .input(z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        routeNumber: z.union([z.literal(1), z.literal(2)]),
+      }))
+      .mutation(async ({ input }) => {
+        await db.unfreezeHemotestDailyRoute(input.date, input.routeNumber);
+        broadcastLive("hemotest_changed", { date: input.date });
+        return { success: true };
+      }),
+
     saveDailyRoutes: managerProcedure
       .input(z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
