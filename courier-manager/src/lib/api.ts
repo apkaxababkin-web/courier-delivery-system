@@ -634,6 +634,9 @@ export async function getHemotestDailyRoutes(date: string): Promise<HemotestDail
     unassignedPointIds: [],
   } as HemotestDailyRoutes);
 }
+export async function unfreezeHemotestDailyRoute(date: string, routeNumber: 1 | 2): Promise<void> {
+  await trpcPost('hemotest.unfreezeDailyRoute', { date, routeNumber }, { success: true });
+}
 export async function saveHemotestDailyRoutes(date: string, routes: [HemotestDailyRoute, HemotestDailyRoute]): Promise<void> {
   await trpcPost('hemotest.saveDailyRoutes', { date, routes }, { success: true });
 }
