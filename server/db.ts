@@ -1803,7 +1803,7 @@ export async function reorderHemotestCourierRoute(
   courierId: number,
   pointIds: number[],
 ): Promise<void> {
-  const connection = await getDb();
+  const connection = (await getDb()) as PostgresJsDatabase<typeof import('../drizzle/schema')> | null;
   if (!connection) throw new Error("Database not available");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid route date");
   if (new Set(pointIds).size !== pointIds.length) throw new Error("Duplicate route points");
