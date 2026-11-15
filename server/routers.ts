@@ -910,6 +910,19 @@ export const appRouter = router({
 
   // Hemotest pickup points
   hemotest: router({
+    // Manager-only mutation. Existing pickup completion flags remain untouched.
+    reorderCourierRoute: managerProcedure
+      .input(z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        courierId: z.number().int().positive(),
+        pointIds: z.array(z.number().int().positive()),
+      }))
+      .mutation(async ({ input }) => {
+        await db.reorderHemotestCourierRoute(input.date, input.courierId, input.pointIds);
+        broadcastLive("hemotest_changed", { courierId: input.courierId });
+        return { success: true };
+      }),
+
     // Manager endpoints
     points: publicProcedure
       .query(async () => {
