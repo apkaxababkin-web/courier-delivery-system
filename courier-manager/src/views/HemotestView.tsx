@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, GripVertical, ListMinus, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as api from '../lib/api';
+import HemotestRoutesEditor from './HemotestRoutesEditor';
 import { formatLocalDate } from '../lib/local-time';
 
 const POINT_ORDER_STORAGE_KEY = 'courier-manager:hemotest-point-order';
@@ -60,7 +61,7 @@ function moveId(order: number[], id: number, targetId: number) {
 export default function HemotestView({ archiveDate }: { archiveDate?: string }) {
   const [points, setPoints] = useState<HemotestPointRow[]>([]);
   const [routePoints, setRoutePoints] = useState<api.HemotestRoutePoint[]>([]);
-  const [routeBusy, setRouteBusy] = useState(false);
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0);
   const [pointOrderIds, setPointOrderIds] = useState<number[]>(() => readNumberArray(POINT_ORDER_STORAGE_KEY));
   const [selectedPoints, setSelectedPoints] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState(archiveDate || new Date().toISOString().split('T')[0]);
@@ -276,6 +277,8 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
       setFeedback({ type: 'success', text: `Точки сохранены (${orderedSelectedPointIds.length}).` });
       setSelectedPoints([]);
       setShowListForm(false);
+      await loadPoints();
+      setRouteRefreshKey((value) => value + 1);
     } catch (error) {
       console.error('Error creating list:', error);
       const message = error instanceof Error && error.message ? error.message : 'Неизвестная ошибка';
@@ -318,40 +321,6 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
       setLoading(false);
     }
   };
-
-  const moveRoutePoint = async (courierId: number, pointId: number, direction: -1 | 1) => {
-    const route = routePoints
-      .filter((point) => point.courierId === courierId)
-      .sort((a, b) => (a.routeOrder ?? 999999) - (b.routeOrder ?? 999999) || a.id - b.id);
-    const index = route.findIndex((point) => point.id === pointId);
-    const nextIndex = index + direction;
-    if (index < 0 || nextIndex < 0 || nextIndex >= route.length) return;
-    if (route.some((point) => point.isFrozen)) {
-      setFeedback({ type: 'error', text: 'Маршрут заморожен. Изменение порядка запрещено.' });
-      return;
-    }
-    const reordered = [...route];
-    [reordered[index], reordered[nextIndex]] = [reordered[nextIndex], reordered[index]];
-    try {
-      setRouteBusy(true);
-      await api.reorderHemotestCourierRoute(selectedDate, courierId, reordered.map((point) => point.id));
-      await loadPoints();
-      setFeedback({ type: 'success', text: 'Порядок маршрута сохранён на сервере.' });
-    } catch (error) {
-      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Не удалось сохранить маршрут' });
-    } finally {
-      setRouteBusy(false);
-    }
-  };
-
-  const courierRoutes = Array.from(
-    new Set(routePoints.map((point) => point.courierId).filter((id): id is number => id != null))
-  ).map((courierId) => ({
-    courierId,
-    courierName: routePoints.find((point) => point.courierId === courierId)?.courierName || `Курьер №${courierId}`,
-    points: routePoints.filter((point) => point.courierId === courierId)
-      .sort((a, b) => (a.routeOrder ?? 999999) - (b.routeOrder ?? 999999) || a.id - b.id),
-  }));
 
   const handleDropPoint = (targetPointId: number) => {
     if (!draggedPointId || draggedPointId === targetPointId) {
@@ -525,36 +494,7 @@ export default function HemotestView({ archiveDate }: { archiveDate?: string }) 
           document.body
         )}
 
-      {courierRoutes.length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-2 text-base font-semibold text-slate-950">Маршруты Гемотест на {selectedDate}</h3>
-          <p className="mb-4 text-xs text-slate-500">Порядок сохраняется на сервере. Замороженные маршруты менять нельзя.</p>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {courierRoutes.map((route) => (
-              <div key={route.courierId} className="rounded-xl border border-slate-200 p-3">
-                <div className="mb-3 text-sm font-semibold text-slate-900">{route.courierName} · {route.points.length} точек</div>
-                <div className="divide-y divide-slate-100">
-                  {route.points.map((point, index) => (
-                    <div key={point.id} className="flex items-center gap-2 py-2 text-sm">
-                      <span className="w-6 shrink-0 text-slate-400">{index + 1}.</span>
-                      <span className="min-w-0 flex-1 truncate" title={point.address}>{point.name}</span>
-                      {point.isFrozen && <span className="text-xs text-amber-700">Заморожено</span>}
-                      <button type="button" aria-label={`Поднять ${point.name}`} title="Выше"
-                        disabled={routeBusy || index === 0 || route.points.some((item) => item.isFrozen)}
-                        onClick={() => void moveRoutePoint(route.courierId, point.id, -1)}
-                        className="rounded border border-slate-200 px-2 py-1 disabled:opacity-30">↑</button>
-                      <button type="button" aria-label={`Опустить ${point.name}`} title="Ниже"
-                        disabled={routeBusy || index === route.points.length - 1 || route.points.some((item) => item.isFrozen)}
-                        onClick={() => void moveRoutePoint(route.courierId, point.id, 1)}
-                        className="rounded border border-slate-200 px-2 py-1 disabled:opacity-30">↓</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <HemotestRoutesEditor date={selectedDate} points={routePoints} refreshKey={routeRefreshKey} />
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
