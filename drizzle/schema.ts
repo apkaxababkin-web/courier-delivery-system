@@ -265,10 +265,23 @@ export const hemotestPickups = pgTable("hemotestPickups", {
   isCancelled: boolean("isCancelled").notNull().default(false),
   cancelledAt: timestamp("cancelledAt"),
   routeOrder: integer("routeOrder"),
+  routeNumber: integer("routeNumber"),
   isFrozen: boolean("isFrozen").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
+
+/** One courier per numbered route, independently of point assignment. */
+export const hemotestDailyRoutes = pgTable("hemotestDailyRoutes", {
+  id: serial("id").primaryKey(),
+  date: varchar("date", { length: 10 }).notNull(),
+  routeNumber: integer("routeNumber").notNull(),
+  courierId: integer("courierId"),
+  isFrozen: boolean("isFrozen").notNull().default(false),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  dateRouteUnique: uniqueIndex("hemotestDailyRoutes_date_route_unique").on(table.date, table.routeNumber),
+}));
 
 export type HemotestPickup = typeof hemotestPickups.$inferSelect;
 export type InsertHemotestPickup = typeof hemotestPickups.$inferInsert;
