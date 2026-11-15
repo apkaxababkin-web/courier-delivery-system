@@ -615,6 +615,29 @@ export async function setSberbankScheduleForDay(dayOfWeek: number, pointIds: num
   await trpcPost('sberbank.setScheduleForDay', { dayOfWeek, pointIds }, { success: true });
 }
 
+export interface HemotestDailyRoute {
+  number: 1 | 2;
+  courierId: number | null;
+  isFrozen: boolean;
+  pointIds: number[];
+}
+export interface HemotestDailyRoutes {
+  routes: [HemotestDailyRoute, HemotestDailyRoute];
+  unassignedPointIds: number[];
+}
+export async function getHemotestDailyRoutes(date: string): Promise<HemotestDailyRoutes> {
+  return trpcGet('hemotest.dailyRoutes', { date }, {
+    routes: [
+      { number: 1, courierId: null, isFrozen: false, pointIds: [] },
+      { number: 2, courierId: null, isFrozen: false, pointIds: [] },
+    ],
+    unassignedPointIds: [],
+  } as HemotestDailyRoutes);
+}
+export async function saveHemotestDailyRoutes(date: string, routes: [HemotestDailyRoute, HemotestDailyRoute]): Promise<void> {
+  await trpcPost('hemotest.saveDailyRoutes', { date, routes }, { success: true });
+}
+
 /** Persist an existing courier route's point order on the server. */
 export async function reorderHemotestCourierRoute(
   date: string,
