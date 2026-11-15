@@ -1665,6 +1665,46 @@ export async function cancelHemotestPickup(
   }
 }
 
+/**
+ * Reorder an existing courier route without resetting pickup completion state.
+ * Rejects frozen points and any attempt to move a point owned by another courier.
+ */
+export async function reorderHemotestCourierRoute(
+  date: string,
+  courierId: number,
+  pointIds: number[],
+): Promise<void> {
+  const connection = await getDb();
+  if (!connection) throw new Error("Database not available");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid route date");
+  if (new Set(pointIds).size !== pointIds.length) throw new Error("Duplicate route points");
+
+  await connection.transaction(async (tx) => {
+    const rows = await tx.select().from(hemotestPickups)
+      .where(and(eq(hemotestPickups.date, date), eq(hemotestPickups.courierId, courierId)))
+      .for("update");
+
+    const currentIds = rows.map((row) => row.pointId);
+    if (pointIds.length !== currentIds.length ||
+        pointIds.some((id) => !currentIds.includes(id))) {
+      throw new Error("Route changed; refresh the page before reordering");
+    }
+    if (rows.some((row) => row.isFrozen)) {
+      throw new Error("Frozen route cannot be reordered");
+    }
+
+    for (let index = 0; index < pointIds.length; index++) {
+      await tx.update(hemotestPickups)
+        .set({ routeOrder: index + 1, updatedAt: new Date() })
+        .where(and(
+          eq(hemotestPickups.date, date),
+          eq(hemotestPickups.pointId, pointIds[index]),
+          eq(hemotestPickups.courierId, courierId),
+        ));
+    }
+  });
+}
+
 export async function assignHemotestPickupCourier(
   pointId: number,
   targetDate: Date,
