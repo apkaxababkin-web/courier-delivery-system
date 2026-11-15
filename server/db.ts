@@ -1675,7 +1675,7 @@ export async function cancelHemotestPickup(
  */
 /** Manager unlock, separate from normal frozen-route save protection. */
 export async function unfreezeHemotestDailyRoute(date: string, routeNumber: 1 | 2): Promise<void> {
-  const connection = await getDb();
+  const connection = (await getDb()) as PostgresJsDatabase<typeof import('../drizzle/schema')> | null;
   if (!connection) throw new Error("Database not available");
   await connection.transaction(async (tx) => {
     await tx.update(hemotestDailyRoutes).set({ isFrozen: false, updatedAt: new Date() })
@@ -1686,7 +1686,7 @@ export async function unfreezeHemotestDailyRoute(date: string, routeNumber: 1 | 
 }
 
 export async function getHemotestDailyRoutes(date: string) {
-  const connection = await getDb();
+  const connection = (await getDb()) as PostgresJsDatabase<typeof import('../drizzle/schema')> | null;
   if (!connection) throw new Error("Database not available");
   const routes = await connection.select().from(hemotestDailyRoutes)
     .where(eq(hemotestDailyRoutes.date, date));
@@ -1720,7 +1720,7 @@ export async function saveHemotestDailyRoutes(
   date: string,
   routes: Array<{ number: 1 | 2; courierId: number | null; pointIds: number[]; isFrozen: boolean }>,
 ): Promise<void> {
-  const connection = await getDb();
+  const connection = (await getDb()) as PostgresJsDatabase<typeof import('../drizzle/schema')> | null;
   if (!connection) throw new Error("Database not available");
   validateHemotestRoutes(date, routes);
   const allIds = routes.flatMap((route) => route.pointIds);
