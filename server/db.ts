@@ -1672,6 +1672,18 @@ export async function cancelHemotestPickup(
  * Reorder an existing courier route without resetting pickup completion state.
  * Rejects frozen points and any attempt to move a point owned by another courier.
  */
+/** Manager unlock, separate from normal frozen-route save protection. */
+export async function unfreezeHemotestDailyRoute(date: string, routeNumber: 1 | 2): Promise<void> {
+  const connection = await getDb();
+  if (!connection) throw new Error("Database not available");
+  await connection.transaction(async (tx) => {
+    await tx.update(hemotestDailyRoutes).set({ isFrozen: false, updatedAt: new Date() })
+      .where(and(eq(hemotestDailyRoutes.date, date), eq(hemotestDailyRoutes.routeNumber, routeNumber)));
+    await tx.update(hemotestPickups).set({ isFrozen: false, updatedAt: new Date() })
+      .where(and(eq(hemotestPickups.date, date), eq(hemotestPickups.routeNumber, routeNumber)));
+  });
+}
+
 export async function getHemotestDailyRoutes(date: string) {
   const connection = await getDb();
   if (!connection) throw new Error("Database not available");
