@@ -12,8 +12,16 @@ const __dirname = path.dirname(__filename);
 
 const envPath = path.resolve(process.cwd(), ".env");
 
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, "utf8");
+let envContent = null;
+try {
+  envContent = fs.readFileSync(envPath, "utf8");
+} catch (error) {
+  if (!["ENOENT", "EACCES", "EPERM"].includes(error.code)) {
+    throw error;
+  }
+}
+
+if (envContent !== null) {
   const lines = envContent.split("\n");
 
   lines.forEach((line) => {

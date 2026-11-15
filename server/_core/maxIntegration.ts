@@ -1,3 +1,4 @@
+import { queueMaxNotification, startMaxDelayedNotificationWorker, processMaxDecisionDeliveries, startMaxDecisionDeliveryWorker } from './maxDelayedNotifications';
 import type { Express, Request, Response } from 'express';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -387,7 +388,10 @@ export function registerMaxIntegrationRoutes(app:Express){
     await conn.execute(sql`UPDATE max_order_drafts SET max_message_id=${mid},updated_at=now() WHERE id=${id}`);
    }catch(e){console.error('MAX send pending',e); await conn.execute(sql`UPDATE max_order_drafts SET status='failed',updated_at=now() WHERE id=${id} AND status='pending'`); return void res.status(502).json({error:'MAX не принял сообщение. Заявка не отправлена менеджеру; обратитесь в офис.'});}
    try{
-    await send(ctx.chatId,'⏳ Ваша заявка отправлена менеджеру на согласование.');
+    await send(
+       ctx.chatId,
+       `⏳ Заявка отправлена менеджеру на согласование.\n\n${await bodyText(d, ctx.clientId)}\n\nПрисвоен номер заявки: №${id}`
+     );
    }catch(e){
     console.error('MAX client acknowledgement failed',e);
    }
@@ -581,13 +585,25 @@ export function registerMaxIntegrationRoutes(app:Express){
     `));
     if(updated.length)await send(origin,'✅ Время заявки: в течение дня.');
    }else if(action==='reject'){
-       const updated=rows(await conn.execute(sql`UPDATE max_order_drafts SET status='rejected',reviewed_by=${manager},reviewed_at=now(),updated_at=now() WHERE id=${id} AND status='pending' RETURNING id`));
+       const updated=await conn.transaction(async(tx:any)=>{
+        const result=rows(await tx.execute(sql`UPDATE max_order_drafts SET status='rejected',reviewed_by=${manager},reviewed_at=now(),updated_at=now() WHERE id=${id} AND status='pending' RETURNING id`));
+        if(result.length){
+         await tx.execute(sql`
+          INSERT INTO max_decision_deliveries(draft_id,event_type,destination,chat_id,message)
+           SELECT ${id},'rejected',recipient.destination,recipient.chat_id,${'❌ Заявка №'+id+' отклонена.'}
+           FROM (VALUES ('client',${String(item.chat_id)}),('manager',${approvalChatId}))
+             AS recipient(destination,chat_id)
+           WHERE recipient.chat_id IS NOT NULL AND recipient.chat_id <> ''
+             AND (recipient.destination='client' OR recipient.chat_id <> ${String(item.chat_id)})
+           ON CONFLICT (draft_id,event_type,destination) DO NOTHING
+         `);
+        }
+        return result;
+       });
        if(updated.length){
-     await send(origin,`❌ Заявка отклонена менеджером.`);
-     try{
-      await send(String(item.chat_id),`❌ Ваша заявка отклонена менеджером.`);
-     }catch(e){console.error('MAX client rejection notification failed',e)}
-    }
+        console.log('MAX rejection and notification queued atomically',id);
+         void processMaxDecisionDeliveries((chatId,message)=>send(chatId,message));
+       }
       }else{
        let real:number|null=null;
        try {
@@ -599,10 +615,20 @@ export function registerMaxIntegrationRoutes(app:Express){
          const newId=await createActual(tx,locked.request_data,Number(item.client_id),String(item.max_user_id),managerId);
          await tx.execute(sql`INSERT INTO "requestActivity"("requestId","actorType","actorId","action","note") VALUES (${newId},'manager',${managerId},'created',${'MAX draft #'+id+' approved by MAX user '+manager})`);
          await tx.execute(sql`UPDATE max_order_drafts SET status='approved',request_id=${newId},reviewed_by=${manager},reviewed_at=now(),updated_at=now() WHERE id=${id}`);
+         await tx.execute(sql`
+          INSERT INTO max_decision_deliveries(draft_id,event_type,destination,chat_id,message)
+           SELECT ${id},'approved',recipient.destination,recipient.chat_id,${'✅ Заявка №'+id+' принята в работу.'}
+           FROM (VALUES ('client',${String(item.chat_id)}),('manager',${approvalChatId}))
+             AS recipient(destination,chat_id)
+           WHERE recipient.chat_id IS NOT NULL AND recipient.chat_id <> ''
+             AND (recipient.destination='client' OR recipient.chat_id <> ${String(item.chat_id)})
+           ON CONFLICT (draft_id,event_type,destination) DO NOTHING
+         `);
          return newId;
         });
        }catch(e){console.error('MAX atomic approve failed',e);try{await send(origin,`⚠️ Не удалось согласовать заявку. Обратитесь к менеджеру.`)}catch{} }
        if(real){
+        void processMaxDecisionDeliveries((chatId,message)=>send(chatId,message));
         let taskId:number|null=null;
         try{taskId=await syncTaskForRequestId(real)}
         catch(e){console.error('MAX task sync',e)}
@@ -613,10 +639,7 @@ export function registerMaxIntegrationRoutes(app:Express){
         }
         broadcastLive('requests_changed',{requestId:real});
         broadcastLive('tasks_changed',{requestId:real});
-        try{
-         await send(origin,`✅ Заявка согласована и принята в работу.`);
-         await send(String(item.chat_id),`✅ Ваша заявка согласована и принята в работу.`);
-        }catch(e){console.error('MAX confirmation send failed',e)}
+
        }
       }
      }
@@ -627,37 +650,13 @@ export function registerMaxIntegrationRoutes(app:Express){
  });
 }
 
-// Follow-up notifications for courier status changes. Safe to retry on MAX errors.
-let statusTimer:ReturnType<typeof setInterval>|null=null;
-let statusBusy=false;
-export function startMaxOrderStatusNotifier(){
- if(statusTimer)return;
- statusTimer=setInterval(async()=>{
-  if(statusBusy||!token())return;
-  statusBusy=true;
-  try{
-   const conn=await db.getDb();if(!conn)return;
-   const list=rows(await conn.execute(sql`
-     SELECT d.id,d.last_notified_status,r.status,c.chat_id
-     FROM max_order_drafts d
-     JOIN requests r ON r.id=d.request_id
-     JOIN max_client_chats c ON c.id=d.chat_binding_id
-     WHERE d.status='approved' AND d.request_id IS NOT NULL
-       AND r.status <> 'pending'::request_status
-       AND d.last_notified_status IS DISTINCT FROM r.status::text
-     ORDER BY d.id LIMIT 30`));
-   for(const item of list){
-    const status=String(item.status);
-    const title:Record<string,string>={assigned:'назначена курьеру',in_progress:'в работе',completed:'выполнена',cancelled:'отменена'};
-    if(!title[status])continue;
-    try{
-     await send(String(item.chat_id),`📦 Заявка ${title[status]}.`);
-     await conn.execute(sql`UPDATE max_order_drafts SET last_notified_status=${status},updated_at=now() WHERE id=${Number(item.id)} AND last_notified_status IS NOT DISTINCT FROM ${item.last_notified_status||null}`);
-    }catch(e){console.error('MAX status notification',e)}
-   }
-  }catch(e){console.error('MAX status notifier',e)}finally{statusBusy=false}
- },60000);
- if (statusTimer && typeof statusTimer === 'object' && 'unref' in statusTimer) {
-  (statusTimer as NodeJS.Timeout).unref();
- }
+// All client status notifications are delivered through the durable queue.
+export function startMaxOrderStatusNotifier() {
+  if (!token()) return;
+  startMaxDelayedNotificationWorker(async (chatId, message) => {
+    await send(chatId, message);
+  });
+  startMaxDecisionDeliveryWorker(async (chatId, message) => {
+    await send(chatId, message);
+  });
 }

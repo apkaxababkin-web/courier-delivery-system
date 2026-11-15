@@ -44,6 +44,7 @@ import { buildNewRequestPush, buildAssignedRequestPush } from "./requestPushPres
 import { syncTaskForRequest as syncCanonicalTaskForRequest } from "./requestTaskSync";
 import { sendNewRequestPush } from "./requestCreationPush";
 import { quoteCompletedRequest } from "./requestQuote";
+import { queueMaxNotificationByRequest } from "./maxDelayedNotifications";
 
 const REQUEST_ATTACHMENTS_DIR = process.env.REQUEST_ATTACHMENTS_DIR || path.join(process.cwd(), "uploads", "request-attachments");
 const MAX_REQUEST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -1960,6 +1961,15 @@ export function registerCompatRoutes(app: Express) {
         Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
         0;
 
+      if (requestId && task.status !== status &&
+          (status === "completed" || status === "cancelled")) {
+        try {
+          await queueMaxNotificationByRequest(requestId, status);
+        } catch (error) {
+          console.error("[MAX] compat status notification queue failed", error);
+        }
+      }
+
       if (requestId && task.status !== status) {
         const managerId =
           Number((res.locals.manager as { managerId?: number } | undefined)?.managerId || 0) || null;
@@ -2276,6 +2286,15 @@ export function registerCompatRoutes(app: Express) {
         task.sourceRequestId ??
         Number(task.comments?.match(/\[request:(\d+)\]/)?.[1] || 0) ??
         0;
+
+      if (requestId && task.status !== status &&
+          (status === "completed" || status === "cancelled")) {
+        try {
+          await queueMaxNotificationByRequest(requestId, status);
+        } catch (error) {
+          console.error("[MAX] compat status notification queue failed", error);
+        }
+      }
 
       if (requestId && task.status !== status) {
         const managerId =

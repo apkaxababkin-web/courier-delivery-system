@@ -1,3 +1,4 @@
+import { queueMaxNotificationByRequest } from "./_core/maxDelayedNotifications";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
@@ -281,14 +282,27 @@ export const appRouter = router({
       }),
 
     registerPushToken: publicProcedure
-      .input(z.object({ token: z.string(), pushToken: z.string() }))
+      .input(z.object({
+        token: z.string(),
+        pushToken: z.string(),
+        expectedPushToken: z.string().optional(),
+      }))
       .mutation(async ({ input }) => {
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
-        // Store push token for courier (best-effort, no-op if DB unavailable)
-        try {
-          await db.updateCourier(payload.courierId, { pushToken: input.pushToken });
-        } catch { /* ignore */ }
+        if (input.pushToken !== "" && !isExpoPushToken(input.pushToken)) {
+          throw new Error("Некорректный Expo push-токен");
+        }
+        // Never acknowledge registration if the database write fails.
+        if (input.pushToken === "" && input.expectedPushToken) {
+          const courier = await db.getCourierById(payload.courierId);
+          if (courier?.pushToken !== input.expectedPushToken) {
+            return { success: true };
+          }
+        }
+        await db.updateCourier(payload.courierId, {
+          pushToken: input.pushToken || null,
+        });
         return { success: true };
       }),
   }),
@@ -494,6 +508,23 @@ export const appRouter = router({
         }
 
         await db.updateTaskStatus(input.taskId, input.status, extra);
+        await updateRequestStatusFromTask(input.taskId, input.status, courierId ?? undefined);
+
+        if (task.status !== input.status &&
+            (input.status === "completed" || input.status === "cancelled")) {
+          const requestMarker = task.comments?.match(/\[request:(\d+)\]/)?.[1];
+          const requestId =
+            task.requestId ?? task.sourceRequestId ??
+            (requestMarker ? Number(requestMarker) : undefined);
+          if (requestId) {
+            try {
+              await queueMaxNotificationByRequest(requestId, input.status);
+            } catch (error) {
+              console.error("MAX courier status notification queue failed", error);
+            }
+          }
+        }
+
         await db.addTaskStatusHistory({
           taskId: input.taskId,
           status: input.status,
@@ -587,8 +618,29 @@ export const appRouter = router({
         const task = await db.getTaskById(input.taskId);
         if (!task) throw new Error("Задание не найдено");
 
+        const placesChanged = Number(task.placesCount ?? 1) !== input.placesCount;
+
         await db.updateTaskStatus(input.taskId, task.status, { placesCount: input.placesCount });
         await updateRequestStatusFromTask(input.taskId, task.status, task.courierId, input.placesCount);
+
+        if (placesChanged) {
+          const requestMarker = task.comments?.match(/\[request:(\d+)\]/)?.[1];
+          const linkedRequestId =
+            task.requestId ?? task.sourceRequestId ??
+            (requestMarker ? Number(requestMarker) : undefined);
+          if (linkedRequestId) {
+            try {
+              await queueMaxNotificationByRequest(
+                linkedRequestId,
+                "places",
+                input.placesCount
+              );
+            } catch (error) {
+              console.error("MAX places notification queue failed", error);
+            }
+          }
+        }
+
         broadcastLive("tasks_changed", { taskId: input.taskId });
         broadcastLive("requests_changed", { taskId: input.taskId });
         return { success: true };
@@ -1212,7 +1264,7 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
         await assertCourierAccess(payload.courierId, "mails");
-        return await db.getCourierVisibleMails();
+        return await db.getCourierVisibleMails(payload.courierId);
       }),
 
     getByWaybill: publicProcedure
@@ -1224,7 +1276,7 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Invalid token");
         await assertCourierAccess(payload.courierId, "mails");
-        return await db.getMailByWaybill(input.waybillNumber);
+        return await db.getCourierMailByWaybill(input.waybillNumber, payload.courierId);
       }),
 
     markDelivered: publicProcedure
@@ -2134,6 +2186,15 @@ export const appRouter = router({
         }
 
         await syncTaskForRequestId(input.id);
+
+        if (before?.status !== input.status &&
+            (input.status === "completed" || input.status === "cancelled")) {
+          try {
+            await queueMaxNotificationByRequest(input.id, input.status);
+          } catch (error) {
+            console.error("MAX manager status notification queue failed", error);
+          }
+        }
         broadcastLive("requests_changed", { requestId: input.id });
         broadcastLive("tasks_changed", { requestId: input.id });
         return { success: true };
