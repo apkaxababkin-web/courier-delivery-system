@@ -23,6 +23,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir courier-manager install --frozen-lockfile
       - run: pnpm check
-      - run: pnpm exec vitest run tests/hemotestRoutes.test.ts
+      - run: pnpm exec vitest run --config vitest.hemotest.config.ts
       - run: pnpm --dir courier-manager check
       - run: pnpm --dir courier-manager build
