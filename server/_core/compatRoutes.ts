@@ -1,7 +1,7 @@
 import { requireManagerAuth } from "./managerSecurity";
 import express, { type Express, type Request, type Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
-import { isExpoPushToken, sendExpoPush } from "./expoPush";
+
 import { sendPushToCouriers } from "./pushDispatcher";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -3508,16 +3508,16 @@ export function registerCompatRoutes(app: Express) {
 
           console.log("[PUSH] compat request", id);
           console.log("[PUSH] compat courier", courier?.id);
-          console.log("[PUSH] compat token exists", !!courier?.pushToken);
+          console.log("[PUSH] compat courier found", !!courier);
 
-          if (courier?.pushToken && isScheduledForToday(request.scheduledAt)) {
+          if (courier && isScheduledForToday(request.scheduledAt)) {
             const address =
               request.deliveryAddress ||
               request.recipientAddress ||
               request.senderAddress ||
               "Адрес не указан";
 
-            console.log("[PUSH] compat sending to", courier.pushToken.slice(0, 25));
+            console.log("[PUSH] compat dispatching to courier", courier.id);
 
             const push = buildAssignedRequestPush({
               id: request.id,
@@ -3536,8 +3536,8 @@ export function registerCompatRoutes(app: Express) {
               packageDescription: request.packageDescription,
             });
 
-            await sendExpoPush(
-              courier.pushToken,
+            const deliveryResults = await sendPushToCouriers(
+              [courier.id],
               push.title,
               push.body,
               {
@@ -3547,16 +3547,20 @@ export function registerCompatRoutes(app: Express) {
               },
             );
 
-            if (request.scheduledAt) {
+            const assignmentPushAccepted = deliveryResults.some(
+              result => result.accepted,
+            );
+
+            if (request.scheduledAt && assignmentPushAccepted) {
               await conn
                 .update(requests)
                 .set({ scheduledPushSentAt: new Date() })
                 .where(eq(requests.id, request.id));
             }
 
-            console.log("[PUSH] compat sent successfully");
+            console.log("[PUSH] compat accepted", assignmentPushAccepted);
           } else {
-            console.log("[PUSH] compat skipped no token");
+            console.log("[PUSH] compat skipped", { hasCourier: !!courier, scheduledForToday: isScheduledForToday(request.scheduledAt) });
           }
         } catch (e) {
           console.error("[PUSH] compat failed", e);
