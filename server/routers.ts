@@ -6,6 +6,7 @@ import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { syncTaskForRequestId, updateRequestStatusFromTask } from "./_core/requestTaskSync";
 import { isExpoPushToken, sendExpoPush } from "./_core/expoPush";
+import { sendPushToCouriers } from "./_core/pushDispatcher";
 import {
   registerCourierPushDevice,
   unregisterCourierPushDevice,
@@ -37,19 +38,28 @@ function getBusinessDateKey(value: Date = new Date()) {
 
 
 
-async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
+async function sendPushToAllCouriers(
+  title: string,
+  body: string,
+  data?: Record<string, unknown>,
+) {
   try {
     const couriers = await db.getAllCouriers();
-    const targets = couriers.filter((courier) => isExpoPushToken(courier.pushToken));
-
-    console.log("[PUSH_ALL] targets", targets.length, title);
-
-    const results = await Promise.allSettled(
-      targets.map((courier) => sendExpoPush(courier.pushToken, title, body, data)),
+    const results = await sendPushToCouriers(
+      couriers.map(c => c.id),
+      title,
+      body,
+      data,
     );
 
-    const failed = results.filter((result) => result.status === "rejected").length;
-    if (failed > 0) console.warn("[PUSH_ALL] failed", failed, "of", targets.length);
+    const failed = results.reduce(
+      (total, result) => total + result.failedCount,
+      0,
+    );
+
+    if (failed > 0) {
+      console.warn("[PUSH_ALL] failed targets", failed);
+    }
   } catch (error) {
     console.error("[PUSH_ALL] failed", error);
   }

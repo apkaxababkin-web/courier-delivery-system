@@ -1,5 +1,5 @@
 import * as db from "../db";
-import { isExpoPushToken, sendExpoPush } from "./expoPush";
+import { sendPushToCouriers } from "./pushDispatcher";
 import { buildNewRequestPush } from "./requestPushPresentation";
 
 const timeZone = "Asia/Irkutsk";
@@ -33,28 +33,31 @@ export async function sendNewRequestPush(requestId: number, taskId: number | nul
 
   const push = buildNewRequestPush(request);
   const couriers = await db.getAllCouriers();
-  const targets = couriers.filter(c => isExpoPushToken(c.pushToken));
-
-  const results = await Promise.allSettled(
-    targets.map(c => sendExpoPush(c.pushToken, push.title, push.body, {
+  const results = await sendPushToCouriers(
+    couriers.map(c => c.id),
+    push.title,
+    push.body,
+    {
       type: "new_request_available",
       requestId,
       taskId,
       requestType: request.requestType,
-    }))
+    },
   );
 
-  const acceptedIndexes = results
-    .map((result, index) =>
-      result.status === "fulfilled" && result.value === true ? index : -1
-    )
-    .filter(index => index >= 0);
-
-  const accepted = acceptedIndexes.length;
-  const failed = targets.length - accepted;
+  const accepted = results.reduce(
+    (total, result) => total + result.acceptedCount, 0,
+  );
+  const failed = results.reduce(
+    (total, result) => total + result.failedCount, 0,
+  );
 
   const assignedCourierAccepted = request.courierId
-    ? acceptedIndexes.some(index => targets[index]?.id === request.courierId)
+    ? results.some(
+        result =>
+          result.courierId === request.courierId &&
+          result.accepted,
+      )
     : accepted > 0;
 
   console.log("[REQUEST_PUSH]", requestId, "accepted", accepted, "failed", failed);
