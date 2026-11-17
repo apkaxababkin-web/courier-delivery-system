@@ -367,9 +367,33 @@ export function registerCompatRoutes(app: Express) {
   app.get("/api/trpc/tasks.all", async (req, res) => {
     try {
       const courierId = await courierIdFromReq(req);
-      if (courierId) { res.json(trpcBatchJson((await courierSnapshot(courierId)).tasks)); return; }
-      const [active, completed] = await Promise.all([db.getAllTasksWithCourier(), db.getCompletedTasksWithCourier()]);
-      res.json(trpcBatchJson([...active, ...completed]));
+      const input = inputFrom(req);
+      const dateInput = typeof input.date === "string" ? input.date : null;
+      const day = dateInput && /^\\d{4}-\\d{2}-\\d{2}$/.test(dateInput) ? dateInput : null;
+      const [active, completed] = await Promise.all([
+        db.getAllTasksWithCourier(),
+        db.getCompletedTasksWithCourier(),
+      ]);
+      const visible = [...active, ...completed].filter(
+        (task) => !courierId || !task.courierId || task.courierId === courierId,
+      );
+      // Calendar days are interpreted in Ulan-Ude (UTC+08), not device time.
+      // Preserve the unfiltered response for existing clients without a date.
+      const rows = day
+        ? visible.filter((task) => {
+            const candidate = task.scheduledAt ?? (
+              task.status === "completed" || task.status === "cancelled"
+                ? task.completedAt
+                : null
+            ) ?? task.createdAt;
+            if (!candidate) return false;
+            const instant = new Date(candidate);
+            if (Number.isNaN(instant.getTime())) return false;
+            return new Date(instant.getTime() + 8 * 60 * 60 * 1000)
+              .toISOString().slice(0, 10) === day;
+          })
+        : visible;
+      res.json(trpcBatchJson(rows));
     } catch (error) { sendError(res, error, "Failed to load tasks"); }
   });
 
