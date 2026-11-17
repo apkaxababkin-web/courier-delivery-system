@@ -60,10 +60,9 @@ export async function sendPushToCouriers(
       });
     }
 
-    // Legacy Expo fallback is used only when no new device
-    // registration exists for this courier.
+    // Preserve legacy Expo installations when a courier also has
+    // separately registered FCM devices. Deduplicate by token.
     if (
-      registered.length === 0 &&
       isExpoPushToken(courier.pushToken) &&
       courier.pushToken &&
       !seenTokens.has(courier.pushToken)
