@@ -2310,16 +2310,16 @@ export const appRouter = router({
 
             console.log("[PUSH] request", input.id);
             console.log("[PUSH] courier", courier?.id);
-            console.log("[PUSH] token exists", !!courier?.pushToken);
+            console.log("[PUSH] courier found", !!courier);
 
-            if (request && courier?.pushToken && isScheduledForToday(request.scheduledAt)) {
+            if (request && courier && isScheduledForToday(request.scheduledAt)) {
               const address =
                 request.deliveryAddress ||
                 request.recipientAddress ||
                 request.senderAddress ||
                 "Адрес не указан";
 
-              console.log("[PUSH] sending to", courier.pushToken.slice(0, 25));
+              console.log("[PUSH] dispatching to courier", courier.id);
 
               const push = buildAssignedRequestPush({
                 id: request.id,
@@ -2358,12 +2358,12 @@ export const appRouter = router({
                 });
               }
 
-              console.log("[PUSH] sent successfully");
+              console.log("[PUSH] accepted", assignmentPushAccepted);
             } else {
               console.log("[PUSH] skipped", {
                 hasRequest: !!request,
                 hasCourier: !!courier,
-                hasToken: !!courier?.pushToken,
+                scheduledForToday: !!request && isScheduledForToday(request.scheduledAt),
               });
             }
           } catch (e) {

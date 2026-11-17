@@ -29,10 +29,7 @@ export async function registerCourierPushDevice(input: {
     await tx.execute(sql`
       DELETE FROM courier_push_devices
       WHERE push_token = ${input.pushToken}
-         OR (
-           courier_id = ${input.courierId}
-           AND installation_id = ${input.installationId}
-         )
+         OR installation_id = ${input.installationId}
     `);
 
     await tx.execute(sql`

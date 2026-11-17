@@ -30,7 +30,7 @@ ON courier_push_devices(push_token);
 
 CREATE UNIQUE INDEX IF NOT EXISTS
   uq_courier_push_devices_installation
-ON courier_push_devices(courier_id, installation_id);
+ON courier_push_devices(installation_id);
 
 CREATE INDEX IF NOT EXISTS
   idx_courier_push_devices_courier

@@ -2612,7 +2612,7 @@ export const courierPushDevices = pgTable(
       .on(table.pushToken),
 
     uniqueIndex("uq_courier_push_devices_installation")
-      .on(table.courierId, table.installationId),
+      .on(table.installationId),
 
     index("idx_courier_push_devices_courier")
       .on(table.courierId),
