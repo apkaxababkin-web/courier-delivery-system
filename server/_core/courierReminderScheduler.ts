@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { couriers, tasks, type Courier } from "../../drizzle/schema";
 import * as db from "../db";
-import { isExpoPushToken } from "./expoPush";
+import { sendPushToCouriers } from "./pushDispatcher";
 
 type ReminderKind = "soft" | "final";
 
@@ -37,32 +37,6 @@ function localDayRangeUtc(parts = localNowParts()) {
   return { startUtc, endUtc };
 }
 
-async function sendExpoPush(pushToken: string, title: string, body: string, data?: Record<string, unknown>) {
-  if (!isExpoPushToken(pushToken)) return;
-
-  const response = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Accept-Encoding": "gzip, deflate",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      to: pushToken,
-      sound: "default",
-      priority: "high",
-      title,
-      body,
-      data: data ?? {},
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Expo push failed ${response.status}: ${text}`);
-  }
-}
-
 async function getUnfinishedTasksByCourier() {
   const conn = await db.getDb();
   if (!conn) return new Map<number, number>();
@@ -87,7 +61,7 @@ async function getUnfinishedTasksByCourier() {
   return result;
 }
 
-async function activeCouriersWithPushTokens(): Promise<Array<Courier & { pushToken: string }>> {
+async function activeCouriersForReminders(): Promise<Courier[]> {
   const conn = await db.getDb();
   if (!conn) return [];
 
@@ -96,7 +70,7 @@ async function activeCouriersWithPushTokens(): Promise<Array<Courier & { pushTok
     .from(couriers)
     .where(eq(couriers.isActive, true));
 
-  return (rows as Courier[]).filter((courier): courier is Courier & { pushToken: string } => Boolean(courier.pushToken));
+  return rows as Courier[];
 }
 
 async function sendEveningReminders(kind: ReminderKind) {
@@ -104,7 +78,7 @@ async function sendEveningReminders(kind: ReminderKind) {
   const unfinishedByCourier = await getUnfinishedTasksByCourier();
   if (unfinishedByCourier.size === 0) return;
 
-  const courierList = await activeCouriersWithPushTokens();
+  const courierList = await activeCouriersForReminders();
 
   for (const courier of courierList) {
     const unfinishedCount = unfinishedByCourier.get(courier.id) ?? 0;
@@ -119,9 +93,29 @@ async function sendEveningReminders(kind: ReminderKind) {
       : `Напоминание: ${unfinishedCount} заявк. ещё не закрыты. Отметьте выполненные или отменённые.`;
 
     try {
-      await sendExpoPush(courier.pushToken, title, body, { url: "", type: "unfinished_tasks_reminder", count: unfinishedCount });
-      sentReminderKeys.add(reminderKey);
-      console.log(`[CourierReminder] Sent ${kind} reminder to courier ${courier.id}: ${unfinishedCount}`);
+      const results = await sendPushToCouriers(
+        [courier.id],
+        title,
+        body,
+        {
+          url: "",
+          type: "unfinished_tasks_reminder",
+          count: unfinishedCount,
+        },
+      );
+
+      const accepted = results.some(result => result.accepted);
+
+      if (accepted) {
+        sentReminderKeys.add(reminderKey);
+        console.log(
+          `[CourierReminder] Accepted ${kind} reminder for courier ${courier.id}: ${unfinishedCount}`,
+        );
+      } else {
+        console.warn(
+          `[CourierReminder] No accepted ${kind} reminder for courier ${courier.id}; retry remains available`,
+        );
+      }
     } catch (error) {
       console.warn(`[CourierReminder] Failed to send reminder to courier ${courier.id}`, error);
     }
