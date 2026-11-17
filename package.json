@@ -94,6 +94,7 @@
     "expo-video": "~3.0.15",
     "expo-web-browser": "~15.0.10",
     "express": "^4.19.2",
+    "firebase-admin": "^14.5.1",
     "jose": "6.1.0",
     "jsqr": "1.4.0",
     "lucide-react-native": "^1.16.0",
