@@ -6,6 +6,10 @@ import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { syncTaskForRequestId, updateRequestStatusFromTask } from "./_core/requestTaskSync";
 import { isExpoPushToken, sendExpoPush } from "./_core/expoPush";
+import {
+  registerCourierPushDevice,
+  unregisterCourierPushDevice,
+} from "./_core/courierPushDevices";
 import { broadcastLive } from "./_core/liveEvents";
 import { toSafeCourier } from "./_core/courierPublic";
 import { assertCourierAccess } from "./_core/courierAccess";
@@ -279,6 +283,56 @@ export const appRouter = router({
         const payload = await verifyCourierToken(input.token);
         if (!payload) throw new Error("Недействительный токен");
         return (await db.getAllCouriers()).map(toSafeCourier);
+      }),
+
+    registerPushDevice: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        installationId: z.string().min(8).max(128),
+        platform: z.enum(["android", "ios"]),
+        provider: z.enum(["fcm", "expo"]),
+        pushToken: z.string().min(20).max(4096),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid courier token");
+
+        if (input.provider === "fcm" && input.platform !== "android") {
+          throw new Error("FCM registration is currently Android-only");
+        }
+
+        if (input.provider === "expo" && !isExpoPushToken(input.pushToken)) {
+          throw new Error("Invalid Expo push token");
+        }
+
+        if (input.provider === "fcm" && isExpoPushToken(input.pushToken)) {
+          throw new Error("Invalid FCM push token");
+        }
+
+        return registerCourierPushDevice({
+          courierId: payload.courierId,
+          installationId: input.installationId,
+          platform: input.platform,
+          provider: input.provider,
+          pushToken: input.pushToken,
+        });
+      }),
+
+    unregisterPushDevice: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        installationId: z.string().min(8).max(128),
+        pushToken: z.string().min(20).max(4096),
+      }))
+      .mutation(async ({ input }) => {
+        const payload = await verifyCourierToken(input.token);
+        if (!payload) throw new Error("Invalid courier token");
+
+        return unregisterCourierPushDevice({
+          courierId: payload.courierId,
+          installationId: input.installationId,
+          pushToken: input.pushToken,
+        });
       }),
 
     registerPushToken: publicProcedure
