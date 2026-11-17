@@ -2570,3 +2570,67 @@ export const courierAccess = pgTable(
 
 export type CourierAccess = typeof courierAccess.$inferSelect;
 export type InsertCourierAccess = typeof courierAccess.$inferInsert;
+
+// Courier push devices: supports multiple devices per courier.
+// Legacy couriers.pushToken remains available for Expo compatibility.
+export const courierPushDevices = pgTable(
+  "courier_push_devices",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+
+    courierId: integer("courier_id")
+      .notNull()
+      .references(() => couriers.id, { onDelete: "cascade" }),
+
+    installationId: varchar("installation_id", { length: 128 })
+      .notNull(),
+
+    platform: varchar("platform", { length: 16 })
+      .notNull(),
+
+    provider: varchar("provider", { length: 16 })
+      .notNull(),
+
+    pushToken: text("push_token").notNull(),
+
+    isActive: boolean("is_active").default(true).notNull(),
+
+    createdAt: timestamp("created_at")
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull(),
+
+    lastRegisteredAt: timestamp("last_registered_at")
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_courier_push_devices_token")
+      .on(table.pushToken),
+
+    uniqueIndex("uq_courier_push_devices_installation")
+      .on(table.courierId, table.installationId),
+
+    index("idx_courier_push_devices_courier")
+      .on(table.courierId),
+
+    check(
+      "chk_courier_push_devices_platform",
+      sql`${table.platform} IN ('android', 'ios')`,
+    ),
+
+    check(
+      "chk_courier_push_devices_provider",
+      sql`${table.provider} IN ('fcm', 'expo')`,
+    ),
+  ],
+);
+
+export type CourierPushDevice =
+  typeof courierPushDevices.$inferSelect;
+
+export type InsertCourierPushDevice =
+  typeof courierPushDevices.$inferInsert;
