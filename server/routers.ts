@@ -2338,8 +2338,8 @@ export const appRouter = router({
                 packageDescription: request.packageDescription,
               });
 
-              await sendExpoPush(
-                courier.pushToken,
+              const deliveryResults = await sendPushToCouriers(
+                [courier.id],
                 push.title,
                 push.body,
                 {
@@ -2349,7 +2349,10 @@ export const appRouter = router({
                 },
               );
 
-              if (request.scheduledAt) {
+              const assignmentPushAccepted =
+                deliveryResults.some(result => result.accepted);
+
+              if (request.scheduledAt && assignmentPushAccepted) {
                 await db.updateRequest(request.id, {
                   scheduledPushSentAt: new Date(),
                 });

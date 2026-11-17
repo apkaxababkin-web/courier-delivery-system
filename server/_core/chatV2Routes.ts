@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 
 import * as db from "../db";
 import { broadcastLive } from "./liveEvents";
-import { isExpoPushToken, sendExpoPush } from "./expoPush";
+import { sendPushToCouriers } from "./pushDispatcher";
 import { assertCourierAccess, checkCourierAccess } from "./courierAccess";
 
 type ChatActorType = "manager" | "courier";
@@ -247,18 +247,16 @@ async function sendPushForMessage(conn: any, actor: ChatActor, conversationId: n
 
     const body = `${actor.name}: ${text}`.slice(0, 120);
 
-    await Promise.allSettled(
-      allowedRows
-        .map((row) => row.pushToken)
-        .filter((pushToken): pushToken is string => isExpoPushToken(pushToken))
-        .map((pushToken) =>
-          sendExpoPush(pushToken, "Чат МИГ", body, {
-            type: "chat_message_v2",
-            conversationId,
-            messageId,
-            url: `chat?conversationId=${conversationId}`,
-          }),
-        ),
+    await sendPushToCouriers(
+      allowedRows.map(row => Number(row.courierId)),
+      "Чат МИГ",
+      body,
+      {
+        type: "chat_message_v2",
+        conversationId,
+        messageId,
+        url: `chat?conversationId=${conversationId}`,
+      },
     );
   } catch (error) {
     console.error("[chat.v2.push] failed", error);
