@@ -369,7 +369,7 @@ export function registerCompatRoutes(app: Express) {
       const courierId = await courierIdFromReq(req);
       const input = inputFrom(req);
       const dateInput = typeof input.date === "string" ? input.date : null;
-      const day = dateInput && /^\\d{4}-\\d{2}-\\d{2}$/.test(dateInput) ? dateInput : null;
+      const day = dateInput && /^\d{4}-\d{2}-\d{2}$/.test(dateInput) ? dateInput : null;
       const [active, completed] = await Promise.all([
         db.getAllTasksWithCourier(),
         db.getCompletedTasksWithCourier(),
