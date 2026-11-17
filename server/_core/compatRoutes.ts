@@ -2,6 +2,7 @@ import { requireManagerAuth } from "./managerSecurity";
 import express, { type Express, type Request, type Response } from "express";
 import { addLiveClient, broadcastLive, removeLiveClient, sendLiveEvent } from "./liveEvents";
 import { isExpoPushToken, sendExpoPush } from "./expoPush";
+import { sendPushToCouriers } from "./pushDispatcher";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -89,20 +90,30 @@ function unwrapBatchInput(obj: Record<string, unknown>): Record<string, unknown>
   return obj;
 }
 
-async function sendPushToAllCouriers(title: string, body: string, data?: Record<string, unknown>) {
+async function sendPushToAllCouriers(
+  title: string,
+  body: string,
+  data?: Record<string, unknown>,
+) {
   try {
     const allCouriers = await db.getAllCouriers();
-    const targets = allCouriers.filter((courier) => isExpoPushToken(courier.pushToken));
-
-    console.log("[PUSH_ALL] targets", targets.length, title);
-
-    await Promise.allSettled(
-      targets.map((courier) =>
-        sendExpoPush(courier.pushToken, title, body, data),
-      ),
+    const results = await sendPushToCouriers(
+      allCouriers.map(courier => courier.id),
+      title,
+      body,
+      data,
     );
-  } catch (e) {
-    console.error("[PUSH_ALL] failed", e);
+
+    const failed = results.reduce(
+      (total, result) => total + result.failedCount,
+      0,
+    );
+
+    if (failed > 0) {
+      console.warn("[PUSH_ALL] compat failed targets", failed);
+    }
+  } catch (error) {
+    console.error("[PUSH_ALL] failed", error);
   }
 }
 

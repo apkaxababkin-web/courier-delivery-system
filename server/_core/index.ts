@@ -17,7 +17,7 @@ import { registerAddressBookRoutes } from "./addressBook";
 import { registerOrganizationLogoRoutes } from "./organizationLogos";
 import { registerBillingRoutes } from "./billingRoutes";
 import { mirrorLegacyChatMessageToV2, registerChatV2Routes } from "./chatV2Routes";
-import { sendExpoPush } from "./expoPush";
+import { sendPushToCouriers } from "./pushDispatcher";
 import { startCourierReminderScheduler } from "./courierReminderScheduler";
 import { startRequestPushScheduler } from "./requestPushScheduler";
 import { appRouter, verifyCourierToken } from "../routers";
@@ -94,24 +94,29 @@ async function sendManagerChatPushToCouriers(message: {
     const senderName = String(message.senderName || "Менеджер").trim() || "Менеджер";
     const senderRole = String(message.senderRole || "manager").trim();
 
-    const targets = allCouriers.filter((courier) => {
-      const token = courier.pushToken || "";
-      const hasExpoToken = token.startsWith("ExponentPushToken") || token.startsWith("ExpoPushToken");
-      const isSenderCourier = senderRole === "courier" && courier.id === Number(message.senderId || 0);
-      return hasExpoToken && !isSenderCourier;
+    const targets = allCouriers.filter(courier => {
+      const isSenderCourier =
+        senderRole === "courier" &&
+        courier.id === Number(message.senderId || 0);
+      return !isSenderCourier;
     });
-    const body = truncatePushText(`${senderName}: ${String(message.text || "").trim()}`, 120);
 
-    console.log("[PUSH_CHAT] targets", targets.length, "message", message.id);
+    const body = truncatePushText(
+      `${senderName}: ${String(message.text || "").trim()}`,
+      120,
+    );
 
-    await Promise.allSettled(
-      targets.map((courier) =>
-        sendExpoPush(courier.pushToken, "Чат МИГ", body, {
-          type: "chat_message",
-          messageId: message.id,
-          senderRole: message.senderRole || "manager",
-        }),
-      ),
+    console.log("[PUSH_CHAT] couriers", targets.length, "message", message.id);
+
+    await sendPushToCouriers(
+      targets.map(courier => courier.id),
+      "Чат МИГ",
+      body,
+      {
+        type: "chat_message",
+        messageId: message.id,
+        senderRole: message.senderRole || "manager",
+      },
     );
   } catch (error) {
     console.error("[PUSH_CHAT] failed", error);
