@@ -80,7 +80,11 @@ export async function getNotDeliveredMails(): Promise<Mail[]> {
   return await db.select().from(mails).where(eq(mails.status, "not_delivered")).orderBy(desc(mails.createdAt));
 }
 
-export async function getCourierVisibleMails(targetDate: Date = new Date()): Promise<Mail[]> {
+function executedRows(result: any): any[] {
+  return Array.isArray(result) ? result : Array.isArray(result?.rows) ? result.rows : [];
+}
+
+export async function getCourierVisibleMails(courierId: number, targetDate: Date = new Date()): Promise<Mail[]> {
   const db = await getDb();
   if (!db) return [];
 
@@ -93,20 +97,63 @@ export async function getCourierVisibleMails(targetDate: Date = new Date()): Pro
   const startOfDay = new Date(`${dateKey}T00:00:00.000+08:00`);
   const endOfDay = new Date(`${dateKey}T23:59:59.999+08:00`);
 
-  return await db
-    .select()
-    .from(mails)
-    .where(
-      or(
-        eq(mails.status, "not_delivered"),
-        and(
-          eq(mails.status, "delivered"),
-          gte(mails.deliveredAt, startOfDay),
-          lte(mails.deliveredAt, endOfDay),
-        ),
-      ),
+  const result = await db.execute(sql`
+    WITH "todaySheets" AS (
+      SELECT rs."id",rs."courierId"
+      FROM "correspondenceRouteSheets" rs
+      WHERE rs."routeDate"=${dateKey}::date AND rs."status"='active'
+    ), "courierHasSheet" AS (
+      SELECT EXISTS(SELECT 1 FROM "todaySheets" WHERE "courierId"=${courierId}) AS value
+    ), "assignments" AS (
+      SELECT s."mailId",ts."courierId",c."name" AS "routeCourierName"
+      FROM "todaySheets" ts
+      JOIN "correspondenceRouteSheetItems" i ON i."routeSheetId"=ts."id"
+      JOIN "correspondenceShipments" s ON s."id"=i."shipmentId"
+      JOIN "couriers" c ON c."id"=ts."courierId"
+      WHERE s."mailId" IS NOT NULL
     )
-    .orderBy(desc(mails.createdAt));
+    SELECT m.*,COALESCE(manifestPartner."name",mailPartner."name") AS "partnerName",
+      a."courierId" AS "routeCourierId",a."routeCourierName",
+      (a."courierId" IS NOT NULL AND a."courierId"<>${courierId}) AS "foreignRouteAssignment"
+    FROM "mails" m
+    LEFT JOIN "correspondenceShipments" shipment ON shipment."mailId"=m."id"
+    LEFT JOIN "partners" manifestPartner ON manifestPartner."id"=shipment."partnerId"
+    LEFT JOIN "partners" mailPartner ON mailPartner."id"=m."partnerId"
+    LEFT JOIN "assignments" a ON a."mailId"=m."id"
+    CROSS JOIN "courierHasSheet" hs
+    WHERE
+      (m."status"='not_delivered' AND (
+        m."createdAt"<${startOfDay}
+        OR (hs.value AND a."courierId"=${courierId})
+        OR (NOT hs.value AND a."courierId" IS NULL)
+      ))
+      OR (m."status"='delivered' AND m."deliveredAt">=${startOfDay} AND m."deliveredAt"<=${endOfDay}
+        AND (m."courierId"=${courierId} OR a."courierId"=${courierId}))
+    ORDER BY m."createdAt" DESC,m."id" DESC
+  `);
+  return executedRows(result) as Mail[];
+}
+
+export async function getCourierMailByWaybill(waybillNumber: string, courierId: number): Promise<Mail | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.execute(sql`
+    SELECT m.*,COALESCE(manifestPartner."name",mailPartner."name") AS "partnerName",
+      rs."courierId" AS "routeCourierId",c."name" AS "routeCourierName",
+      (rs."courierId" IS NOT NULL AND rs."courierId"<>${courierId}) AS "foreignRouteAssignment"
+    FROM "mails" m
+    LEFT JOIN "partners" mailPartner ON mailPartner."id"=m."partnerId"
+    LEFT JOIN "correspondenceShipments" s ON s."mailId"=m."id"
+    LEFT JOIN "partners" manifestPartner ON manifestPartner."id"=s."partnerId"
+    LEFT JOIN "correspondenceRouteSheetItems" i ON i."shipmentId"=s."id"
+    LEFT JOIN "correspondenceRouteSheets" rs ON rs."id"=i."routeSheetId"
+      AND rs."routeDate"=${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Irkutsk", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())}::date
+      AND rs."status"='active'
+    LEFT JOIN "couriers" c ON c."id"=rs."courierId"
+    WHERE lower(btrim(m."waybillNumber"))=lower(btrim(${waybillNumber}))
+    ORDER BY rs."id" DESC NULLS LAST LIMIT 1
+  `);
+  return executedRows(result)[0] as Mail | undefined;
 }
 
 // getDb() stays loosely typed (legacy dual-driver history), so the transaction
@@ -820,7 +867,11 @@ export async function getTaskWithCourierByRequestId(
   const rows = await conn
     .select({ id: tasks.id })
     .from(tasks)
-    .where(or(eq(tasks.requestId, requestId), eq(tasks.sourceRequestId, requestId)))
+    .where(or(
+      eq(tasks.requestId, requestId),
+      eq(tasks.sourceRequestId, requestId),
+      sql`position(${`[request:${requestId}]`} in coalesce(${tasks.comments}, '')) > 0`,
+    ))
     .orderBy(desc(tasks.createdAt))
     .limit(1);
 
@@ -1307,6 +1358,8 @@ export type HemotestPickupWithStatus = HemotestPickupPoint & {
   courierName?: string;
   courierColor?: string;
   courierIcon?: string;
+  routeOrder?: number | null;
+  isFrozen?: boolean;
 };
 
 export async function getHemotestPickupPointsForDate(
@@ -1372,13 +1425,23 @@ export async function getHemotestPickupPointsForDate(
       courierName: pickup?.couriers?.name ?? undefined,
       courierColor: pickup?.couriers?.displayColor ?? undefined,
       courierIcon: pickup?.couriers?.displayIcon ?? undefined,
+      routeOrder: pickup?.hemotestPickups.routeOrder ?? null,
+      isFrozen: pickup?.hemotestPickups.isFrozen ?? false,
     };
   });
 
-  return result.sort(
-    (a: HemotestPickupWithStatus, b: HemotestPickupWithStatus) =>
-      Number(a.isPicked || a.isCancelled) - Number(b.isPicked || b.isCancelled),
-  );
+  return result.sort((a: HemotestPickupWithStatus, b: HemotestPickupWithStatus) => {
+    const aHasRoutePosition = a.courierId != null && a.routeOrder != null;
+    const bHasRoutePosition = b.courierId != null && b.routeOrder != null;
+    if (aHasRoutePosition !== bHasRoutePosition) return aHasRoutePosition ? -1 : 1;
+    if (aHasRoutePosition && bHasRoutePosition) {
+      const courierOrder = Number(a.courierId) - Number(b.courierId);
+      if (courierOrder !== 0) return courierOrder;
+      const routeOrder = Number(a.routeOrder) - Number(b.routeOrder);
+      if (routeOrder !== 0) return routeOrder;
+    }
+    return Number(a.isPicked || a.isCancelled) - Number(b.isPicked || b.isCancelled);
+  });
 }
 
 /**

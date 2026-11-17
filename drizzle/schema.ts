@@ -14,6 +14,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -263,6 +264,8 @@ export const hemotestPickups = pgTable("hemotestPickups", {
   pickedAt: timestamp("pickedAt"),
   isCancelled: boolean("isCancelled").notNull().default(false),
   cancelledAt: timestamp("cancelledAt"),
+  routeOrder: integer("routeOrder"),
+  isFrozen: boolean("isFrozen").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -2221,6 +2224,161 @@ export const correspondenceShipmentPlaces = pgTable(
 
 export type CorrespondenceShipmentPlaces = typeof correspondenceShipmentPlaces.$inferSelect;
 export type InsertCorrespondenceShipmentPlaces = typeof correspondenceShipmentPlaces.$inferInsert;
+
+export const correspondenceRouteSheets = pgTable(
+  "correspondenceRouteSheets",
+  {
+    id: serial("id").primaryKey(),
+    routeDate: date("routeDate").notNull(),
+    courierId: integer("courierId").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("active"),
+    comment: text("comment"),
+    createdByManagerId: integer("createdByManagerId"),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondenceRouteSheets_courierId_fkey",
+      columns: [table.courierId],
+      foreignColumns: [couriers.id],
+    }).onDelete("restrict"),
+    unique("correspondenceRouteSheets_date_courier_key").on(table.routeDate, table.courierId),
+    index("correspondenceRouteSheets_date_idx").on(sql`"routeDate" DESC`, sql`id DESC`),
+    check("correspondenceRouteSheets_status_check", sql`((status)::text = ANY ((ARRAY['active'::character varying,'closed'::character varying,'cancelled'::character varying])::text[]))`),
+  ],
+);
+
+export const correspondenceRouteSheetItems = pgTable(
+  "correspondenceRouteSheetItems",
+  {
+    id: bigint("id", { mode: "number" }).generatedByDefaultAsIdentity({ name: "correspondenceRouteSheetItems_id_seq" }).primaryKey(),
+    routeSheetId: integer("routeSheetId").notNull(),
+    shipmentId: integer("shipmentId").notNull(),
+    position: integer("position").notNull(),
+    addedByManagerId: integer("addedByManagerId"),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "correspondenceRouteSheetItems_routeSheetId_fkey",
+      columns: [table.routeSheetId],
+      foreignColumns: [correspondenceRouteSheets.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "correspondenceRouteSheetItems_shipmentId_fkey",
+      columns: [table.shipmentId],
+      foreignColumns: [correspondenceShipments.id],
+    }).onDelete("restrict"),
+    unique("correspondenceRouteSheetItems_sheet_shipment_key").on(table.routeSheetId, table.shipmentId),
+    index("correspondenceRouteSheetItems_shipment_idx").on(table.shipmentId, table.routeSheetId),
+    check("correspondenceRouteSheetItems_position_check", sql`("position" > 0)`),
+  ],
+);
+
+export type CorrespondenceRouteSheet = typeof correspondenceRouteSheets.$inferSelect;
+export type InsertCorrespondenceRouteSheet = typeof correspondenceRouteSheets.$inferInsert;
+export type CorrespondenceRouteSheetItem = typeof correspondenceRouteSheetItems.$inferSelect;
+export type InsertCorrespondenceRouteSheetItem = typeof correspondenceRouteSheetItems.$inferInsert;
+
+export const correspondenceShipmentCharges = pgTable(
+  "correspondenceShipmentCharges",
+  {
+    shipmentId: integer("shipmentId").primaryKey().notNull(),
+    clientAmount: numeric("clientAmount", { precision: 14, scale: 2 }),
+    partnerAmount: numeric("partnerAmount", { precision: 14, scale: 2 }),
+    clientRateSource: varchar("clientRateSource", { length: 30 }),
+    partnerRateSource: varchar("partnerRateSource", { length: 30 }),
+    clientComment: text("clientComment"),
+    partnerComment: text("partnerComment"),
+    checkedAt: timestamp("checkedAt", { withTimezone: true }),
+    checkedByManagerId: integer("checkedByManagerId"),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({ name: "correspondenceShipmentCharges_shipmentId_fkey", columns: [table.shipmentId], foreignColumns: [correspondenceShipments.id] }).onDelete("restrict"),
+    index("correspondenceShipmentCharges_checked_idx").on(table.checkedAt, table.shipmentId),
+    check("correspondenceShipmentCharges_clientAmount_check", sql`("clientAmount" IS NULL OR ("clientAmount">=0 AND "clientAmount"<=999999999999.99))`),
+    check("correspondenceShipmentCharges_partnerAmount_check", sql`("partnerAmount" IS NULL OR ("partnerAmount">=0 AND "partnerAmount"<=999999999999.99))`),
+  ],
+);
+
+export const correspondenceDocumentCounters = pgTable(
+  "correspondenceDocumentCounters",
+  {
+    counterpartyType: varchar("counterpartyType", { length: 10 }).notNull(),
+    year: integer("year").notNull(),
+    lastNumber: integer("lastNumber").notNull().default(0),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.counterpartyType, table.year] }),
+    check("correspondenceDocumentCounters_type_check", sql`("counterpartyType" IN ('client','partner'))`),
+  ],
+);
+
+export const correspondenceDocumentSets = pgTable(
+  "correspondenceDocumentSets",
+  {
+    id: serial("id").primaryKey(),
+    counterpartyType: varchar("counterpartyType", { length: 10 }).notNull(),
+    counterpartyId: integer("counterpartyId").notNull(),
+    documentNumber: varchar("documentNumber", { length: 50 }).notNull(),
+    documentYear: integer("documentYear").notNull(),
+    revision: integer("revision").notNull().default(1),
+    documentDate: date("documentDate").notNull(),
+    periodFrom: date("periodFrom").notNull(),
+    periodTo: date("periodTo").notNull(),
+    settlementDirection: varchar("settlementDirection", { length: 20 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("issued"),
+    totalAmount: numeric("totalAmount", { precision: 14, scale: 2 }).notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    invoiceFile: text("invoiceFile"),
+    actFile: text("actFile"),
+    registryFile: text("registryFile"),
+    paidAt: timestamp("paidAt", { withTimezone: true }),
+    paymentComment: text("paymentComment"),
+    createdByManagerId: integer("createdByManagerId"),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("correspondenceDocumentSets_number_revision_key").on(table.counterpartyType, table.documentYear, table.documentNumber, table.revision),
+    index("correspondenceDocumentSets_party_idx").on(table.counterpartyType, table.counterpartyId, sql`"documentDate" DESC`),
+    index("correspondenceDocumentSets_status_idx").on(table.status, sql`"documentDate" DESC`),
+    check("correspondenceDocumentSets_counterparty_check", sql`("counterpartyType" IN ('client','partner'))`),
+    check("correspondenceDocumentSets_direction_check", sql`("settlementDirection" IN ('counterparty_to_us','us_to_counterparty'))`),
+    check("correspondenceDocumentSets_status_check", sql`("status" IN ('issued','paid','void'))`),
+  ],
+);
+
+export const correspondenceDocumentItems = pgTable(
+  "correspondenceDocumentItems",
+  {
+    id: bigint("id", { mode: "number" }).generatedByDefaultAsIdentity({ name: "correspondenceDocumentItems_id_seq" }).primaryKey(),
+    documentId: integer("documentId").notNull(),
+    shipmentId: integer("shipmentId").notNull(),
+    counterpartyType: varchar("counterpartyType", { length: 10 }).notNull(),
+    counterpartyId: integer("counterpartyId").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({ name: "correspondenceDocumentItems_documentId_fkey", columns: [table.documentId], foreignColumns: [correspondenceDocumentSets.id] }).onDelete("restrict"),
+    foreignKey({ name: "correspondenceDocumentItems_shipmentId_fkey", columns: [table.shipmentId], foreignColumns: [correspondenceShipments.id] }).onDelete("restrict"),
+    unique("correspondenceDocumentItems_document_shipment_key").on(table.documentId, table.shipmentId),
+    uniqueIndex("correspondenceDocumentItems_active_party_uidx").on(table.shipmentId, table.counterpartyType, table.counterpartyId).where(sql`"active"`),
+    index("correspondenceDocumentItems_document_idx").on(table.documentId, table.active),
+  ],
+);
+
+export type CorrespondenceShipmentCharge = typeof correspondenceShipmentCharges.$inferSelect;
+export type CorrespondenceDocumentCounter = typeof correspondenceDocumentCounters.$inferSelect;
+export type CorrespondenceDocumentSet = typeof correspondenceDocumentSets.$inferSelect;
+export type CorrespondenceDocumentItem = typeof correspondenceDocumentItems.$inferSelect;
 
 // ─── Tariff directories (migration 0010) and courierAccess: structure taken from the
 // production catalogue dump of 2026-10-16, revision C.3. No migration is created. ────

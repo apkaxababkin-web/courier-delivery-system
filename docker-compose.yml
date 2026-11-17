@@ -21,7 +21,7 @@ services:
     networks:
     - courier-network
   api:
-    image: courier-api:courier-access-fix-20261018
+    image: courier-api:max-delivery-fix-20261110
     build:
       context: .
       dockerfile: Dockerfile

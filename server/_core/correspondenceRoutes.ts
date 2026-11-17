@@ -3,6 +3,8 @@ import { registerCorrespondenceWorkflow, workflowShipments, workflowManifests, c
 import { guardLegacyWaybills } from './correspondenceWaybills';
 import { registerCorrespondenceDirectories } from './correspondenceDirectories';
 import { registerCorrespondenceTariffs } from './correspondenceTariffs';
+import { registerCorrespondenceRouteSheets } from './correspondenceRouteSheets';
+import { registerCorrespondenceFinance } from './correspondenceFinance';
 import type { Express, Request, Response } from "express";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
@@ -21,6 +23,8 @@ export function registerCorrespondenceRoutes(app: Express) {
   registerCorrespondenceTariffs(app);
   registerCorrespondenceWorkflow(app);
   registerCorrespondenceCamera(app);
+  registerCorrespondenceRouteSheets(app);
+  registerCorrespondenceFinance(app);
   // managerApiAuthGate verifies the bearer token before this module is registered.
   app.use('/api/manager/correspondence', (_req, res, next) => {
     if (!Number.isSafeInteger(res.locals.manager?.managerId) || res.locals.manager.managerId <= 0) {
