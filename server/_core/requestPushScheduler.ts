@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { couriers, requests, type Courier, type Request } from "../../drizzle/schema";
 import * as db from "../db";
-import { isExpoPushToken } from "./expoPush";
+import { sendPushToCouriers } from "./pushDispatcher";
 
 const TIMEZONE_OFFSET_HOURS = 8;
 const MORNING_PUSH_HOUR = 9;
@@ -28,37 +28,6 @@ function localDayRangeUtc() {
 
 function morningPushIsAllowed() {
   return localNow().getUTCHours() >= MORNING_PUSH_HOUR;
-}
-
-async function sendExpoPush(
-  pushToken: string,
-  title: string,
-  body: string,
-  data: Record<string, unknown>,
-) {
-  if (!isExpoPushToken(pushToken)) return;
-
-  const response = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Accept-Encoding": "gzip, deflate",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      to: pushToken,
-      sound: "default",
-      priority: "high",
-      title,
-      body,
-      data,
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Expo push failed ${response.status}: ${text}`);
-  }
 }
 
 async function sendScheduledRequestPushes() {
@@ -97,10 +66,6 @@ async function sendScheduledRequestPushes() {
   const successfulCourierIds = new Set<number>();
 
   for (const courier of courierRows) {
-    if (!courier.pushToken || !isExpoPushToken(courier.pushToken)) {
-      continue;
-    }
-
     const assignedRequests = requestRows.filter(
       (request) => request.courierId === courier.id,
     );
@@ -112,8 +77,8 @@ async function sendScheduledRequestPushes() {
     if (!hasRelevantRequests) continue;
 
     try {
-      await sendExpoPush(
-        courier.pushToken,
+      const deliveryResults = await sendPushToCouriers(
+        [courier.id],
         "Есть заявки на сегодня",
         "Откройте приложение и проверьте список заявок",
         {
@@ -121,6 +86,13 @@ async function sendScheduledRequestPushes() {
           url: "/(tabs)",
         },
       );
+
+      if (!deliveryResults.some(result => result.accepted)) {
+        console.warn(
+          `[RequestPushScheduler] no accepted morning push for courier ${courier.id}`,
+        );
+        continue;
+      }
 
       successfulCourierIds.add(courier.id);
 
