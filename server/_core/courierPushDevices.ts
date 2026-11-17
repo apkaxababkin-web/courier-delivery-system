@@ -32,6 +32,15 @@ export async function registerCourierPushDevice(input: {
          OR installation_id = ${input.installationId}
     `);
 
+    // Remove a matching legacy Expo owner before assigning this token.
+    // FCM and Expo tokens cannot be correlated without installation identity.
+    await tx.execute(sql`
+      UPDATE couriers
+      SET "pushToken" = NULL
+      WHERE "pushToken" = ${input.pushToken}
+        AND id <> ${input.courierId}
+    `);
+
     await tx.execute(sql`
       INSERT INTO courier_push_devices (
         courier_id,
@@ -58,6 +67,64 @@ export async function registerCourierPushDevice(input: {
   });
 
   return { success: true };
+}
+
+export async function registerLegacyCourierPushToken(input: {
+  courierId: number;
+  pushToken: string;
+  expectedPushToken?: string;
+}) {
+  const database = requireDb(await getDb());
+
+  return database.transaction(async (tx: any) => {
+    // Shared with modern device registration to serialize ownership changes.
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(711931789436)
+    `);
+
+    if (input.pushToken === "") {
+      if (input.expectedPushToken) {
+        await tx.execute(sql`
+          UPDATE couriers
+          SET "pushToken" = NULL
+          WHERE id = ${input.courierId}
+            AND "pushToken" = ${input.expectedPushToken}
+        `);
+      } else {
+        await tx.execute(sql`
+          UPDATE couriers
+          SET "pushToken" = NULL
+          WHERE id = ${input.courierId}
+        `);
+      }
+
+      return { success: true };
+    }
+
+    // A legacy token can have only one courier owner.
+    await tx.execute(sql`
+      UPDATE couriers
+      SET "pushToken" = NULL
+      WHERE "pushToken" = ${input.pushToken}
+        AND id <> ${input.courierId}
+    `);
+
+    // A token registered through the modern API must not also remain
+    // assigned to a different courier through the device table.
+    await tx.execute(sql`
+      DELETE FROM courier_push_devices
+      WHERE push_token = ${input.pushToken}
+        AND courier_id <> ${input.courierId}
+    `);
+
+    await tx.execute(sql`
+      UPDATE couriers
+      SET "pushToken" = ${input.pushToken}
+      WHERE id = ${input.courierId}
+    `);
+
+    return { success: true };
+  });
 }
 
 export async function unregisterCourierPushDevice(input: {

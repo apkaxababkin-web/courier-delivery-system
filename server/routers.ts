@@ -9,6 +9,7 @@ import { isExpoPushToken, sendExpoPush } from "./_core/expoPush";
 import { sendPushToCouriers } from "./_core/pushDispatcher";
 import {
   registerCourierPushDevice,
+  registerLegacyCourierPushToken,
   unregisterCourierPushDevice,
 } from "./_core/courierPushDevices";
 import { broadcastLive } from "./_core/liveEvents";
@@ -357,17 +358,11 @@ export const appRouter = router({
         if (input.pushToken !== "" && !isExpoPushToken(input.pushToken)) {
           throw new Error("Некорректный Expo push-токен");
         }
-        // Never acknowledge registration if the database write fails.
-        if (input.pushToken === "" && input.expectedPushToken) {
-          const courier = await db.getCourierById(payload.courierId);
-          if (courier?.pushToken !== input.expectedPushToken) {
-            return { success: true };
-          }
-        }
-        await db.updateCourier(payload.courierId, {
-          pushToken: input.pushToken || null,
+        return registerLegacyCourierPushToken({
+          courierId: payload.courierId,
+          pushToken: input.pushToken,
+          expectedPushToken: input.expectedPushToken,
         });
-        return { success: true };
       }),
   }),
 
